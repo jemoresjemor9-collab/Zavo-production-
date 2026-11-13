@@ -332,7 +332,7 @@ export default function HomePage() {
   async function recordView(video: Video, seconds: number) {
     if (!db() || seconds < 2) return;
     const key = visitorKey();
-    const payload = session?.user?.id
+    const payload: any = session?.user?.id
       ? { video_id: video.id, viewer_id: session.user.id, watch_seconds: Math.floor(seconds) }
       : { video_id: video.id, visitor_key: key, watch_seconds: Math.floor(seconds) };
     const { error } = await db()!.from("video_views").insert(payload);
