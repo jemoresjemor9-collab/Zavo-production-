@@ -180,7 +180,8 @@ export default function HomePage() {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
-  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [] });\n  const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
+  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [] });
+  const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
 
