@@ -501,3 +501,12 @@ body{color:#d7eaff!important}
 
 .draft-save-action{display:flex;width:100%;align-items:center;justify-content:center;margin-bottom:8px;border:1px solid #2879d2!important;background:#092b6c!important;color:#55a2ff!important}
 .draft-save-action:disabled{opacity:.55;cursor:wait}
+
+/* Studio ZAVO: Short and long-form filters */
+.creator-type-filters{display:flex;flex-wrap:wrap;gap:8px;align-self:flex-start}
+.creator-type-filters button{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid #2879d2;border-radius:10px;background:#0b347a;color:#b9d9ff;font-size:12px;font-weight:800;cursor:pointer}
+.creator-type-filters button.active{border-color:#13b96a;background:#0b5c65;color:#13b96a}
+.creator-type-filters button span{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:6px;background:#092b6c;color:#d7eaff;font-size:10px}
+.studio-section>.studio-hint{margin:-7px 0 13px;color:#8ab8f5;font-size:12px;line-height:1.6}
+.publish-format-grid .format-choice{min-height:118px}
+@media(max-width:620px){.creator-type-filters{width:100%}.creator-type-filters button{flex:1;justify-content:center;padding:9px 7px;font-size:11px}}
