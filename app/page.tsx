@@ -12,7 +12,7 @@ import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
 
-type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; followers_count?: number };
+type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; followers_count?: number; followers?: { count: number }[] };
 type Video = {
   id: string; caption: string; video_url: string; thumbnail_url?: string | null; user_id: string;
   views_count: number; created_at: string; content_type: "short" | "video"; allow_download: boolean;
@@ -166,6 +166,7 @@ export default function HomePage() {
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
+  const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [videoTargetUrl, setVideoTargetUrl] = useState("");
   const [videoCategory, setVideoCategory] = useState("Divertissement");
@@ -238,6 +239,13 @@ export default function HomePage() {
     setVideoPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  useEffect(() => {
+    if (!thumbnail) { setThumbnailPreviewUrl(""); return; }
+    const url = URL.createObjectURL(thumbnail);
+    setThumbnailPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [thumbnail]);
 
   useEffect(() => {
     let active = true;
@@ -461,7 +469,7 @@ export default function HomePage() {
       if (upload.error) { setNotice("Le fichier n’a pas pu être envoyé : " + upload.error.message); setDmBusy(false); return; }
       mediaUrl = db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
     }
-    const body = dmText.trim();
+    const body = dmText.trim() || (dmFile ? "Pièce jointe" : "");
     const { error } = await db()!.from("messages").insert({
       conversation_id: activeConversation, sender_id: session.user.id, body,
       message_type: messageType, media_url: mediaUrl, media_name: mediaName, mime_type: mimeType
@@ -548,27 +556,34 @@ export default function HomePage() {
     let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };
     try { videoMetadata = await getVideoMetadata(file); } catch {}
     const upload = await db()!.storage.from("zavo-videos").upload(videoPath, file, { contentType: videoMime, upsert: false });
-    if (upload.error) { setNotice(upload.error.message); setBusy(false); return; }
+    if (upload.error) { setNotice("Impossible d’importer la vidéo : " + upload.error.message); setBusy(false); return; }
     const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
     let thumbnailUrl: string | null = null;
     if (thumbnail) {
       const thumbPath = session.user.id + "/" + crypto.randomUUID() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const thumbUpload = await db()!.storage.from("zavo-media").upload(thumbPath, thumbnail, { contentType: thumbnail.type });
+      const thumbUpload = await db()!.storage.from("zavo-media").upload(thumbPath, thumbnail, { contentType: thumbnail.type || "image/jpeg" });
       if (!thumbUpload.error) thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
     }
+    const offlinePermission = allowOfflineDownload;
+    const galleryPermission = allowGalleryDownload;
     const { data: published, error } = await db()!.from("videos").insert({
       user_id: session.user.id, caption, video_url: videoUrl, thumbnail_url: thumbnailUrl,
-      content_type: contentType, allow_download: allowDownload, show_stats: showStats, visibility: "public", interest_tags: videoInterestTags, ...videoMetadata
-    }).select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status").single();
-    if (error) setNotice(error.message);
+      target_url: safeUrl(videoTargetUrl), category: videoCategory,
+      content_type: contentType, allow_download: offlinePermission || galleryPermission,
+      allow_offline_download: offlinePermission, allow_gallery_download: galleryPermission,
+      show_stats: showStats, visibility: "public", interest_tags: videoInterestTags, ...videoMetadata
+    }).select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,show_stats,moderation_status").single();
+    if (error) setNotice("La vidéo a été importée, mais sa publication a échoué : " + error.message);
     else {
       setNotice("Ta vidéo est publiée sur ZAVO.");
-      setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setAllowDownload(false); setVideoInterestTags([]);
+      setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setVideoTargetUrl("");
+      setAllowOfflineDownload(false); setAllowGalleryDownload(false); setVideoInterestTags([]);
+      const shouldBoost = boostAfterPublish;
+      setBoostAfterPublish(false);
       await loadVideos();
-      const { count } = await db()!.from("ad_campaigns").select("id", { count: "exact", head: true }).eq("owner_id", session.user.id);
-      if ((count || 0) === 0 && published) {
-        setCampaignVideo(published as Video);
-        setCampaignOpen(true);
+      if (shouldBoost && published) {
+        setCampaignType("video"); setCampaignVideo(published as Video);
+        setCampaignTitle("Promotion de ma vidéo"); setCampaignOpen(true);
       }
     }
     setBusy(false);
@@ -584,10 +599,10 @@ export default function HomePage() {
 
   async function toggleVideoDownload(video: Video) {
     if (!session || video.user_id !== session.user.id) return;
-    const nextValue = !video.allow_download;
-    const { error } = await db()!.from("videos").update({ allow_download: nextValue }).eq("id", video.id);
+    const nextValue = !(video.allow_offline_download || video.allow_gallery_download || video.allow_download);
+    const { error } = await db()!.from("videos").update({ allow_download: nextValue, allow_offline_download: nextValue, allow_gallery_download: nextValue }).eq("id", video.id);
     if (error) setNotice(error.message);
-    else setVideos(items => items.map(v => v.id === video.id ? { ...v, allow_download: nextValue } : v));
+    else setVideos(items => items.map(v => v.id === video.id ? { ...v, allow_download: nextValue, allow_offline_download: nextValue, allow_gallery_download: nextValue } : v));
   }
 
   async function toggleLike(video: Video) {
@@ -653,17 +668,26 @@ export default function HomePage() {
   }
 
   async function downloadVideo(video: Video, offlineOnly = false) {
-    if (!video.allow_download) { setNotice("Le créateur n'a pas autorisé le téléchargement de cette vidéo."); return; }
+    const canSaveOffline = video.allow_offline_download ?? video.allow_download;
+    const canSaveGallery = video.allow_gallery_download ?? video.allow_download;
+    if (offlineOnly && !canSaveOffline) { setNotice("Le créateur n’autorise pas l’enregistrement hors connexion."); return; }
+    if (!offlineOnly && !canSaveGallery) { setNotice("Le créateur n’autorise pas le téléchargement dans la galerie."); return; }
     try {
       if (offlineOnly) {
         await saveOfflineVideo(video);
-        setNotice("Vidéo enregistrée dans tes téléchargements ZAVO pour le hors connexion.");
+        setOfflineVideos(await readOfflineVideos());
+        setNotice("Vidéo enregistrée dans tes téléchargements ZAVO. Tu pourras la regarder sans Internet.");
       } else {
         const response = await fetch(video.video_url);
+        if (!response.ok) throw new Error("Téléchargement indisponible");
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a"); anchor.href = url; anchor.download = "ZAVO-" + video.id + ".mp4";
-        document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = "ZAVO-" + video.id + (blob.type.includes("webm") ? ".webm" : ".mp4");
+        document.body.appendChild(anchor); anchor.click(); anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+        setNotice("Téléchargement lancé. Vérifie la galerie ou le dossier de téléchargements de ton appareil.");
       }
     } catch { setNotice("Le téléchargement a échoué. Vérifie ta connexion et réessaie."); }
   }
