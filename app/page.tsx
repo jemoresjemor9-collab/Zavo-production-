@@ -1,343 +1,425 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Home, Compass, Plus, MessageCircle, UserRound, Search, Heart,
-  MessageSquare, Share2, Bell, LogIn, LogOut, Clapperboard,
-  TrendingUp, Store, X, UploadCloud, Play, Bookmark, ArrowRight
+  Home, Compass, Plus, MessageCircle, UserRound, Search, Heart, MessageSquare,
+  Share2, Bell, LogIn, LogOut, Clapperboard, Bookmark, Download, WifiOff,
+  Flag, Megaphone, Play, Eye, Settings, X, UploadCloud, Send, Check, Trash2,
+  MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
 
-type Profile = { username: string; display_name: string; avatar_url?: string | null };
+type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string };
 type Video = {
-  id: string;
-  caption: string;
-  video_url: string;
-  user_id: string;
-  views_count: number;
-  profiles?: Profile | Profile[] | null;
+  id: string; caption: string; video_url: string; thumbnail_url?: string | null; user_id: string;
+  views_count: number; created_at: string; content_type: "short" | "video"; allow_download: boolean;
+  show_stats: boolean; moderation_status?: string; profiles?: Profile | Profile[] | null;
+  likes?: { count: number }[]; comments?: { count: number }[];
 };
+type Comment = { id: string; body: string; created_at: string; profiles?: Profile | Profile[] | null };
+
+const db = () => supabase;
+const visitorKey = () => {
+  let key = localStorage.getItem("zavo_visitor_key");
+  if (!key) { key = crypto.randomUUID(); localStorage.setItem("zavo_visitor_key", key); }
+  return key;
+};
+function openOfflineDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("zavo-offline", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("videos", { keyPath: "id" });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function saveOfflineVideo(video: Video) {
+  const response = await fetch(video.video_url);
+  if (!response.ok) throw new Error("Téléchargement impossible.");
+  const blob = await response.blob();
+  const database = await openOfflineDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = database.transaction("videos", "readwrite");
+    tx.objectStore("videos").put({ id: video.id, blob, caption: video.caption, savedAt: Date.now(), contentType: video.content_type });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  database.close();
+}
+async function readOfflineVideos(): Promise<any[]> {
+  const database = await openOfflineDb();
+  const values = await new Promise<any[]>((resolve, reject) => {
+    const request = database.transaction("videos", "readonly").objectStore("videos").getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+  database.close();
+  return values;
+}
+function creatorOf(video: Video) {
+  return Array.isArray(video.profiles) ? video.profiles[0] : video.profiles;
+}
+function safeUrl(value: string) {
+  try { const url = new URL(value); return ["https:", "http:"].includes(url.protocol) ? url.href : null; } catch { return null; }
+}
+function Caption({ value }: { value: string }) {
+  const parts = value.split(/(https?:\/\/[^\s]+)/g);
+  return <>{parts.map((part, index) => {
+    const url = safeUrl(part);
+    return url ? <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="caption-link">{part} <ExternalLink size={11} /></a> : <span key={index}>{part}</span>;
+  })}</>;
+}
 
 export default function HomePage() {
-  const [tab, setTab] = useState("Accueil");
+  const [tab, setTab] = useState("Pour toi");
   const [videos, setVideos] = useState<Video[]>([]);
   const [session, setSession] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [caption, setCaption] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [thumbnail, setThumbnail] = useState<File | null>(null);
+  const [contentType, setContentType] = useState<"short" | "video">("short");
+  const [allowDownload, setAllowDownload] = useState(false);
+  const [showStats, setShowStats] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [liked, setLiked] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
+  const [following, setFollowing] = useState<string[]>([]);
+  const [commentsVideo, setCommentsVideo] = useState<Video | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentText, setCommentText] = useState("");
+  const [search, setSearch] = useState("");
+  const [offline, setOffline] = useState(false);
+  const [offlineVideos, setOfflineVideos] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [campaignVideo, setCampaignVideo] = useState<Video | null>(null);
+  const [campaignBudget, setCampaignBudget] = useState("5000");
+  const [campaignObjective, setCampaignObjective] = useState("views");
+  const [campaignCountry, setCampaignCountry] = useState("BJ");
+  const [reportVideo, setReportVideo] = useState<Video | null>(null);
+  const [reportReason, setReportReason] = useState("spam");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [bio, setBio] = useState("");
+  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [] });
 
-  async function loadVideos() {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("videos")
-      .select("id,caption,video_url,user_id,views_count,profiles(username,display_name,avatar_url)")
-      .eq("visibility", "public")
-      .order("created_at", { ascending: false })
-      .limit(24);
-    if (error) {
-      setNotice("Impossible de charger le flux pour le moment.");
-      return;
+  const isAdmin = session?.user?.app_metadata?.role === "admin";
+
+  const loadVideos = useCallback(async () => {
+    if (!db()) return;
+    let query = db()!.from("videos")
+      .select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count)")
+      .eq("visibility", "public").eq("moderation_status", "approved")
+      .order("created_at", { ascending: false }).limit(40);
+    if (tab === "Abonnements" && session?.user?.id) {
+      const { data: follows } = await db()!.from("follows").select("following_id").eq("follower_id", session.user.id);
+      const ids = (follows || []).map((row: any) => row.following_id);
+      if (!ids.length) { setVideos([]); return; }
+      query = query.in("user_id", ids);
     }
+    if (tab === "Vidéos enregistrées" && session?.user?.id) {
+      const { data: rows } = await db()!.from("saved_videos").select("video_id").eq("user_id", session.user.id);
+      const ids = (rows || []).map((row: any) => row.video_id);
+      if (!ids.length) { setVideos([]); return; }
+      query = query.in("id", ids);
+    }
+    const { data, error } = await query;
+    if (error) { setNotice("Le flux n'a pas pu être chargé. Réessaie dans un instant."); return; }
     setVideos((data || []) as Video[]);
-  }
+  }, [tab, session?.user?.id]);
 
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, value) => setSession(value));
-    loadVideos();
-    return () => subscription.unsubscribe();
+  const loadUserData = useCallback(async (userId: string) => {
+    if (!db()) return;
+    const [{ data: p }, { data: l }, { data: s }, { data: f }] = await Promise.all([
+      db()!.from("profiles").select("*").eq("id", userId).maybeSingle(),
+      db()!.from("likes").select("video_id").eq("user_id", userId),
+      db()!.from("saved_videos").select("video_id").eq("user_id", userId),
+      db()!.from("follows").select("following_id").eq("follower_id", userId)
+    ]);
+    setProfile(p as Profile | null);
+    setDisplayName(p?.display_name || "");
+    setBio(p?.bio || "");
+    setLiked((l || []).map((x: any) => x.video_id));
+    setSaved((s || []).map((x: any) => x.video_id));
+    setFollowing((f || []).map((x: any) => x.following_id));
   }, []);
 
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!supabase) return;
-    setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setNotice(error?.message || "Tu es connecté.");
-    setBusy(false);
-    if (!error) setAuthMode(null);
+  useEffect(() => {
+    if (!db()) return;
+    db()!.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session?.user?.id) loadUserData(data.session.user.id);
+    });
+    const { data: { subscription } } = db()!.auth.onAuthStateChange((_event, value) => {
+      setSession(value);
+      if (value?.user?.id) loadUserData(value.user.id);
+      else { setProfile(null); setLiked([]); setSaved([]); setFollowing([]); }
+    });
+    loadVideos();
+    const onOnline = () => { setOffline(false); setOfflineVideos([]); };
+    const onOffline = async () => { setOffline(true); try { setOfflineVideos(await readOfflineVideos()); } catch { setOfflineVideos([]); } };
+    setOffline(!navigator.onLine);
+    if (!navigator.onLine) onOffline();
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => { subscription.unsubscribe(); window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
+  }, [loadVideos, loadUserData]);
+
+  useEffect(() => { loadVideos(); }, [loadVideos]);
+  useEffect(() => { if (tab === "Notifications" && session?.user?.id) loadNotifications(); }, [tab, session?.user?.id]);
+
+  async function loadNotifications() {
+    if (!db() || !session) return;
+    const { data } = await db()!.from("notifications").select("*").eq("recipient_id", session.user.id).order("created_at", { ascending: false }).limit(50);
+    setNotifications(data || []);
   }
 
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!db()) return; setBusy(true);
+    const { error } = await db()!.auth.signInWithPassword({ email, password });
+    setNotice(error?.message || "Connexion réussie."); setBusy(false); if (!error) setAuthMode(null);
+  }
   async function signUp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!supabase) return;
-    setBusy(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    setNotice(error?.message || "Compte créé. Consulte ton e-mail pour confirmer ton adresse si demandé.");
-    setBusy(false);
-    if (!error) setAuthMode(null);
+    event.preventDefault(); if (!db()) return; setBusy(true);
+    const clean = username.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
+    const { error } = await db()!.auth.signUp({ email, password, options: { data: { username: clean, display_name: clean || "Créateur ZAVO" } } });
+    setNotice(error?.message || "Compte créé. Vérifie ton adresse e-mail si une confirmation est demandée.");
+    setBusy(false); if (!error) setAuthMode(null);
   }
 
   async function publish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!supabase || !session || !file) return;
+    if (!db() || !session || !file) return;
+    if (!file.type.startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
     setBusy(true);
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const path = session.user.id + "/" + Date.now() + "-" + safeName;
-    const uploaded = await supabase.storage.from("zavo-videos").upload(path, file, { contentType: file.type });
-    if (uploaded.error) {
-      setNotice(uploaded.error.message);
-      setBusy(false);
-      return;
+    const base = session.user.id + "/" + crypto.randomUUID();
+    const videoPath = base + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, file, { contentType: file.type, upsert: false });
+    if (upload.error) { setNotice(upload.error.message); setBusy(false); return; }
+    const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
+    let thumbnailUrl: string | null = null;
+    if (thumbnail) {
+      const thumbPath = session.user.id + "/" + crypto.randomUUID() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const thumbUpload = await db()!.storage.from("zavo-media").upload(thumbPath, thumbnail, { contentType: thumbnail.type });
+      if (!thumbUpload.error) thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
     }
-    const { data: publicData } = supabase.storage.from("zavo-videos").getPublicUrl(path);
-    const { error } = await supabase.from("videos").insert({
-      user_id: session.user.id,
-      caption,
-      video_url: publicData.publicUrl
+    const { error } = await db()!.from("videos").insert({
+      user_id: session.user.id, caption, video_url: videoUrl, thumbnail_url: thumbnailUrl,
+      content_type: contentType, allow_download: allowDownload, show_stats: showStats, visibility: "public"
     });
-    setNotice(error?.message || "Ta vidéo est publiée.");
+    if (error) setNotice(error.message);
+    else { setNotice("Ta vidéo est publiée sur ZAVO."); setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setAllowDownload(false); await loadVideos(); }
     setBusy(false);
-    setUploadOpen(false);
-    setCaption("");
-    setFile(null);
-    loadVideos();
   }
 
-  async function toggleLike(videoId: string) {
-    if (!supabase || !session) {
-      setAuthMode("signin");
-      return;
-    }
-    const alreadyLiked = liked.includes(videoId);
-    setLiked((current) => alreadyLiked ? current.filter((id) => id !== videoId) : [...current, videoId]);
-    const result = alreadyLiked
-      ? await supabase.from("likes").delete().eq("user_id", session.user.id).eq("video_id", videoId)
-      : await supabase.from("likes").insert({ user_id: session.user.id, video_id: videoId });
-    if (result.error) {
-      setLiked((current) => alreadyLiked ? [...current, videoId] : current.filter((id) => id !== videoId));
-      if (result.error.code !== "23505") setNotice(result.error.message);
-    }
+  async function toggleLike(video: Video) {
+    if (!session) { setAuthMode("signin"); return; }
+    const exists = liked.includes(video.id);
+    setLiked((v) => exists ? v.filter((id) => id !== video.id) : [...v, video.id]);
+    const result = exists
+      ? await db()!.from("likes").delete().eq("user_id", session.user.id).eq("video_id", video.id)
+      : await db()!.from("likes").insert({ user_id: session.user.id, video_id: video.id });
+    if (result.error) { setNotice(result.error.message); await loadUserData(session.user.id); }
   }
 
-  const navItems = [
-    { label: "Accueil", icon: Home },
-    { label: "Découvrir", icon: Compass },
-    { label: "Messages", icon: MessageCircle },
+  async function toggleSave(video: Video) {
+    if (!session) { setAuthMode("signin"); return; }
+    const exists = saved.includes(video.id);
+    setSaved((v) => exists ? v.filter((id) => id !== video.id) : [...v, video.id]);
+    const result = exists
+      ? await db()!.from("saved_videos").delete().eq("user_id", session.user.id).eq("video_id", video.id)
+      : await db()!.from("saved_videos").insert({ user_id: session.user.id, video_id: video.id });
+    if (result.error) { setNotice(result.error.message); await loadUserData(session.user.id); }
+  }
+
+  async function toggleFollow(userId: string) {
+    if (!session) { setAuthMode("signin"); return; }
+    if (userId === session.user.id) return;
+    const exists = following.includes(userId);
+    setFollowing((v) => exists ? v.filter((id) => id !== userId) : [...v, userId]);
+    const result = exists
+      ? await db()!.from("follows").delete().eq("follower_id", session.user.id).eq("following_id", userId)
+      : await db()!.from("follows").insert({ follower_id: session.user.id, following_id: userId });
+    if (result.error) { setNotice(result.error.message); await loadUserData(session.user.id); }
+  }
+
+  async function openComments(video: Video) {
+    setCommentsVideo(video); setCommentText("");
+    const { data } = await db()!.from("comments").select("id,body,created_at,profiles(id,username,display_name,avatar_url)").eq("video_id", video.id).order("created_at", { ascending: true }).limit(100);
+    setComments((data || []) as Comment[]);
+  }
+  async function sendComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session) { setAuthMode("signin"); return; }
+    if (!commentsVideo || !commentText.trim()) return;
+    const { error } = await db()!.from("comments").insert({ video_id: commentsVideo.id, user_id: session.user.id, body: commentText.trim() });
+    if (error) setNotice(error.message);
+    else { setCommentText(""); await openComments(commentsVideo); await loadVideos(); }
+  }
+
+  async function recordView(video: Video, seconds: number) {
+    if (!db() || seconds < 2) return;
+    const key = visitorKey();
+    const payload = session?.user?.id
+      ? { video_id: video.id, viewer_id: session.user.id, watch_seconds: Math.floor(seconds) }
+      : { video_id: video.id, visitor_key: key, watch_seconds: Math.floor(seconds) };
+    const { error } = await db()!.from("video_views").insert(payload);
+    if (!error) setVideos((items) => items.map((v) => v.id === video.id ? { ...v, views_count: v.views_count + 1 } : v));
+  }
+
+  async function downloadVideo(video: Video, offlineOnly = false) {
+    if (!video.allow_download) { setNotice("Le créateur n'a pas autorisé le téléchargement de cette vidéo."); return; }
+    try {
+      if (offlineOnly) {
+        await saveOfflineVideo(video);
+        setNotice("Vidéo enregistrée dans tes téléchargements ZAVO pour le hors connexion.");
+      } else {
+        const response = await fetch(video.video_url);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a"); anchor.href = url; anchor.download = "ZAVO-" + video.id + ".mp4";
+        document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+      }
+    } catch { setNotice("Le téléchargement a échoué. Vérifie ta connexion et réessaie."); }
+  }
+
+  async function shareVideo(video: Video) {
+    const url = window.location.origin + "/?video=" + video.id;
+    try {
+      if (navigator.share) await navigator.share({ title: "Vidéo sur ZAVO", text: video.caption, url });
+      else { await navigator.clipboard.writeText(url); setNotice("Lien de la vidéo copié."); }
+    } catch {}
+  }
+
+  async function submitReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!session || !reportVideo) return;
+    const { error } = await db()!.from("reports").insert({ reporter_id: session.user.id, target_type: "video", target_id: reportVideo.id, reason: reportReason });
+    setNotice(error?.message || "Signalement transmis à l'équipe ZAVO."); setReportVideo(null);
+  }
+
+  async function createCampaign(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!session || !campaignVideo) return;
+    const amount = Number(campaignBudget);
+    if (!Number.isFinite(amount) || amount < 1000) { setNotice("Le budget minimum provisoire est de 1 000 FCFA."); return; }
+    const { error } = await db()!.from("ad_campaigns").insert({
+      owner_id: session.user.id, video_id: campaignVideo.id, title: "Promotion de ma vidéo",
+      target_url: window.location.origin + "/?video=" + campaignVideo.id,
+      budget: amount, currency: "XOF", objective: campaignObjective, country_codes: [campaignCountry], status: "awaiting_payment"
+    });
+    setNotice(error?.message || "Campagne enregistrée en attente de paiement. Aucun débit n'a été effectué.");
+    setCampaignOpen(false); setCampaignVideo(null);
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!session) return;
+    const { error } = await db()!.from("profiles").update({ display_name: displayName, bio }).eq("id", session.user.id);
+    setNotice(error?.message || "Profil mis à jour."); setProfileOpen(false); await loadUserData(session.user.id);
+  }
+
+  async function loadAdmin() {
+    if (!isAdmin || !db()) return;
+    const [{ data: reports }, { data: campaigns }, { data: users }] = await Promise.all([
+      db()!.from("reports").select("*").order("created_at", { ascending: false }).limit(100),
+      db()!.from("ad_campaigns").select("*").order("created_at", { ascending: false }).limit(100),
+      db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(100)
+    ]);
+    setAdminData({ reports: reports || [], campaigns: campaigns || [], users: users || [] });
+  }
+  useEffect(() => { if (tab === "Administration") loadAdmin(); }, [tab, isAdmin]);
+
+  const visibleVideos = useMemo(() => videos.filter((v) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    const p = creatorOf(v);
+    return (v.caption || "").toLowerCase().includes(q) || (p?.username || "").toLowerCase().includes(q) || (p?.display_name || "").toLowerCase().includes(q);
+  }), [videos, search]);
+
+  const nav = [
+    { label: "Pour toi", icon: Home }, { label: "Découvrir", icon: Compass },
+    { label: "Abonnements", icon: Users }, { label: "Messages", icon: MessageCircle },
+    { label: "Enregistrés", icon: Bookmark }, { label: "Notifications", icon: Bell },
     { label: "Profil", icon: UserRound }
   ];
+
+  if (offline) {
+    return <main className="offline-screen"><div className="offline-header"><img src="/icons/zavo-192.png" /><strong>ZAVO</strong><span><WifiOff size={16}/> Hors connexion</span></div><h1>Tes vidéos téléchargées</h1><p>Sans Internet, tu peux regarder uniquement les vidéos enregistrées sur cet appareil.</p><div className="offline-grid">{offlineVideos.map((v) => <article key={v.id}><video controls playsInline src={URL.createObjectURL(v.blob)} /><strong>{v.caption || "Vidéo ZAVO"}</strong></article>)}</div>{offlineVideos.length === 0 && <div className="empty-state">Aucune vidéo téléchargée pour le moment.</div>}</main>;
+  }
 
   return (
     <main className="zavo-app">
       <PwaRegister />
       <aside className="sidebar">
-        <a className="brand-lockup" href="/" aria-label="ZAVO, accueil">
-          <img src="/icons/zavo-192.png" alt="Logo ZAVO" />
-          <span>ZAVO</span>
-        </a>
+        <a className="brand-lockup" href="/"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><span>ZAVO</span></a>
         <div className="brand-caption">REGARDE · CRÉE · PARTAGE</div>
-        <nav className="side-nav" aria-label="Navigation principale">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button key={item.label} className={tab === item.label ? "nav-link active" : "nav-link"} onClick={() => setTab(item.label)}>
-                <Icon size={19} strokeWidth={2.1} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-        <button className="publish-side" onClick={() => session ? setUploadOpen(true) : setAuthMode("signin")}>
-          <Plus size={19} /> Publier une vidéo
-        </button>
-        <div className="sidebar-bottom">
-          <div className="live-indicator"><span /> ZAVO est ouvert à tous</div>
-          <p>Une nouvelle scène pour les créateurs.</p>
-        </div>
+        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === item.label ? "nav-link active" : "nav-link"} onClick={() => setTab(item.label)}><Icon size={19}/><span>{item.label}</span></button>; })}</nav>
+        <button className="publish-side" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}><Plus size={19}/> Publier</button>
+        {isAdmin && <button className="nav-link" onClick={() => setTab("Administration")}><ShieldCheck size={18}/> Administration</button>}
+        <div className="sidebar-bottom"><div className="live-indicator"><span/> ZAVO est ouvert à tous</div><p>Une plateforme. Toutes les voix.</p></div>
       </aside>
 
       <section className="main-column">
         <header className="topbar">
-          <a className="mobile-brand" href="/">
-            <img src="/icons/zavo-192.png" alt="" />
-            <strong>ZAVO</strong>
-          </a>
-          <label className="search-box">
-            <Search size={18} />
-            <input placeholder="Rechercher une vidéo, un créateur ou une boutique" aria-label="Recherche" />
-            <kbd>⌕</kbd>
-          </label>
+          <a className="mobile-brand" href="/"><img src="/icons/zavo-192.png" alt=""/><strong>ZAVO</strong></a>
+          <label className="search-box"><Search size={18}/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une vidéo ou un créateur"/><kbd>⌕</kbd></label>
           <div className="top-actions">
-            <button className="top-icon" aria-label="Notifications" onClick={() => setNotice("Les notifications seront disponibles dans une prochaine mise à jour.")}><Bell size={19} /></button>
-            {session ? (
-              <>
-                <button className="profile-chip" onClick={() => setTab("Profil")} aria-label="Mon profil">{(session.user.email || "Z").slice(0, 1).toUpperCase()}</button>
-                <button className="login-button" onClick={() => supabase?.auth.signOut()}><LogOut size={16} /><span>Déconnexion</span></button>
-              </>
-            ) : (
-              <button className="login-button" onClick={() => setAuthMode("signin")}><LogIn size={16} /><span>Connexion</span></button>
-            )}
+            <button className="top-icon" aria-label="Notifications" onClick={() => setTab("Notifications")}><Bell size={19}/></button>
+            {session ? <><button className="profile-chip" onClick={() => setTab("Profil")}>{(profile?.display_name || session.user.email || "Z").slice(0,1).toUpperCase()}</button><button className="login-button" onClick={() => db()?.auth.signOut()}><LogOut size={16}/><span>Quitter</span></button></> : <button className="login-button" onClick={() => setAuthMode("signin")}><LogIn size={16}/><span>Connexion</span></button>}
           </div>
         </header>
-
         <div className="page-content">
           <PwaInstall />
-          <section className="welcome-panel">
-            <div className="welcome-copy">
-              <div className="eyebrow"><span className="eyebrow-mark" /> LA PLATEFORME QUI RASSEMBLE</div>
-              <h1>Les vidéos. Les idées.<br /><span>Tout commence ici.</span></h1>
-              <p>Découvre des créateurs, partage tes vidéos et fais connaître ce que tu construis.</p>
-              <div className="welcome-actions">
-                <button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}>
-                  <Clapperboard size={17} /> Publier ma première vidéo
-                </button>
-                <button className="secondary-action" onClick={() => setTab("Découvrir")}>
-                  Explorer ZAVO <ArrowRight size={16} />
-                </button>
-              </div>
-            </div>
-            <div className="welcome-art">
-              <img src="/icons/zavo-512.png" alt="Emblème ZAVO rouge, bleu et vert" />
-              <div className="art-caption"><span className="red-dot" /><span className="blue-dot" /><span className="green-dot" /> Une plateforme. Toutes les voix.</div>
-            </div>
-          </section>
-
-          {notice && <div className="notice" role="status">{notice}<button aria-label="Fermer" onClick={() => setNotice("")}><X size={15} /></button></div>}
-
-          <div className="feed-toolbar">
-            <div>
-              <div className="section-kicker">LE FLUX ZAVO</div>
-              <h2>{tab === "Découvrir" ? "À découvrir" : tab === "Accueil" ? "À regarder maintenant" : tab}</h2>
-            </div>
-            <div className="feed-tabs" role="tablist" aria-label="Filtres du flux">
-              {["Pour toi", "Abonnements", "Récents"].map((label) => (
-                <button key={label} className={(tab === label || (tab === "Accueil" && label === "Pour toi")) ? "selected" : ""} onClick={() => setTab(label)}>{label}</button>
-              ))}
-            </div>
-          </div>
-
-          {!supabase && <div className="notice">La connexion à la base de données doit être configurée pour activer les comptes et les vidéos.</div>}
-
-          {tab === "Messages" || tab === "Profil" ? (
-            <section className="empty-state">
-              <div className="empty-icon">{tab === "Messages" ? <MessageCircle size={25} /> : <UserRound size={25} />}</div>
-              <h3>{tab === "Messages" ? "Ta messagerie arrive" : "Ton espace personnel"}</h3>
-              <p>{tab === "Messages" ? "Les conversations privées seront activées dans la prochaine étape du développement." : "Connecte-toi pour retrouver ton profil et tes publications."}</p>
-              {!session && <button className="primary-action" onClick={() => setAuthMode("signin")}>Connexion</button>}
-            </section>
-          ) : videos.length === 0 ? (
-            <section className="empty-state">
-              <div className="empty-icon"><Play size={25} /></div>
-              <h3>La scène est à toi.</h3>
-              <p>Les premières vidéos apparaîtront ici. Crée ton compte et publie la première vidéo de la communauté.</p>
-              <button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}>Commencer sur ZAVO <ArrowRight size={16} /></button>
-            </section>
+          {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Fermer"><X size={15}/></button></div>}
+          {tab === "Administration" && isAdmin ? (
+            <section className="admin-page"><div className="section-kicker">ESPACE SÉCURISÉ</div><h1>Administration ZAVO</h1><p>Surveillance des contenus, signalements et campagnes. Les actions sensibles restent réservées aux comptes administrateurs.</p><div className="admin-stats"><article><strong>{adminData.users.length}</strong><span>Comptes récents</span></article><article><strong>{adminData.reports.length}</strong><span>Signalements</span></article><article><strong>{adminData.campaigns.length}</strong><span>Campagnes</span></article></div><h2>Signalements</h2>{adminData.reports.map((r: any) => <article className="admin-row" key={r.id}><div><strong>{r.reason}</strong><small>{r.target_type} · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")}</small></div><button onClick={async () => { await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id); loadAdmin(); }}>Prendre en charge</button></article>)}<h2>Campagnes</h2>{adminData.campaigns.map((c: any) => <article className="admin-row" key={c.id}><div><strong>{c.title}</strong><small>{c.budget} {c.currency} · {c.status}</small></div><span>{c.objective}</span></article>)}<h2>Comptes récents</h2>{adminData.users.map((u: any) => <article className="admin-row" key={u.id}><div><strong>@{u.username || "utilisateur"}</strong><small>{u.display_name} · {u.account_status}</small></div></article>)}</section>
+          ) : tab === "Messages" ? (
+            <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Messages privés</h3><p>La messagerie est prévue pour permettre de contacter directement les créateurs. Son interface temps réel et la création sécurisée des conversations sont dans le lot de développement suivant.</p></section>
+          ) : tab === "Notifications" ? (
+            <section><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div></div>{notifications.map((n) => <article className="notification-row" key={n.id}><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></article>)}</section>
+          ) : tab === "Profil" ? (
+            <section className="profile-page"><div className="profile-hero"><div className="profile-avatar">{(profile?.display_name || "Z").slice(0,1).toUpperCase()}</div><div><h1>{profile?.display_name || "Ton profil"}</h1><p>@{profile?.username || "nouveau_createur"}</p><span>{profile?.bio || "Présente-toi à la communauté ZAVO."}</span></div><button onClick={() => setProfileOpen(true)}><Settings size={16}/> Modifier</button></div><div className="profile-actions"><button onClick={() => setTab("Vidéos enregistrées")}>Vidéos enregistrées</button><button onClick={() => setCampaignOpen(true)}>Mes promotions</button></div><h2>Mes vidéos</h2><div className="video-grid">{videos.filter(v => v.user_id === session?.user?.id).map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x) => {setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView}/>)}</div></section>
           ) : (
-            <div className="video-grid">
-              {videos.map((video) => {
-                const creator = Array.isArray(video.profiles) ? video.profiles[0] : video.profiles;
-                return (
-                <article className="video-card" key={video.id}>
-                  <div className="video-frame">
-                    <video src={video.video_url} controls playsInline preload="metadata" />
-                    <span className="video-label">ZAVO</span>
-                  </div>
-                  <div className="video-details">
-                    <div className="creator-row">
-                      <div className="creator-avatar">{(creator?.display_name || "Z").slice(0, 1).toUpperCase()}</div>
-                      <div className="creator-meta"><strong>{creator?.display_name || "Créateur ZAVO"}</strong><span>@{creator?.username || "createur"}</span></div>
-                      <button className="follow-button" onClick={() => setNotice("Les abonnements seront activés dans la prochaine mise à jour.")}>Suivre</button>
-                    </div>
-                    <p className="video-caption">{video.caption}</p>
-                    <div className="video-controls">
-                      <button className={liked.includes(video.id) ? "engagement liked" : "engagement"} onClick={() => toggleLike(video.id)}><Heart size={17} fill={liked.includes(video.id) ? "currentColor" : "none"} /> J’aime</button>
-                      <button className="engagement" onClick={() => setNotice("Les commentaires seront activés dans la prochaine mise à jour.")}><MessageSquare size={17} /> Commenter</button>
-                      <button className={saved.includes(video.id) ? "save-button saved" : "save-button"} aria-label="Enregistrer" onClick={() => setSaved((current) => current.includes(video.id) ? current.filter((id) => id !== video.id) : [...current, video.id])}><Bookmark size={17} fill={saved.includes(video.id) ? "currentColor" : "none"} /></button>
-                      <button className="save-button" aria-label="Partager" onClick={() => navigator.clipboard?.writeText(window.location.href)}><Share2 size={17} /></button>
-                    </div>
-                  </div>
-                </article>
-                );
-              })}
-            </div>
+            <>
+              <section className="welcome-panel compact-welcome"><div className="welcome-copy"><div className="eyebrow"><span className="eyebrow-mark"/> LA SCÈNE EST À TOI</div><h1>Regarde. Crée.<br/><span>Fais-toi découvrir.</span></h1><p>Des vidéos de tous les horizons. Publie ton contenu, rassemble ta communauté et développe ton activité.</p><div className="welcome-actions"><button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}><Clapperboard size={17}/> Publier une vidéo</button><button className="secondary-action" onClick={() => setCampaignOpen(true)}><Megaphone size={16}/> Booster mon contenu</button></div></div><div className="welcome-art"><img src="/icons/zavo-512.png" alt="ZAVO"/></div></section>
+              <div className="feed-toolbar"><div><div className="section-kicker">LE FLUX ZAVO</div><h2>{tab === "Découvrir" ? "Découvrir" : tab === "Abonnements" ? "Tes abonnements" : tab === "Enregistrés" ? "Vidéos enregistrées" : "Pour toi"}</h2></div><div className="feed-tabs">{["Pour toi","Abonnements","Découvrir","Enregistrés"].map(x => <button key={x} className={tab === x ? "selected" : ""} onClick={() => setTab(x)}>{x}</button>)}</div></div>
+              {visibleVideos.length ? <div className="video-grid">{visibleVideos.map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x) => {setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView}/>)}</div> : <section className="empty-state"><div className="empty-icon"><Play/></div><h3>{tab === "Abonnements" ? "Tu ne suis pas encore de créateur" : "La scène est à toi."}</h3><p>Les vidéos publiques apparaîtront ici. Crée un compte pour publier, suivre et interagir avec les créateurs.</p><button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}>Rejoindre ZAVO</button></section>}
+            </>
           )}
-          <footer className="site-footer">
-            <div className="footer-brand"><img src="/icons/zavo-192.png" alt="" /> ZAVO</div>
-            <span>Regarde · Crée · Partage</span>
-            <span>© 2026 ZAVO</span>
-          </footer>
+          <footer className="site-footer"><div className="footer-brand"><img src="/icons/zavo-192.png" alt=""/> ZAVO</div><span>Regarde · Crée · Partage</span><span>© 2026 ZAVO</span></footer>
         </div>
       </section>
+      <aside className="right-rail"><section className="rail-card"><div className="rail-heading"><h3>Sur ZAVO</h3><span className="tiny-status">EN DIRECT</span></div><div className="rail-feature"><span className="feature-icon red-feature"><Film size={18}/></span><div><strong>Des vidéos pour tous</strong><p>Découvre de nouveaux univers.</p></div></div><div className="rail-feature"><span className="feature-icon blue-feature"><Users size={18}/></span><div><strong>Une communauté ouverte</strong><p>Échange avec les créateurs.</p></div></div><div className="rail-feature"><span className="feature-icon green-feature"><Megaphone size={18}/></span><div><strong>Fais grandir ta visibilité</strong><p>Booste tes publications.</p></div></div></section><section className="business-card"><div className="business-topline"><span className="green-dot"/> PROMOTION DE CONTENU</div><h3>Ton contenu mérite<br/>plus de visibilité.</h3><p>Transforme une publication en campagne sponsorisée pour toucher de nouvelles personnes.</p><button onClick={() => setCampaignOpen(true)}>Découvrir le boost <Plus size={15}/></button></section><div className="rail-links"><a href="#">Conditions</a><a href="#">Confidentialité</a><a href="#">Règles de la communauté</a></div></aside>
 
-      <aside className="right-rail">
-        <section className="rail-card">
-          <div className="rail-heading"><h3>Sur ZAVO</h3><span className="tiny-status">EN DIRECT</span></div>
-          <div className="rail-feature">
-            <span className="feature-icon red-feature"><TrendingUp size={18} /></span>
-            <div><strong>Découvre les tendances</strong><p>Les vidéos qui font parler.</p></div>
-          </div>
-          <div className="rail-feature">
-            <span className="feature-icon blue-feature"><MessageCircle size={18} /></span>
-            <div><strong>Rencontre la communauté</strong><p>Échange avec les créateurs.</p></div>
-          </div>
-          <div className="rail-feature">
-            <span className="feature-icon green-feature"><Store size={18} /></span>
-            <div><strong>Fais connaître ton activité</strong><p>La vitrine des marques et boutiques.</p></div>
-          </div>
-        </section>
-        <section className="business-card">
-          <div className="business-topline"><span className="green-dot" /> POUR LES ENTREPRISES</div>
-          <h3>Ton activité mérite<br />d’être découverte.</h3>
-          <p>Prépare tes campagnes et présente tes produits à la communauté ZAVO.</p>
-          <button onClick={() => setNotice("Le Centre publicitaire sera activé après l'intégration des paiements.")}>Découvrir la publicité <ArrowRight size={15} /></button>
-        </section>
-        <div className="rail-links"><a href="#">Conditions</a><a href="#">Confidentialité</a><a href="#">Règles de la communauté</a></div>
-      </aside>
+      {authMode && <div className="modal-backdrop" onClick={() => setAuthMode(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAuthMode(null)}><X/></button><div className="modal-brand"><img src="/icons/zavo-192.png" alt=""/><span>ZAVO</span></div><div className="section-kicker">{authMode === "signin" ? "HEUREUX DE TE REVOIR" : "REJOINS LA COMMUNAUTÉ"}</div><h2>{authMode === "signin" ? "Connexion" : "Créer ton compte"}</h2><form onSubmit={authMode === "signin" ? signIn : signUp}>{authMode === "signup" && <><label>Nom d'utilisateur</label><input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} placeholder="ex. monpseudo" required/></>}<label>Adresse e-mail</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/><label>Mot de passe</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} required/><button className="primary-action modal-submit" disabled={busy}>{busy ? "Patiente..." : authMode === "signin" ? "Se connecter" : "Créer mon compte"}</button></form><button className="switch-auth" onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}>{authMode === "signin" ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}</button></section></div>}
 
-      {authMode && (
-        <div className="modal-backdrop" onClick={() => setAuthMode(null)}>
-          <section className="modal" onClick={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setAuthMode(null)} aria-label="Fermer"><X /></button>
-            <div className="modal-brand"><img src="/icons/zavo-192.png" alt="" /><span>ZAVO</span></div>
-            <div className="section-kicker">{authMode === "signin" ? "HEUREUX DE TE REVOIR" : "REJOINS LA COMMUNAUTÉ"}</div>
-            <h2>{authMode === "signin" ? "Connexion" : "Créer ton compte"}</h2>
-            <p>Un espace pour regarder, créer et partager.</p>
-            <form onSubmit={authMode === "signin" ? signIn : signUp}>
-              <label htmlFor="email">Adresse e-mail</label>
-              <input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="toi@exemple.com" />
-              <label htmlFor="password">Mot de passe</label>
-              <input id="password" type="password" autoComplete={authMode === "signin" ? "current-password" : "new-password"} minLength={6} required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="6 caractères minimum" />
-              <button className="primary-action modal-submit" disabled={busy}>{busy ? "Patiente..." : authMode === "signin" ? "Se connecter" : "Créer mon compte"}</button>
-            </form>
-            <button className="switch-auth" onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}>
-              {authMode === "signin" ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}
-            </button>
-          </section>
-        </div>
-      )}
+      {uploadOpen && <div className="modal-backdrop" onClick={() => setUploadOpen(false)}><section className="modal wide-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setUploadOpen(false)}><X/></button><div className="section-kicker">PARTAGE TON CONTENU</div><h2>Publier sur ZAVO</h2><form onSubmit={publish}><label className="upload-drop"><UploadCloud size={25}/><span>{file ? file.name : "Choisir une vidéo (formats vidéo courants)"}</span><input type="file" accept="video/*" required onChange={e=>setFile(e.target.files?.[0] || null)}/></label><div className="form-grid"><label>Format de publication<select value={contentType} onChange={e=>setContentType(e.target.value as "short"|"video")}><option value="short">Short / vidéo courte</option><option value="video">Vidéo complète</option></select></label><label>Miniature personnalisée (facultatif)<input type="file" accept="image/*" onChange={e=>setThumbnail(e.target.files?.[0] || null)}/></label></div><label>Légende et liens</label><textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Décris ta vidéo, ajoute des hashtags et des liens https://..."/><label className="check-line"><input type="checkbox" checked={allowDownload} onChange={e=>setAllowDownload(e.target.checked)}/> Autoriser le téléchargement de ma vidéo (galerie et hors connexion)</label><label className="check-line"><input type="checkbox" checked={showStats} onChange={e=>setShowStats(e.target.checked)}/> Afficher les statistiques publiques de cette vidéo</label><button className="primary-action modal-submit" disabled={busy || !file}>{busy ? "Publication en cours..." : "Publier maintenant"}</button></form></section></div>}
 
-      <nav className="mobile-nav" aria-label="Navigation mobile">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return <button key={item.label} className={tab === item.label ? "active" : ""} onClick={() => setTab(item.label)}><Icon size={19} /><span>{item.label}</span></button>;
-        })}
-        <button className="mobile-publish" onClick={() => session ? setUploadOpen(true) : setAuthMode("signin")}><Plus size={20} /><span>Publier</span></button>
-      </nav>
-      {uploadOpen && (
-        <div className="modal-backdrop" onClick={() => setUploadOpen(false)}>
-          <section className="modal" onClick={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setUploadOpen(false)} aria-label="Fermer"><X /></button>
-            <div className="section-kicker">PARTAGE TON TALENT</div>
-            <h2>Publier une vidéo</h2>
-            <form onSubmit={publish}>
-              <label htmlFor="video-file" className="upload-drop"><UploadCloud size={25} /><span>{file ? file.name : "Choisir une vidéo MP4, WebM ou MOV"}</span><input id="video-file" type="file" accept="video/mp4,video/webm,video/quicktime" required onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
-              <label htmlFor="caption">Légende</label>
-              <textarea id="caption" value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Présente ta vidéo à la communauté..." />
-              <button className="primary-action modal-submit" disabled={busy || !file}>{busy ? "Publication..." : "Publier maintenant"}</button>
-            </form>
-          </section>
-        </div>
-      )}
+      {commentsVideo && <div className="modal-backdrop" onClick={()=>setCommentsVideo(null)}><section className="modal comments-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCommentsVideo(null)}><X/></button><h2>Commentaires</h2><div className="comment-list">{comments.map(c=>{const p=Array.isArray(c.profiles)?c.profiles[0]:c.profiles;return <article key={c.id}><strong>{p?.display_name || "Utilisateur"}</strong><p>{c.body}</p></article>;})}{comments.length===0 && <p>Aucun commentaire. Lance la conversation.</p>}</div><form onSubmit={sendComment} className="comment-form"><input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Écrire un commentaire..." maxLength={1000}/><button className="primary-action" disabled={!commentText.trim()}><Send size={16}/></button></form></section></div>}
+
+      {campaignOpen && <div className="modal-backdrop" onClick={()=>setCampaignOpen(false)}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCampaignOpen(false)}><X/></button><div className="section-kicker">ZAVO PROMOTION</div><h2>Booster une publication</h2><p>Choisis un objectif et un budget. La campagne sera enregistrée en attente de paiement ; aucun paiement n'est encore connecté.</p><form onSubmit={createCampaign}><label>Vidéo à promouvoir</label><select value={campaignVideo?.id || ""} onChange={e=>setCampaignVideo(videos.find(v=>v.id===e.target.value) || null)} required><option value="">Choisir une vidéo</option>{videos.filter(v=>v.user_id===session?.user?.id).map(v=><option key={v.id} value={v.id}>{v.caption.slice(0,70) || "Ma vidéo"} · {v.content_type}</option>)}</select><label>Objectif</label><select value={campaignObjective} onChange={e=>setCampaignObjective(e.target.value)}><option value="views">Obtenir plus de vues</option><option value="profile_visits">Visites du profil</option><option value="website_clicks">Clics vers mon site</option><option value="messages">Recevoir des messages</option></select><label>Budget (FCFA)</label><select value={campaignBudget} onChange={e=>setCampaignBudget(e.target.value)}><option value="5000">5 000 FCFA</option><option value="10000">10 000 FCFA</option><option value="20000">20 000 FCFA</option><option value="50000">50 000 FCFA</option></select><label>Pays ciblé</label><select value={campaignCountry} onChange={e=>setCampaignCountry(e.target.value)}><option value="BJ">Bénin</option><option value="CI">Côte d'Ivoire</option><option value="SN">Sénégal</option><option value="TG">Togo</option><option value="FR">France</option><option value="ALL">Tous pays (à définir)</option></select><button className="primary-action modal-submit" disabled={!campaignVideo}>Enregistrer ma campagne</button></form></section></div>}
+
+      {reportVideo && <div className="modal-backdrop" onClick={()=>setReportVideo(null)}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setReportVideo(null)}><X/></button><h2>Signaler cette vidéo</h2><p>Le signalement sera transmis à l'équipe de modération.</p><form onSubmit={submitReport}><label>Motif</label><select value={reportReason} onChange={e=>setReportReason(e.target.value)}><option value="spam">Spam ou publicité trompeuse</option><option value="harassment">Harcèlement</option><option value="hate">Discours haineux</option><option value="nudity">Nudité</option><option value="violence">Violence</option><option value="copyright">Droits d'auteur</option><option value="fraud">Fraude</option><option value="privacy">Atteinte à la vie privée</option><option value="other">Autre</option></select><button className="primary-action modal-submit">Envoyer le signalement</button></form></section></div>}
+
+      {profileOpen && <div className="modal-backdrop" onClick={()=>setProfileOpen(false)}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setProfileOpen(false)}><X/></button><h2>Modifier mon profil</h2><form onSubmit={saveProfile}><label>Nom affiché</label><input value={displayName} onChange={e=>setDisplayName(e.target.value)} maxLength={60}/><label>Biographie</label><textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={240}/><button className="primary-action modal-submit">Enregistrer</button></form></section></div>}
+      <nav className="mobile-nav">{nav.slice(0,5).map(item=>{const Icon=item.icon;return <button key={item.label} className={tab===item.label?"active":""} onClick={()=>setTab(item.label)}><Icon size={18}/><span>{item.label}</span></button>;})}<button className="mobile-publish" onClick={()=>session?setUploadOpen(true):setAuthMode("signup")}><Plus size={19}/><span>Publier</span></button></nav>
     </main>
   );
+}
+
+function VideoCard({ video, session, liked, saved, following, onLike, onSave, onFollow, onComments, onShare, onReport, onDownload, onBoost, onView }: any) {
+  const creator = creatorOf(video);
+  const [menu, setMenu] = useState(false);
+  const [watchSeconds, setWatchSeconds] = useState(0);
+  const [hiddenStats, setHiddenStats] = useState(false);
+  const owner = session?.user?.id === video.user_id;
+  const likesCount = video.likes?.[0]?.count || 0;
+  const commentsCount = video.comments?.[0]?.count || 0;
+  return <article className="video-card social-video-card"><div className="video-frame"><video src={video.video_url} poster={video.thumbnail_url || undefined} controls playsInline muted loop preload="metadata" controlsList="nodownload" onContextMenu={e=>e.preventDefault()} onTimeUpdate={e=>{const s=Math.floor(e.currentTarget.currentTime);if(s>watchSeconds){setWatchSeconds(s);if(s===2)onView(video,s);}}}/><span className="video-label">{video.content_type === "short" ? "SHORT" : "VIDÉO"}</span><button className="video-menu-button" onClick={()=>setMenu(!menu)}><MoreHorizontal size={20}/></button>{menu && <div className="video-menu"><button onClick={()=>{onReport(video);setMenu(false);}}><Flag size={14}/> Signaler</button>{owner && <button onClick={()=>{onBoost(video);setMenu(false);}}><Megaphone size={14}/> Booster</button>}{owner && <button onClick={()=>{setHiddenStats(!hiddenStats);setMenu(false);}}><Eye size={14}/> {hiddenStats?"Afficher":"Masquer"} mes statistiques</button>}{video.allow_download && <button onClick={()=>{onDownload(video,true);setMenu(false);}}><Download size={14}/> Hors connexion</button>}</div>}</div><div className="video-details"><div className="creator-row"><div className="creator-avatar">{(creator?.display_name||"Z").slice(0,1).toUpperCase()}</div><div className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"}</span></div>{!owner && <button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"Suivre"}</button>}</div><p className="video-caption"><Caption value={video.caption||""}/></p><div className="video-controls"><button className={liked.includes(video.id)?"engagement liked":"engagement"} onClick={()=>onLike(video)}><Heart size={17} fill={liked.includes(video.id)?"currentColor":"none"}/>{likesCount+(liked.includes(video.id)?1:0)}</button><button className="engagement" onClick={()=>onComments(video)}><MessageSquare size={17}/>{commentsCount}</button><button className={saved.includes(video.id)?"save-button saved":"save-button"} onClick={()=>onSave(video)} aria-label="Enregistrer"><Bookmark size={17} fill={saved.includes(video.id)?"currentColor":"none"}/></button><button className="save-button" onClick={()=>onShare(video)} aria-label="Partager"><Share2 size={17}/></button>{video.allow_download && <button className="save-button" onClick={()=>onDownload(video,false)} aria-label="Télécharger"><Download size={17}/></button>}<button className="save-button" onClick={()=>onBoost(video)} aria-label="Booster"><Megaphone size={17}/></button></div>{!hiddenStats && (video.show_stats || owner) && <div className="video-stats"><Eye size={13}/> {video.views_count||0} vues</div>}</div></article>;
 }
