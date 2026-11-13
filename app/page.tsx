@@ -548,7 +548,19 @@ export default function HomePage() {
   }, [loadUserData]);
 
   useEffect(() => { loadVideos(); }, [loadVideos]);
-  useEffect(() => { if (tab === "Notifications" && session?.user?.id) loadNotifications(); }, [tab, session?.user?.id]);
+  useEffect(() => {
+    const client = db();
+    const userId = session?.user?.id;
+    if (!client || !userId) { setNotifications([]); return; }
+    void loadNotifications();
+    const channel = client.channel("zavo-notifications-" + userId)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "recipient_id=eq." + userId }, (payload) => {
+        const incoming = payload.new as any;
+        setNotifications((current) => [incoming, ...current.filter((item:any) => item.id !== incoming.id)].slice(0, 50));
+      })
+      .subscribe();
+    return () => { client.removeChannel(channel); };
+  }, [session?.user?.id]);
   useEffect(() => { if (tab === "Téléchargements") readOfflineVideos().then(setOfflineVideos).catch(() => setOfflineVideos([])); }, [tab]);
 
   async function searchPeople() {
@@ -659,14 +671,47 @@ export default function HomePage() {
 
   async function loadNotifications() {
     if (!db() || !session) return;
-    const { data } = await db()!.from("notifications").select("*").eq("recipient_id", session.user.id).order("created_at", { ascending: false }).limit(50);
-    const rows = data || [];
-    const unreadIds = rows.filter((item:any) => !item.read_at).map((item:any) => item.id);
-    if (unreadIds.length) {
-      const readAt = new Date().toISOString();
-      await db()!.from("notifications").update({ read_at: readAt }).eq("recipient_id", session.user.id).in("id", unreadIds);
-      setNotifications(rows.map((item:any) => unreadIds.includes(item.id) ? { ...item, read_at: readAt } : item));
-    } else setNotifications(rows);
+    const { data, error } = await db()!.from("notifications").select("*").eq("recipient_id", session.user.id).order("created_at", { ascending: false }).limit(50);
+    if (error) { setNotice("Impossible de charger les notifications : " + error.message); return; }
+    setNotifications(data || []);
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    if (!db() || !session) return;
+    const readAt = new Date().toISOString();
+    const { error } = await db()!.from("notifications").update({ read_at: readAt }).eq("id", notificationId).eq("recipient_id", session.user.id).is("read_at", null);
+    if (error) { setNotice("Impossible de marquer cette notification comme lue : " + error.message); return; }
+    setNotifications((items) => items.map((item:any) => item.id === notificationId ? { ...item, read_at: item.read_at || readAt } : item));
+  }
+
+  async function markAllNotificationsRead() {
+    if (!db() || !session) return;
+    const readAt = new Date().toISOString();
+    const { error } = await db()!.from("notifications").update({ read_at: readAt }).eq("recipient_id", session.user.id).is("read_at", null);
+    if (error) { setNotice("Impossible de mettre les notifications à jour : " + error.message); return; }
+    setNotifications((items) => items.map((item:any) => ({ ...item, read_at: item.read_at || readAt })));
+  }
+
+  async function handleNotificationClick(item: any) {
+    if (!session) { setAuthMode("signin"); return; }
+    if (!item.read_at) await markNotificationRead(item.id);
+    if (item.kind === "message" && item.entity_id) {
+      setActiveConversation(item.entity_id);
+      setTab("Messages");
+      return;
+    }
+    if (item.kind === "follow") {
+      setTab("Profil");
+      setShowFollowers(true);
+      await loadFollowStats(session.user.id);
+      return;
+    }
+    if (["like", "comment", "comment_like"].includes(item.kind) && item.entity_id) {
+      const { data, error } = await db()!.from("videos").select("*").eq("id", item.entity_id).maybeSingle();
+      if (error || !data) { setNotice("Cette vidéo n’est plus disponible."); return; }
+      setTab("Pour toi");
+      await openComments(data as Video);
+    }
   }
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
@@ -1219,7 +1264,7 @@ export default function HomePage() {
           <label className="search-box"><Search size={18}/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une vidéo ou un créateur"/><kbd>⌕</kbd></label>
           <div className="top-actions">
             <button className="create-top-button" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={17}/><span>Créer</span></button>
-            <button className="top-icon" aria-label="Notifications" onClick={() => setTab("Notifications")}><Bell size={19}/></button>
+            <button className="top-icon notification-top-button" aria-label={`Notifications${notifications.some((n:any)=>!n.read_at)?", non lues":""}`} onClick={() => setTab("Notifications")}><Bell size={19}/>{notifications.some((n:any)=>!n.read_at)&&<span className="notification-badge">{notifications.filter((n:any)=>!n.read_at).length>99?"99+":notifications.filter((n:any)=>!n.read_at).length}</span>}</button>
             {session ? <><button className="profile-chip" onClick={() => setTab("Profil")}>{(profile?.display_name || session.user.email || "Z").slice(0,1).toUpperCase()}</button><button className="login-button" onClick={() => setLogoutConfirm(true)}><LogOut size={16}/><span>Quitter</span></button></> : <button className="login-button" onClick={() => setAuthMode("signin")}><LogIn size={16}/><span>Connexion</span></button>}
           </div>
         </header>
@@ -1284,7 +1329,7 @@ export default function HomePage() {
           ) : tab === "Studio" ? (
             session?.user?.id ? <CreatorStudio key={session.user.id} userId={session.user.id} onNotice={setNotice} onCreate={()=>setUploadOpen(true)}/> : <section className="empty-state"><div className="empty-icon"><BarChart3/></div><h3>Ton espace créateur t’attend</h3><p>Connecte-toi pour consulter tes statistiques et gérer tes vidéos.</p><button className="primary-action" onClick={()=>setAuthMode("signin")}>Se connecter</button></section>
           ) : tab === "Notifications" ? (
-            <section className="notifications-page"><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div><span className="notifications-read-note">Les notifications sont marquées comme lues à l’ouverture.</span></div>{notifications.length ? notifications.map((n) => <article className={"notification-row "+(n.read_at?"notification-read":"notification-unread")} key={n.id}><div className="notification-indicator"/><div><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></div></article>) : <div className="creator-empty-videos"><Bell size={30}/><strong>Aucune notification pour le moment</strong><span>Les nouvelles activités de ta communauté apparaîtront ici.</span></div>}</section>
+            <section className="notifications-page"><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2><span className="notifications-read-note">{notifications.filter((n:any)=>!n.read_at).length} non lue(s)</span></div>{notifications.some((n:any)=>!n.read_at)&&<button className="secondary-action" onClick={markAllNotificationsRead}>Tout marquer comme lu</button>}</div>{notifications.length ? notifications.map((n:any) => <button type="button" className={"notification-row "+(n.read_at?"notification-read":"notification-unread")} key={n.id} onClick={()=>handleNotificationClick(n)}><span className="notification-indicator"/><span className="notification-content"><strong>{n.title}</strong><span className="notification-body">{n.body}</span><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></span></button>) : <div className="creator-empty-videos"><Bell size={30}/><strong>Aucune notification pour le moment</strong><span>Les nouvelles activités de ta communauté apparaîtront ici.</span></div>}</section>
           ) : tab === "Profil" ? (
             <section className="profile-page">
               <div className="profile-banner" style={profile?.banner_url?{backgroundImage:"url("+profile.banner_url+")"}:undefined}><span>{profile?.banner_url ? "" : "BANNIÈRE ZAVO"}</span></div>
