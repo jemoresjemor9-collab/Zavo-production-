@@ -544,3 +544,11 @@ body{color:#d7eaff!important}
 .notification-content strong{color:#e6f1ff;font-size:13px}
 .notification-body{color:#bac5d1;font-size:12px;line-height:1.5;white-space:normal}
 .notifications-page .feed-toolbar{align-items:center}
+
+
+/* ZAVO discovery: scrollable interest filters */
+.discover-category-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 12px;margin:2px 0 14px;scrollbar-width:thin;scrollbar-color:#2879d2 #092b6c}
+.discover-category-strip button{flex:0 0 auto;padding:9px 13px;border:1px solid #2879d2;border-radius:999px;background:#092b6c;color:#b9d9ff;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease}
+.discover-category-strip button:hover{border-color:#13b96a;color:#13b96a}
+.discover-category-strip button.active{border-color:#13b96a;background:#0b5c65;color:#13b96a;box-shadow:0 0 0 1px rgba(19,185,106,.16)}
+.discover-category-strip button:focus-visible{outline:2px solid #13b96a;outline-offset:2px}
