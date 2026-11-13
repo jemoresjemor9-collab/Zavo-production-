@@ -18,7 +18,7 @@ type Video = {
   id: string; caption: string; video_url: string; thumbnail_url?: string | null; user_id: string;
   views_count: number; created_at: string; content_type: "short" | "video"; allow_download: boolean;
   show_stats: boolean; moderation_status?: string; isSponsored?: boolean; campaign_id?: string; target_url?: string | null; objective?: string; category?: string | null; allow_offline_download?: boolean; allow_gallery_download?: boolean; profiles?: Profile | Profile[] | null;
-  likes?: { count: number }[]; comments?: { count: number }[];
+  interest_tags?: string[]; hashtags?: string[]; likes?: { count: number }[]; comments?: { count: number }[];
 };
 type Comment = { id: string; body: string; created_at: string; parent_id?: string | null; likes?: { count: number }[]; likedByMe?: boolean; profiles?: Profile | Profile[] | null };
 const COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW".split(" ");
