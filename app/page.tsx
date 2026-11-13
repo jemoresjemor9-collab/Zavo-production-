@@ -164,6 +164,45 @@ async function trimVideoFile(file: File, start: number, end: number, duration: n
   }
 }
 
+async function createWatermarkedVideo(sourceUrl: string, username?: string | null): Promise<Blob> {
+  const video = document.createElement("video") as HTMLVideoElement & { captureStream?: () => MediaStream };
+  if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream || !video.captureStream) throw new Error("Le marquage vidéo n’est pas pris en charge par ce navigateur. Essaie avec Chrome ou Edge récent.");
+  video.crossOrigin = "anonymous"; video.preload = "auto"; video.playsInline = true; video.src = sourceUrl;
+  try {
+    await new Promise<void>((resolve, reject) => { video.onloadedmetadata = () => resolve(); video.onerror = () => reject(new Error("La vidéo ne peut pas être lue pour le marquage.")); });
+    const canvas = document.createElement("canvas"); canvas.width = video.videoWidth || 1280; canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("Impossible de préparer le marquage.");
+    const output = canvas.captureStream(30); const source = video.captureStream();
+    source.getAudioTracks().forEach(track => output.addTrack(track));
+    const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find(type => MediaRecorder.isTypeSupported(type));
+    const recorder = new MediaRecorder(output, mimeType ? { mimeType } : undefined); const chunks: BlobPart[] = [];
+    const draw = () => {
+      if (video.readyState >= 2) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const scale = Math.max(1, canvas.width / 1280), pad = 18 * scale, font = Math.max(18, Math.round(25 * scale));
+        const brand = "ZAVO", creator = username ? "@" + username : "Créateur ZAVO";
+        ctx.font = "800 " + font + "px Arial";
+        const brandWidth = ctx.measureText(brand).width, creatorWidth = ctx.measureText(creator).width;
+        const boxW = pad * 3 + brandWidth + creatorWidth, boxH = font + pad * 1.4;
+        const x = canvas.width - boxW - pad, y = canvas.height - boxH - pad;
+        ctx.fillStyle = "rgba(5,28,76,.88)"; ctx.beginPath(); ctx.roundRect(x, y, boxW, boxH, 12 * scale); ctx.fill();
+        ctx.strokeStyle = "#13b96a"; ctx.lineWidth = 2 * scale; ctx.stroke();
+        ctx.textBaseline = "middle"; ctx.fillStyle = "#13b96a"; ctx.fillText(brand, x + pad, y + boxH / 2);
+        ctx.fillStyle = "#ffffff"; ctx.fillText(creator, x + pad * 2 + brandWidth, y + boxH / 2);
+      }
+      if (!video.paused && !video.ended) requestAnimationFrame(draw);
+    };
+    const finished = new Promise<Blob>((resolve, reject) => {
+      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error("Impossible de générer la vidéo marquée."));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || "video/webm" }));
+    });
+    video.onended = () => { if (recorder.state !== "inactive") recorder.stop(); };
+    video.currentTime = 0; recorder.start(300); await video.play(); draw();
+    const blob = await finished; if (!blob.size) throw new Error("La vidéo marquée est vide."); return blob;
+  } finally { video.pause(); video.removeAttribute("src"); video.load(); }
+}
+
 function openOfflineDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("zavo-offline", 1);
@@ -927,16 +966,15 @@ export default function HomePage() {
         setOfflineVideos(await readOfflineVideos());
         setNotice("Vidéo enregistrée dans tes téléchargements ZAVO. Tu pourras la regarder sans Internet.");
       } else {
-        const response = await fetch(video.video_url);
-        if (!response.ok) throw new Error("Téléchargement indisponible");
-        const blob = await response.blob();
+        const creator = creatorOf(video);
+        const blob = await createWatermarkedVideo(video.video_url, creator?.username || null);
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = url;
-        anchor.download = "ZAVO-" + video.id + (blob.type.includes("webm") ? ".webm" : ".mp4");
+        anchor.download = "ZAVO-" + (creator?.username || "createur") + "-" + video.id + ".webm";
         document.body.appendChild(anchor); anchor.click(); anchor.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-        setNotice("Téléchargement lancé. Vérifie la galerie ou le dossier de téléchargements de ton appareil.");
+        window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+        setNotice("Téléchargement lancé avec le marquage ZAVO et l’identifiant du créateur.");
       }
     } catch { setNotice("Le téléchargement a échoué. Vérifie ta connexion et réessaie."); }
   }
