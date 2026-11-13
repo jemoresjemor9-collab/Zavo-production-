@@ -618,3 +618,11 @@ body{color:#d7eaff!important}
 .feedback-thankyou p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 20px}
 .feedback-thankyou .primary-action{width:100%}
 @media(max-width:600px){.feedback-date-grid{grid-template-columns:1fr}.feedback-user-modal{padding:21px 17px}.feedback-user-modal h2{font-size:21px}.feedback-stars button{font-size:33px}}
+
+
+.feedback-rating-summary{display:grid;gap:7px;padding:13px;margin:12px 0 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.feedback-rating-row{display:grid;grid-template-columns:42px minmax(60px,1fr) 28px;align-items:center;gap:9px;font-size:12px}
+.feedback-rating-row>b{color:#d99a00}
+.feedback-rating-row>span{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.feedback-rating-row>span>i{display:block;height:100%;background:#e5a400;border-radius:99px}
+.feedback-rating-row>small{text-align:right;color:var(--muted)}
