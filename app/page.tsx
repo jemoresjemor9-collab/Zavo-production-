@@ -1216,12 +1216,20 @@ function SponsoredPromoCard({ campaign, currentUserId, following, onFollow, onCa
     return () => observer.disconnect();
   }, [campaign.id, onCampaignEvent]);
   const isProfile = campaign.target_type === "profile";
+  const contactMatch = String(campaign.description || "").match(/(?:^|\n)Contact\s*:\s*([^\n]+)/i);
+  const contactText = contactMatch?.[1]?.trim() || "";
+  const contactDigits = contactText.replace(/\D/g, "");
+  const contactHref = contactText.includes("@")
+    ? "mailto:" + contactText
+    : contactDigits.length >= 8 && (contactText.startsWith("+") || contactText.startsWith("00") || /whatsapp/i.test(contactText))
+      ? "https://wa.me/" + contactDigits.replace(/^00/, "")
+      : contactDigits.length >= 8 ? "tel:" + contactText.replace(/[^0-9+]/g, "") : null;
   return <article ref={ref} className="campaign-card sponsored-promo-card">
     <div className="campaign-card-top"><strong>{campaign.title}</strong><span className="campaign-status">SPONSORISÉ</span></div>
     <div className="campaign-card-meta">{isProfile ? "Promotion d’un compte ZAVO" : "Promotion d’un produit ou service"} · {person?.display_name || person?.username || "Annonceur"}</div>
     {campaign.description && <p className="campaign-note">{campaign.description}</p>}
     {isProfile && person?.id && currentUserId !== person.id && <button className="primary-action" onClick={() => { onCampaignEvent?.(campaign.id, "click"); onCampaignEvent?.(campaign.id, "result"); onFollow(person.id); }}>{following.includes(person.id) ? "Abonné" : "Suivre le compte"}</button>}
-    {!isProfile && campaign.target_url && <a className="sponsored-cta" href={safeUrl(campaign.target_url) || "#"} target="_blank" rel="noopener noreferrer" onClick={() => { onCampaignEvent?.(campaign.id, "click"); onCampaignEvent?.(campaign.id, "result"); }}>Découvrir l’offre <ExternalLink size={13}/></a>}
+    {!isProfile && campaign.target_url && <a className="sponsored-cta" href={safeUrl(campaign.target_url) || "#"} target="_blank" rel="noopener noreferrer" onClick={() => { onCampaignEvent?.(campaign.id, "click"); onCampaignEvent?.(campaign.id, "result"); }}>{campaign.objective === "messages" ? "Contacter l’annonceur" : "Découvrir l’offre"} <ExternalLink size={13}/></a>}{!isProfile && !campaign.target_url && contactHref && <a className="sponsored-cta" href={contactHref} target={contactHref.startsWith("http") ? "_blank" : undefined} rel={contactHref.startsWith("http") ? "noopener noreferrer" : undefined} onClick={() => { onCampaignEvent?.(campaign.id, "click"); onCampaignEvent?.(campaign.id, "result"); }}>Contacter l’annonceur <ExternalLink size={13}/></a>}
   </article>;
 }
 
