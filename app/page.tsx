@@ -370,12 +370,21 @@ export default function HomePage() {
       const thumbUpload = await db()!.storage.from("zavo-media").upload(thumbPath, thumbnail, { contentType: thumbnail.type });
       if (!thumbUpload.error) thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
     }
-    const { error } = await db()!.from("videos").insert({
+    const { data: published, error } = await db()!.from("videos").insert({
       user_id: session.user.id, caption, video_url: videoUrl, thumbnail_url: thumbnailUrl,
       content_type: contentType, allow_download: allowDownload, show_stats: showStats, visibility: "public", ...videoMetadata
-    });
+    }).select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status").single();
     if (error) setNotice(error.message);
-    else { setNotice("Ta vidéo est publiée sur ZAVO."); setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setAllowDownload(false); await loadVideos(); }
+    else {
+      setNotice("Ta vidéo est publiée sur ZAVO.");
+      setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setAllowDownload(false);
+      await loadVideos();
+      const { count } = await db()!.from("ad_campaigns").select("id", { count: "exact", head: true }).eq("owner_id", session.user.id);
+      if ((count || 0) === 0 && published) {
+        setCampaignVideo(published as Video);
+        setCampaignOpen(true);
+      }
+    }
     setBusy(false);
   }
 
