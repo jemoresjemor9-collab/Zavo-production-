@@ -244,6 +244,7 @@ export default function HomePage() {
   const [adminSearch, setAdminSearch] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
   const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
+  const [sponsoredPromos, setSponsoredPromos] = useState<any[]>([]);
   const [myReposts, setMyReposts] = useState<Video[]>([]);
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
@@ -369,8 +370,18 @@ export default function HomePage() {
         if ((index + 1) % 5 === 0 && sponsored[adIndex]) mixed.push(sponsored[adIndex++]);
       });
       setVideos(mixed);
+      const { data: promoRows } = await db()!.from("ad_campaigns")
+        .select("id,title,target_type,description,target_url,target_profile_id,owner_id,country_codes,objective,start_at,end_at,owner:profiles!ad_campaigns_owner_id_fkey(id,username,display_name,avatar_url),target_profile:profiles!ad_campaigns_target_profile_id_fkey(id,username,display_name,avatar_url)")
+        .eq("status", "active").in("target_type", ["profile", "product"])
+        .or("start_at.is.null,start_at.lte." + new Date().toISOString())
+        .or("end_at.is.null,end_at.gt." + new Date().toISOString()).limit(12);
+      setSponsoredPromos((promoRows || []).filter((campaign: any) => {
+        const countries = campaign.country_codes || [];
+        return !countries.length || countries.includes("ALL") || countries.includes(profile?.country_code || "BJ");
+      }));
     } else {
       setVideos(organic);
+      setSponsoredPromos([]);
     }
   }, [tab, session?.user?.id, profile?.country_code, profile?.interest_tags]);
 
@@ -816,7 +827,7 @@ export default function HomePage() {
     event.preventDefault();
     if (!session || !db()) { setAuthMode("signin"); return; }
     if (campaignCountries.length < 1 || campaignCountries.length > 8) { setNotice("Sélectionne entre 1 et 8 pays pour ta campagne."); return; }
-    if (!campaignVideo) { setNotice(campaignType === "profile" ? "Choisis une vidéo qui présente ton compte." : campaignType === "product" ? "Choisis une vidéo de présentation de ton produit ou service." : "Choisis la vidéo que tu souhaites promouvoir."); return; }
+    if (campaignType === "video" && !campaignVideo) { setNotice("Choisis la vidéo que tu souhaites promouvoir."); return; }
     const selectedCurrency = { code: "XOF" };
     const dailyBudget = Number(campaignBudget);
     const durationDays = Number(campaignDurationDays);
@@ -832,7 +843,7 @@ export default function HomePage() {
       owner_id: session.user.id,
       target_type: campaignType,
       target_profile_id: campaignType === "profile" ? session.user.id : null,
-      video_id: campaignVideo?.id || null,
+      video_id: campaignType === "video" ? campaignVideo?.id || null : null,
       title: campaignTitle.trim() || (campaignType === "video" ? "Promotion de ma vidéo" : campaignType === "profile" ? "Promotion de mon compte" : "Promotion de mon produit"),
       target_label: campaignTitle.trim() || null,
       description: campaignType === "product" ? [campaignDescription.trim(), campaignProductPrice.trim() ? "Prix : " + campaignProductPrice.trim() : "", campaignProductContact.trim() ? "Contact : " + campaignProductContact.trim() : ""].filter(Boolean).join("\n\n") : campaignDescription.trim() || null,
@@ -1064,6 +1075,7 @@ export default function HomePage() {
               <section className="welcome-panel compact-welcome"><div className="welcome-copy"><div className="eyebrow"><span className="eyebrow-mark"/> LA SCÈNE EST À TOI</div><h1>Regarde. Crée.<br/><span>Fais-toi découvrir.</span></h1><p>Des vidéos de tous les horizons. Publie ton contenu, rassemble ta communauté et développe ton activité.</p><div className="welcome-actions"><button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}><Clapperboard size={17}/> Publier une vidéo</button><button className="secondary-action" onClick={() => session ? setCampaignOpen(true) : setAuthMode("signin")}><Megaphone size={16}/> Booster mon contenu</button></div></div><div className="welcome-art"><img src="/icons/zavo-512.png" alt="ZAVO"/></div></section>
               <div className="feed-toolbar"><div><div className="section-kicker">LE FLUX ZAVO</div><h2>{tab === "Découvrir" ? "Découvrir" : tab === "Abonnements" ? "Tes abonnements" : tab === "Enregistrés" ? "Vidéos enregistrées" : tab === "Shorts" ? "Shorts" : tab === "Vidéos" ? "Vidéos" : "Pour toi"}</h2></div><div className="feed-tabs">{["Pour toi","Shorts","Vidéos","Abonnements","Découvrir","Enregistrés"].map((x: string) => <button key={x} className={tab === x ? "selected" : ""} onClick={() => setTab(x)}>{x}</button>)}</div></div>
               {visibleVideos.length ? <div className="video-grid">{visibleVideos.map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x: Video) => {setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent}/>)}</div> : <section className="empty-state"><div className="empty-icon"><Play/></div><h3>{tab === "Abonnements" ? "Tu ne suis pas encore de créateur" : "Le fil commence ici."}</h3><p>Les vidéos publiques apparaîtront ici. Crée un compte pour publier, suivre et interagir avec les créateurs.</p><button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}>Rejoindre ZAVO</button></section>}
+              {sponsoredPromos.map(campaign=><SponsoredPromoCard key={campaign.id} campaign={campaign} currentUserId={session?.user?.id} following={following} onFollow={toggleFollow} onCampaignEvent={trackCampaignEvent}/>) }
             </>
           )}
           <footer className="site-footer"><div className="footer-brand"><img src="/icons/zavo-192.png" alt=""/> ZAVO</div><span>Regarde · Crée · Partage</span><span>© 2026 ZAVO</span></footer>
@@ -1101,14 +1113,16 @@ export default function HomePage() {
         <div className="studio-content"><div className="studio-intro"><div className="section-kicker">DÉVELOPPE TA VISIBILITÉ</div><h1>Configure ta promotion</h1><p>Présente ton contenu ou ton activité, choisis ton audience et définis le budget que tu souhaites investir.</p></div>
           <form onSubmit={createCampaign} className="boost-form">
             <section className="studio-section"><h2>Que veux-tu promouvoir ?</h2><div className="boost-type-grid"><button type="button" className={campaignType==="video"?"boost-type selected":"boost-type"} onClick={()=>{setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");setCampaignVideo(null);}}><Film/><strong>Une vidéo</strong><span>Augmenter sa portée</span></button><button type="button" className={campaignType==="profile"?"boost-type selected":"boost-type"} onClick={()=>{setCampaignType("profile");setCampaignObjective("profile_visits");setCampaignTitle("Promotion de mon compte");setCampaignVideo(null);}}><Users/><strong>Mon compte</strong><span>Attirer des abonnés</span></button><button type="button" className={campaignType==="product"?"boost-type selected":"boost-type"} onClick={()=>{setCampaignType("product");setCampaignObjective("website_clicks");setCampaignTitle("Promotion de mon produit ou service");setCampaignVideo(null);}}><Megaphone/><strong>Un produit ou service</strong><span>Générer des visites ou ventes</span></button></div></section>
-            <section className="studio-section"><h2>{campaignType==="video"?"Vidéo à promouvoir":campaignType==="profile"?"Vidéo qui présente ton compte":"Vidéo de présentation du produit ou service"}</h2><p>{campaignType==="video"?"La vidéo sélectionnée sera diffusée auprès de l’audience ciblée.": "Cette vidéo servira de support visuel à ta publicité sponsorisée."}</p><select value={campaignVideo?.id||""} onChange={e=>setCampaignVideo(videos.find(v=>v.id===e.target.value)||null)} required><option value="">Sélectionner une de mes vidéos</option>{videos.filter(v=>v.user_id===session?.user?.id&&!v.isSponsored).map(v=><option key={v.id} value={v.id}>{(v.caption||"Ma vidéo").slice(0,70)} · {v.content_type==="short"?"Short":"Vidéo"}</option>)}</select></section>
+            {campaignType==="video" && <section className="studio-section"><h2>Vidéo à promouvoir</h2><p>La vidéo sélectionnée sera diffusée auprès de l’audience ciblée.</p><select value={campaignVideo?.id||""} onChange={e=>setCampaignVideo(videos.find(v=>v.id===e.target.value)||null)} required><option value="">Sélectionner une de mes vidéos</option>{videos.filter(v=>v.user_id===session?.user?.id&&!v.isSponsored).map(v=><option key={v.id} value={v.id}>{(v.caption||"Ma vidéo").slice(0,70)} · {v.content_type==="short"?"Short":"Vidéo"}</option>)}</select></section>}
+            {campaignType==="profile" && <p className="studio-hint">La promotion mettra ton profil ZAVO en avant avec ta présentation et ton bouton Suivre.</p>}
+            {campaignType==="product" && <p className="studio-hint">La promotion présentera ton offre, son prix et le lien ou contact que tu renseignes.</p>}
             {campaignType==="video" && <section className="studio-section"><h2>Informations sur la vidéo</h2><label>Nom de la campagne<input value={campaignTitle} onChange={e=>setCampaignTitle(e.target.value)} maxLength={100} placeholder="Ex. Booster ma nouvelle vidéo"/></label><label>Que va découvrir le public ?<textarea value={campaignDescription} onChange={e=>setCampaignDescription(e.target.value)} maxLength={1000} placeholder="Décris le sujet, le message et ce qui rend cette vidéo intéressante."/></label></section>}
             {campaignType==="profile" && <section className="studio-section"><h2>Informations sur ton compte</h2><label>Nom de la campagne<input value={campaignTitle} onChange={e=>setCampaignTitle(e.target.value)} maxLength={100} placeholder="Ex. Découvrir mon compte"/></label><label>Quelle activité présentes-tu ?<textarea value={campaignDescription} onChange={e=>setCampaignDescription(e.target.value)} maxLength={1000} placeholder="Présente ton activité, tes thèmes, tes contenus et pourquoi les visiteurs devraient te suivre."/></label><p>La promotion dirigera les visiteurs vers ton profil ZAVO.</p></section>}
             {campaignType==="product" && <section className="studio-section"><h2>Informations sur ton produit ou service</h2><label>Nom du produit ou service<input value={campaignTitle} onChange={e=>setCampaignTitle(e.target.value)} maxLength={100} placeholder="Ex. Formation, vêtement, prestation…"/></label><label>Description et avantages<textarea value={campaignDescription} onChange={e=>setCampaignDescription(e.target.value)} maxLength={1000} placeholder="Quel problème ton offre résout-elle ? Quels sont ses avantages ?"/></label><label>Prix ou offre (facultatif)<input value={campaignProductPrice} onChange={e=>setCampaignProductPrice(e.target.value)} maxLength={100} placeholder="Ex. 5 000 FCFA, promotion spéciale…"/></label><label>Lien de vente ou de présentation (facultatif si contact renseigné)<div className="input-with-icon"><Link2 size={17}/><input type="url" value={campaignTargetUrl} onChange={e=>setCampaignTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></div></label><label>Contact pour commander ou demander des informations<input value={campaignProductContact} onChange={e=>setCampaignProductContact(e.target.value)} maxLength={120} placeholder="Téléphone, WhatsApp ou autre contact"/></label></section>}
             <section className="studio-section"><h2>Objectif de la promotion</h2><div className="objective-grid">{(campaignType==="video"?[["views","Plus de vues"],["profile_visits","Visites du profil"]]:campaignType==="profile"?[["profile_visits","Visites de mon compte"],["views","Plus de portée"]]:[["website_clicks","Visites de mon offre"],["messages","Recevoir des demandes"]]).map(([value,label])=><label key={value}><input type="radio" checked={campaignObjective===value} onChange={()=>setCampaignObjective(value)}/>{label}</label>)}</div></section>
             <section className="studio-section"><h2>Pays ciblés (1 à 8)</h2><p>Recherche un pays par son nom ou son code, puis ajoute-le à ta campagne.</p><div className="country-picker"><input type="search" value={campaignCountrySearch} onFocus={()=>setCampaignCountryListOpen(true)} onChange={e=>{setCampaignCountrySearch(e.target.value);setCampaignCountryListOpen(true);}} onKeyDown={e=>{if(e.key==="Escape")setCampaignCountryListOpen(false);}} placeholder="Rechercher un pays (ex. Bénin, France, Canada)…" autoComplete="off" aria-label="Rechercher un pays à cibler"/><div className="country-picker-toolbar"><span>{campaignCountries.length}/8 pays sélectionnés</span><button type="button" onClick={()=>setCampaignCountryListOpen(v=>!v)}>{campaignCountryListOpen?"Masquer la liste":"Afficher les pays"}</button></div>{campaignCountries.length>0&&<div className="country-selected-list">{campaignCountries.map(code=>{const country=COUNTRIES.find(([item])=>item===code);return <span className="country-selected-chip" key={code}>{country?.[1]||code}<button type="button" aria-label={"Retirer "+(country?.[1]||code)} onClick={()=>setCampaignCountries(items=>items.filter(item=>item!==code))}>×</button></span>;})}</div>}{campaignCountryListOpen&&<div className="country-picker-results">{COUNTRIES.filter(([code,name])=>code!=="OTHER"&&!campaignCountries.includes(code)&&(name.toLocaleLowerCase("fr").includes(campaignCountrySearch.trim().toLocaleLowerCase("fr"))||code.toLowerCase().includes(campaignCountrySearch.trim().toLowerCase()))).map(([code,name])=><button type="button" key={code} disabled={campaignCountries.length>=8} onClick={()=>{if(campaignCountries.length<8){setCampaignCountries(items=>[...items,code]);setCampaignCountrySearch("");}}}>{name}<span>{code}</span></button>)}{COUNTRIES.filter(([code,name])=>code!=="OTHER"&&!campaignCountries.includes(code)&&(name.toLocaleLowerCase("fr").includes(campaignCountrySearch.trim().toLocaleLowerCase("fr"))||code.toLowerCase().includes(campaignCountrySearch.trim().toLowerCase()))).length===0&&<p>Aucun pays trouvé. Essaie une autre orthographe.</p>}</div>}</div></section>
             <section className="studio-section budget-section"><h2>Budget et durée</h2><label>Budget par jour (FCFA)<input type="number" min="600" step="100" value={campaignBudget} onChange={e=>setCampaignBudget(e.target.value)} required/></label><label>Durée de la promotion<select value={campaignDurationDays} onChange={e=>setCampaignDurationDays(e.target.value)}><option value="1">1 jour</option><option value="2">2 jours</option><option value="3">3 jours</option><option value="7">7 jours</option><option value="14">14 jours</option><option value="30">30 jours</option><option value="90">90 jours</option></select></label><small className="studio-hint">Le tarif minimum est de 600 FCFA par jour. Le montant total est calculé automatiquement selon la durée.</small></section>
-            <div className="boost-submit-panel"><div><strong>Récapitulatif</strong><p>{campaignCountries.length} pays · {Number(campaignBudget||0).toLocaleString("fr-FR")} FCFA/jour × {campaignDurationDays} jour(s) = {(Number(campaignBudget||0)*Number(campaignDurationDays||1)).toLocaleString("fr-FR")} FCFA</p><small>Après confirmation du paiement et validation de ta campagne, ZAVO lancera sa diffusion pendant la durée choisie.</small></div><button className="primary-action modal-submit" disabled={busy||!campaignVideo}>{busy?"Préparation…":"Payer ma publicité"}</button></div>
+            <div className="boost-submit-panel"><div><strong>Récapitulatif</strong><p>{campaignCountries.length} pays · {Number(campaignBudget||0).toLocaleString("fr-FR")} FCFA/jour × {campaignDurationDays} jour(s) = {(Number(campaignBudget||0)*Number(campaignDurationDays||1)).toLocaleString("fr-FR")} FCFA</p><small>Après confirmation du paiement et validation de ta campagne, ZAVO lancera sa diffusion pendant la durée choisie.</small></div><button className="primary-action modal-submit" disabled={busy||(campaignType==="video"&&!campaignVideo)}>{busy?"Préparation…":"Payer ma publicité"}</button></div>
           </form>
         </div>
       </section></div>}
@@ -1136,6 +1150,31 @@ function OfflineVideoPlayer({ item }: { item: any }) {
     return () => URL.revokeObjectURL(url);
   }, [item?.blob]);
   return <article><video controls playsInline preload="metadata" src={src || undefined}/><strong>{item.caption || "Vidéo ZAVO"}</strong><small>{item.contentType === "short" ? "Short" : "Vidéo"}{item.savedAt ? " · Enregistrée le " + new Date(item.savedAt).toLocaleDateString("fr-FR") : ""}</small></article>;
+}
+
+function SponsoredPromoCard({ campaign, currentUserId, following, onFollow, onCampaignEvent }: any) {
+  const ref = useRef<HTMLElement | null>(null);
+  const person = campaign.target_type === "profile" ? campaign.target_profile : campaign.owner;
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        onCampaignEvent?.(campaign.id, "impression");
+        observer.disconnect();
+      }
+    }, { threshold: 0.5 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [campaign.id, onCampaignEvent]);
+  const isProfile = campaign.target_type === "profile";
+  return <article ref={ref} className="campaign-card sponsored-promo-card">
+    <div className="campaign-card-top"><strong>{campaign.title}</strong><span className="campaign-status">SPONSORISÉ</span></div>
+    <div className="campaign-card-meta">{isProfile ? "Promotion d’un compte ZAVO" : "Promotion d’un produit ou service"} · {person?.display_name || person?.username || "Annonceur"}</div>
+    {campaign.description && <p className="campaign-note">{campaign.description}</p>}
+    {isProfile && person?.id && currentUserId !== person.id && <button className="primary-action" onClick={() => { onCampaignEvent?.(campaign.id, "click"); onFollow(person.id); }}>{following.includes(person.id) ? "Abonné" : "Suivre le compte"}</button>}
+    {!isProfile && campaign.target_url && <a className="sponsored-cta" href={safeUrl(campaign.target_url) || "#"} target="_blank" rel="noopener noreferrer" onClick={() => onCampaignEvent?.(campaign.id, "click")}>Découvrir l’offre <ExternalLink size={13}/></a>}
+  </article>;
 }
 
 function VideoCard({ video, session, liked, saved, following, onLike, onSave, onFollow, onComments, onShare, onReport, onDownload, onBoost, onView, onToggleStats, onToggleDownload, onRepost, onCampaignEvent }: any) {
