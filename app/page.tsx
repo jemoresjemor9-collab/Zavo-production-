@@ -180,7 +180,7 @@ export default function HomePage() {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
-  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [] });
+  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [] });\n  const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
 
@@ -504,6 +504,15 @@ export default function HomePage() {
     setNotice(error?.message || "Profil mis à jour."); setProfileOpen(false); await loadUserData(session.user.id);
   }
 
+  async function loadMyCampaigns() {
+    if (!session || !db()) return;
+    const { data, error } = await db()!.from("ad_campaigns")
+      .select("id,title,budget,currency,status,objective,impressions,clicks,spent_amount,created_at,start_at,end_at")
+      .eq("owner_id", session.user.id).order("created_at", { ascending: false }).limit(50);
+    if (error) setNotice(error.message);
+    setMyCampaigns(data || []);
+  }
+
   async function loadAdmin() {
     if (!isAdmin || !db()) return;
     const [{ data: reports }, { data: campaigns }, { data: users }, { data: adminVideos }] = await Promise.all([
@@ -514,7 +523,7 @@ export default function HomePage() {
     ]);
     setAdminData({ reports: reports || [], campaigns: campaigns || [], users: users || [], videos: adminVideos || [] });
   }
-  useEffect(() => { if (tab === "Administration") loadAdmin(); }, [tab, isAdmin]);
+  useEffect(() => { if (tab === "Administration") loadAdmin(); if (tab === "Promotions") loadMyCampaigns(); }, [tab, isAdmin, session?.user?.id]);
 
   const visibleVideos = useMemo(() => videos.filter((v) => {
     const q = search.trim().toLowerCase();
@@ -570,10 +579,15 @@ export default function HomePage() {
                 {dmBusy&&<p className="dm-loading">Ouverture de la conversation…</p>}
               </>}
             </section>
+          ) : tab === "Promotions" ? (
+            <section className="campaigns-page">
+              <div className="feed-toolbar"><div><div className="section-kicker">VISIBILITÉ DE TON CONTENU</div><h2>Mes promotions</h2></div><button className="primary-action" onClick={()=>setCampaignOpen(true)}><Megaphone size={15}/> Nouvelle campagne</button></div>
+              {myCampaigns.length ? myCampaigns.map((campaign:any)=><article className="campaign-card" key={campaign.id}><div className="campaign-card-top"><strong>{campaign.title}</strong><span className="campaign-status">{campaign.status}</span></div><div className="campaign-card-meta">{campaign.budget.toLocaleString("fr-FR")} {campaign.currency} · {campaign.objective}</div><div className="campaign-metrics"><span><Eye size={14}/> {campaign.impressions||0} impressions</span><span><ExternalLink size={14}/> {campaign.clicks||0} clics</span></div>{campaign.status==="awaiting_payment"&&<p className="campaign-note">En attente de paiement. La diffusion commencera après validation et activation par ZAVO.</p>}</article>) : <section className="empty-state"><div className="empty-icon"><Megaphone/></div><h3>Aucune campagne pour le moment</h3><p>Booste une de tes vidéos pour attirer une nouvelle audience.</p><button className="primary-action" onClick={()=>setCampaignOpen(true)}>Créer une campagne</button></section>}
+            </section>
           ) : tab === "Notifications" ? (
             <section><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div></div>{notifications.map((n) => <article className="notification-row" key={n.id}><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></article>)}</section>
           ) : tab === "Profil" ? (
-            <section className="profile-page"><div className="profile-hero"><div className="profile-avatar">{(profile?.display_name || "Z").slice(0,1).toUpperCase()}</div><div><h1>{profile?.display_name || "Ton profil"}</h1><p>@{profile?.username || "nouveau_createur"}</p><span>{profile?.bio || "Présente-toi à la communauté ZAVO."}</span></div><button onClick={() => setProfileOpen(true)}><Settings size={16}/> Modifier</button></div><div className="profile-actions"><button onClick={() => setTab("Enregistrés")}>Vidéos enregistrées</button><button onClick={() => setCampaignOpen(true)}>Mes promotions</button></div><h2>Mes vidéos</h2><div className="video-grid">{videos.filter(v => v.user_id === session?.user?.id).map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x: Video) => {setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onRepost={repostVideo} onCampaignEvent={trackCampaignEvent}/>)}</div></section>
+            <section className="profile-page"><div className="profile-hero"><div className="profile-avatar">{(profile?.display_name || "Z").slice(0,1).toUpperCase()}</div><div><h1>{profile?.display_name || "Ton profil"}</h1><p>@{profile?.username || "nouveau_createur"}</p><span>{profile?.bio || "Présente-toi à la communauté ZAVO."}</span></div><button onClick={() => setProfileOpen(true)}><Settings size={16}/> Modifier</button></div><div className="profile-actions"><button onClick={() => setTab("Enregistrés")}>Vidéos enregistrées</button><button onClick={() => setTab("Promotions")}>Mes promotions</button></div><h2>Mes vidéos</h2><div className="video-grid">{videos.filter(v => v.user_id === session?.user?.id).map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x: Video) => {setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onRepost={repostVideo} onCampaignEvent={trackCampaignEvent}/>)}</div></section>
           ) : (
             <>
               <section className="welcome-panel compact-welcome"><div className="welcome-copy"><div className="eyebrow"><span className="eyebrow-mark"/> LA SCÈNE EST À TOI</div><h1>Regarde. Crée.<br/><span>Fais-toi découvrir.</span></h1><p>Des vidéos de tous les horizons. Publie ton contenu, rassemble ta communauté et développe ton activité.</p><div className="welcome-actions"><button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}><Clapperboard size={17}/> Publier une vidéo</button><button className="secondary-action" onClick={() => setCampaignOpen(true)}><Megaphone size={16}/> Booster mon contenu</button></div></div><div className="welcome-art"><img src="/icons/zavo-512.png" alt="ZAVO"/></div></section>
