@@ -498,3 +498,6 @@ body{color:#d7eaff!important}
 .comment-replying{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 11px;border:1px solid #13b96a;border-radius:8px;background:#0b5c65;color:#13b96a;font-size:11px;font-weight:800}
 .comment-replying button{display:grid;place-items:center;border:0;background:transparent;color:#13b96a;cursor:pointer}
 .comments-modal-enhanced h2 span{display:inline-grid;place-items:center;min-width:23px;height:23px;padding:0 6px;border-radius:7px;background:#092b6c;color:#13b96a;font-size:12px}
+
+.draft-save-action{display:flex;width:100%;align-items:center;justify-content:center;margin-bottom:8px;border:1px solid #2879d2!important;background:#092b6c!important;color:#55a2ff!important}
+.draft-save-action:disabled{opacity:.55;cursor:wait}
