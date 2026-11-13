@@ -408,7 +408,7 @@ export default function HomePage() {
       db()!.from("likes").select("video_id").eq("user_id", userId),
       db()!.from("saved_videos").select("video_id").eq("user_id", userId),
       db()!.from("follows").select("following_id").eq("follower_id", userId),
-      db()!.from("reposts").select("video:videos(id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count))").eq("user_id", userId).order("created_at", { ascending: false }).limit(30)
+      db()!.from("reposts").select("video:videos(id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count))").eq("user_id", userId).order("created_at", { ascending: false }).limit(30)
     ]);
     setProfile(p as Profile | null);
     setDisplayName(p?.display_name || "");
@@ -939,7 +939,7 @@ export default function HomePage() {
         db()!.from("reports").select("*").order("created_at", { ascending: false }).limit(100),
         db()!.from("ad_campaigns").select("*").order("created_at", { ascending: false }).limit(100),
         db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(1000),
-        db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles(username,display_name)").order("created_at", { ascending: false }).limit(100),
+        db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles:profiles!videos_user_id_fkey(username,display_name)").order("created_at", { ascending: false }).limit(100),
         db()!.from("ad_payments").select("id,campaign_id,owner_id,amount,currency,status,provider,provider_reference,created_at,paid_at").order("created_at", { ascending: false }).limit(200),
         db()!.functions.invoke("admin-user-analytics")
       ]);
