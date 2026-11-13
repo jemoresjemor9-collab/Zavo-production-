@@ -1,1 +1,20 @@
-{"name":"ZAVO","short_name":"ZAVO","description":"Watch. Create. Connect.","start_url":"/","display":"standalone","background_color":"#080812","theme_color":"#080812","icons":[]}
+{
+  "id": "/",
+  "name": "ZAVO — Regarde. Crée. Partage.",
+  "short_name": "ZAVO",
+  "description": "La plateforme vidéo pour regarder, créer, partager et découvrir.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#090c12",
+  "theme_color": "#090c12",
+  "categories": ["social", "entertainment", "video"],
+  "icons": [
+    { "src": "/icons/zavo-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/zavo-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/zavo-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
