@@ -533,3 +533,14 @@ body{color:#d7eaff!important}
 .studio-trim-controls label{display:flex;flex-direction:column;gap:6px;color:#b9d9ff;font-size:11px;font-weight:800}
 .studio-trim-controls input{width:100%;padding:9px;border:1px solid #2879d2;border-radius:8px;background:#092b6c;color:#d7eaff}
 @media(max-width:760px){.create-top-button{padding:8px 9px}.create-top-button span{display:inline}.creator-hero-actions{width:100%}.creator-hero-actions button{flex:1}}
+
+/* ZAVO notification center: live unread indicator and accessible actions */
+.notification-top-button{position:relative}
+.notification-badge{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;display:grid;place-items:center;border-radius:999px;background:#e53935;color:#ffffff;font-size:9px;font-weight:900;line-height:1}
+.notifications-page .notification-row{width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer;transition:border-color .16s ease,background .16s ease}
+.notifications-page .notification-row:hover{border-color:#2879d2;background:#0b347a}
+.notifications-page .notification-row:focus-visible{outline:2px solid #13b96a;outline-offset:2px}
+.notification-content{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.notification-content strong{color:#e6f1ff;font-size:13px}
+.notification-body{color:#bac5d1;font-size:12px;line-height:1.5;white-space:normal}
+.notifications-page .feed-toolbar{align-items:center}
