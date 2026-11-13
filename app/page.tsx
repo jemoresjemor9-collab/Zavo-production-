@@ -826,7 +826,7 @@ export default function HomePage() {
     if (campaignType === "product" && (!campaignTitle.trim() || !campaignDescription.trim() || (!safeUrl(campaignTargetUrl) && !campaignProductContact.trim()))) { setNotice("Pour promouvoir un produit, renseigne son nom, sa description et un lien ou un contact."); return; }
     if (campaignType === "profile" && (!campaignTitle.trim() || !campaignDescription.trim())) { setNotice("Présente ton compte et explique pourquoi les visiteurs devraient te suivre."); return; }
     const targetUrl = safeUrl(campaignTargetUrl) || (campaignType === "video" && campaignVideo ? window.location.origin + "/?video=" + campaignVideo.id : null);
-    if (campaignType === "product" && !targetUrl) { setNotice("Ajoute un lien valide vers le produit ou la page à présenter."); return; }
+    if (campaignType === "product" && !targetUrl && !campaignProductContact.trim()) { setNotice("Ajoute un lien de vente ou un contact pour recevoir les commandes."); return; }
     setBusy(true);
     const { data, error } = await db()!.from("ad_campaigns").insert({
       owner_id: session.user.id,
