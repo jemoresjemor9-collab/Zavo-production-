@@ -390,3 +390,7 @@ body{color:#d7eaff!important}
 .admin-panel .admin-row{background:#0b347a!important}
 .admin-empty,.admin-loading{color:#8ab8f5!important}
 .admin-note{color:#8ab8f5!important}
+
+/* Admin analytics and presence */
+.admin-user-row{align-items:center!important;gap:12px}.admin-user-identity{display:flex;flex:1;min-width:220px;flex-direction:column;gap:5px}.admin-user-identity strong{overflow-wrap:anywhere}.admin-user-identity small{overflow-wrap:anywhere}.admin-presence{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:#8ab8f5;font-size:12px;font-weight:750}.admin-presence i{width:8px;height:8px;border-radius:50%;background:#e52d3f;display:inline-block}.admin-presence.online{color:#13b96a}.admin-presence.online i{background:#13b96a;box-shadow:0 0 0 4px rgba(19,185,106,.13)}
+@media(max-width:680px){.admin-user-row{align-items:flex-start!important}.admin-user-identity{width:100%;min-width:0}.admin-presence{margin-right:auto}}
