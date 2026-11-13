@@ -255,12 +255,6 @@ export default function HomePage() {
   const [trimDuration, setTrimDuration] = useState(0);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
-  const [trimDuration, setTrimDuration] = useState(0);
-  const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(0);
-  const [trimDuration, setTrimDuration] = useState(0);
-  const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(0);
   const [allowDownload, setAllowDownload] = useState(false);
   const [showStats, setShowStats] = useState(true);
   const [busy, setBusy] = useState(false);
