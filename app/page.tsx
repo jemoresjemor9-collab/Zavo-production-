@@ -393,6 +393,7 @@ export default function HomePage() {
     ]);
     setProfile(p as Profile | null);
     setDisplayName(p?.display_name || "");
+    setUsername(p?.username || "");
     setBio(p?.bio || "");
     setCountryCode(p?.country_code || "BJ");
     setLiked((l || []).map((x: any) => x.video_id));
@@ -419,7 +420,6 @@ export default function HomePage() {
         setTab("Pour toi");
       }
     });
-    loadVideos();
     const onOnline = () => { setOffline(false); setOfflineVideos([]); };
     const onOffline = async () => { setOffline(true); try { setOfflineVideos(await readOfflineVideos()); } catch { setOfflineVideos([]); } };
     setOffline(!navigator.onLine);
@@ -427,7 +427,7 @@ export default function HomePage() {
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     return () => { active = false; subscription.unsubscribe(); window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
-  }, [loadVideos, loadUserData]);
+  }, [loadUserData]);
 
   useEffect(() => { loadVideos(); }, [loadVideos]);
   useEffect(() => { if (tab === "Notifications" && session?.user?.id) loadNotifications(); }, [tab, session?.user?.id]);
