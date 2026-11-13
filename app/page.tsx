@@ -945,12 +945,17 @@ export default function HomePage() {
       ]);
       const failed = results.slice(0,5).find((result:any) => result.error);
       if (failed?.error) throw failed.error;
-      if (results[5].error) throw results[5].error;
       const [reports, campaigns, profiles, adminVideos, payments] = results.slice(0,5).map((result:any) => result.data || []);
-      const analytics = results[5].data || {};
-      const profileById = new Map(profiles.map((p:any) => [p.id, p]));
-      const users = (analytics.users || []).map((u:any) => ({ ...(profileById.get(u.id) || {}), ...u }));
-      setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence: analytics.presence || [], activeUsers: analytics.active_users || 0, totalUsers: analytics.users?.length || users.length });
+      // Profiles are the primary source for the visible account list. A failure in the
+      // privileged email/last-login endpoint must never blank the entire admin dashboard.
+      const analytics = results[5].error ? {} : (results[5].data || {});
+      const authUsers = Array.isArray(analytics.users) ? analytics.users : [];
+      const authById = new Map(authUsers.map((u:any) => [u.id, u]));
+      const users = profiles.map((p:any) => ({ ...p, ...(authById.get(p.id) || {}) }));
+      const presence = Array.isArray(analytics.presence) ? analytics.presence : [];
+      const activeUsers = presence.filter((p:any) => p.is_online).length;
+      setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence, activeUsers, totalUsers: users.length });
+      if (results[5].error) setNotice("Les comptes sont chargés. Les e-mails et dates de connexion détaillées sont temporairement indisponibles : " + results[5].error.message);
     } catch (error:any) {
       setNotice("Chargement du dashboard impossible : " + (error?.message || "erreur inconnue"));
     } finally {
