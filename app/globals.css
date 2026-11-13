@@ -482,3 +482,19 @@ body{color:#d7eaff!important}
 .notification-row>div:last-child{min-width:0}
 @media(max-width:900px){.creator-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.creator-analytics-grid{grid-template-columns:1fr}}
 @media(max-width:620px){.creator-dashboard-hero{align-items:flex-start;flex-direction:column;padding:19px}.creator-refresh{width:100%}.creator-periods{align-self:stretch}.creator-periods button{flex:1}.creator-metric-grid{gap:8px}.creator-metric{padding:13px}.creator-video-row{align-items:flex-start;flex-wrap:wrap}.creator-video-info{width:calc(100% - 82px);flex:none}.creator-video-actions{width:100%;flex-direction:row}.creator-video-actions button{flex:1}.creator-manage-hint{display:none}.creator-panel{padding:14px}}
+
+/* ZAVO comment conversations */
+.comments-modal-enhanced .comment-list{display:flex;flex-direction:column;gap:12px}
+.comments-modal-enhanced .comment-list>p{color:#8ab8f5}
+.comments-modal-enhanced .comment-thread{padding:12px;border:1px solid #2879d2;border-radius:11px;background:#0b347a}
+.comment-author-line{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.comment-author-line strong{color:#d7eaff;font-size:12px}
+.comment-author-line small{color:#8ab8f5;font-size:10px}
+.comments-modal-enhanced .comment-thread>p,.comment-reply>p{margin:7px 0;color:#b9d9ff;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.comment-actions{display:flex;align-items:center;gap:14px;margin-top:6px}
+.comment-actions button{display:inline-flex;align-items:center;gap:5px;padding:3px 0;border:0;background:transparent;color:#8ab8f5;font-size:11px;font-weight:750;cursor:pointer}
+.comment-actions button.comment-liked{color:#f02645}
+.comment-reply{margin:10px 0 0 17px;padding:10px;border-left:2px solid #13b96a;border-radius:0 8px 8px 0;background:#092b6c}
+.comment-replying{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 11px;border:1px solid #13b96a;border-radius:8px;background:#0b5c65;color:#13b96a;font-size:11px;font-weight:800}
+.comment-replying button{display:grid;place-items:center;border:0;background:transparent;color:#13b96a;cursor:pointer}
+.comments-modal-enhanced h2 span{display:inline-grid;place-items:center;min-width:23px;height:23px;padding:0 6px;border-radius:7px;background:#092b6c;color:#13b96a;font-size:12px}
