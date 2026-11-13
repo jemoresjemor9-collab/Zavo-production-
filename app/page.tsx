@@ -343,12 +343,25 @@ export default function HomePage() {
     const { error } = await db()!.auth.signInWithPassword({ email, password });
     setNotice(error?.message || "Connexion réussie."); setBusy(false); if (!error) setAuthMode(null);
   }
+  async function continueSignup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!db()) return;
+    const clean = username.toLowerCase().trim().replace(/[^a-z0-9_]/g, "");
+    if (!/^[a-z0-9_]{3,24}$/.test(clean)) { setUsernameStatus("3 à 24 caractères : lettres, chiffres et _ uniquement."); return; }
+    setBusy(true); setUsernameStatus("");
+    const { data, error } = await db()!.from("profiles").select("id").ilike("username", clean).limit(1);
+    setBusy(false);
+    if (error) { setUsernameStatus("Impossible de vérifier cet identifiant. Réessaie."); return; }
+    if (data?.length) { setUsernameStatus("Identifiant déjà utilisé. Essaie d'ajouter un chiffre."); return; }
+    setUsername(clean); setSignupStep(2);
+  }
   async function signUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!db()) return; setBusy(true);
-    const clean = username.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
-    const { error } = await db()!.auth.signUp({ email, password, options: { data: { username: clean, display_name: clean || "Créateur ZAVO" } } });
-    setNotice(error?.message || "Compte créé. Vérifie ton adresse e-mail si une confirmation est demandée.");
-    setBusy(false); if (!error) setAuthMode(null);
+    const clean = username.toLowerCase().trim().replace(/[^a-z0-9_]/g, "");
+    const { error } = await db()!.auth.signUp({ email, password, options: { data: {
+      username: clean, display_name: signupName.trim(), country_code: signupCountry, interest_tags: signupInterests
+    } } });
+    setNotice(error?.code === "23505" ? "Cet identifiant vient d'être pris. Retourne aux informations et choisis-en un autre." : error?.message || "Compte créé. Vérifie ton adresse e-mail si une confirmation est demandée.");
+    setBusy(false); if (!error) { setAuthMode(null); setSignupStep(1); setSignupInterests([]); }
   }
 
   async function publish(event: FormEvent<HTMLFormElement>) {
@@ -505,12 +518,13 @@ export default function HomePage() {
 
   async function createCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!session || !campaignVideo) return;
+    const currencyInfo = CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US;
     const amount = Number(campaignBudget);
-    if (!Number.isFinite(amount) || amount < 1000) { setNotice("Le budget minimum provisoire est de 1 000 FCFA."); return; }
+    if (!Number.isFinite(amount) || amount < currencyInfo.perUsd) { setNotice("Le budget minimum est équivalent à 1 USD dans ta devise."); return; }
     const { error } = await db()!.from("ad_campaigns").insert({
       owner_id: session.user.id, video_id: campaignVideo.id, title: "Promotion de ma vidéo",
       target_url: safeUrl(campaignTargetUrl) || (window.location.origin + "/?video=" + campaignVideo.id),
-      budget: amount, currency: "XOF", objective: campaignObjective, country_codes: [campaignCountry], status: "awaiting_payment"
+      budget: amount, currency: currencyInfo.code, objective: campaignObjective, country_codes: campaignCountries, status: "awaiting_payment"
     });
     setNotice(error?.message || "Campagne enregistrée en attente de paiement. Aucun débit n'a été effectué.");
     setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl("");
