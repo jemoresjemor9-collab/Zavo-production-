@@ -127,3 +127,23 @@ html,body,.zavo-app{background:var(--bg)!important;color:var(--text)!important}
 .interest-chip.selected{background:linear-gradient(100deg,rgba(229,45,63,.12),rgba(23,107,209,.12),rgba(21,155,89,.12));border-color:#176bd1;color:#174f91}
 .interest-actions{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.modal-submit{margin-top:10px}
 @media(max-width:640px){.interest-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.compact-interest-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.signup-modal{width:min(96vw,560px);max-height:88vh;padding:22px 18px}}
+
+/* Final light-surface refinements */
+.mobile-nav{background:rgba(255,255,255,.97)!important;border-color:rgba(24,48,78,.12)!important}
+.mobile-nav button{color:#63758b!important}.mobile-nav button.active{color:#176bd1!important}.mobile-nav button.mobile-publish{color:#e52d3f!important}
+.video-frame{background:#edf3f9!important}.social-video-card .video-frame video{background:#edf3f9!important}
+.video-menu{background:#fff!important;border-color:rgba(24,48,78,.16)!important;box-shadow:0 14px 40px rgba(24,48,78,.16)!important}
+.video-menu button{color:#314760!important}.video-menu button:hover{background:#edf3f9!important}
+.video-label{background:rgba(23,43,69,.82)!important}
+.video-caption,.comment-list p,.notification-row p,.campaign-card-meta,.campaign-metrics,.admin-page>p,.profile-hero p,.profile-hero span{color:#52657d!important}
+.comment-list article{background:#f5f8fc!important;border-color:rgba(24,48,78,.10)!important}
+.dm-chat,.dm-results button,.campaign-card,.admin-stats article,.notification-row,.admin-row,.profile-hero,.rail-card,.business-card{background:#fff!important;color:#172b45!important}
+.dm-message{background:#edf3f9!important;border-color:rgba(24,48,78,.12)!important}.dm-message.mine{background:#e8f2ff!important;border-color:#176bd1!important}
+.dm-message p,.dm-results button,.admin-row strong{color:#172b45!important}
+.dm-send input,.dm-search input{background:#f4f7fb!important;color:#172b45!important}.dm-chat-head{color:#172b45!important}
+.offline-screen{background:#f5f8fc!important;color:#172b45!important}.offline-header{border-color:rgba(24,48,78,.12)!important}
+.offline-header span,.offline-screen>p{color:#65758a!important}.offline-grid article{background:#fff!important;border-color:rgba(24,48,78,.12)!important}
+.business-card{background:linear-gradient(145deg,#effaf4,#f1f7ff 75%)!important}.business-card h3,.business-card p,.business-topline{color:#31546d!important}
+.business-card button{color:#117747!important;background:rgba(21,155,89,.09)!important}.install-help ol{color:#42546b!important}
+.campaign-status{background:#edf3f9!important;color:#176bd1!important}
+@media(max-width:760px){.main-column{background:var(--bg)!important}.mobile-nav{box-shadow:0 -4px 20px rgba(24,48,78,.08)}}
