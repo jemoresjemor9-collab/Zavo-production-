@@ -115,7 +115,7 @@ export default function HomePage() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
-  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [] });
+  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [] });
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
 
@@ -390,12 +390,13 @@ export default function HomePage() {
 
   async function loadAdmin() {
     if (!isAdmin || !db()) return;
-    const [{ data: reports }, { data: campaigns }, { data: users }] = await Promise.all([
+    const [{ data: reports }, { data: campaigns }, { data: users }, { data: adminVideos }] = await Promise.all([
       db()!.from("reports").select("*").order("created_at", { ascending: false }).limit(100),
       db()!.from("ad_campaigns").select("*").order("created_at", { ascending: false }).limit(100),
-      db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(100)
+      db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(100),
+      db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles(username,display_name)").order("created_at", { ascending: false }).limit(100)
     ]);
-    setAdminData({ reports: reports || [], campaigns: campaigns || [], users: users || [] });
+    setAdminData({ reports: reports || [], campaigns: campaigns || [], users: users || [], videos: adminVideos || [] });
   }
   useEffect(() => { if (tab === "Administration") loadAdmin(); }, [tab, isAdmin]);
 
@@ -442,7 +443,7 @@ export default function HomePage() {
           <PwaInstall />
           {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Fermer"><X size={15}/></button></div>}
           {tab === "Administration" && isAdmin ? (
-            <section className="admin-page"><div className="section-kicker">ESPACE SÉCURISÉ</div><h1>Administration ZAVO</h1><p>Surveillance des contenus, signalements et campagnes. Les actions sensibles restent réservées aux comptes administrateurs.</p><div className="admin-stats"><article><strong>{adminData.users.length}</strong><span>Comptes récents</span></article><article><strong>{adminData.reports.length}</strong><span>Signalements</span></article><article><strong>{adminData.campaigns.length}</strong><span>Campagnes</span></article></div><h2>Signalements</h2>{adminData.reports.map((r: any) => <article className="admin-row" key={r.id}><div><strong>{r.reason}</strong><small>{r.target_type} · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")}</small></div><button onClick={async () => { await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id); loadAdmin(); }}>Prendre en charge</button></article>)}<h2>Campagnes</h2>{adminData.campaigns.map((c: any) => <article className="admin-row" key={c.id}><div><strong>{c.title}</strong><small>{c.budget} {c.currency} · {c.status}</small></div><span>{c.objective}</span></article>)}<h2>Comptes récents</h2>{adminData.users.map((u: any) => <article className="admin-row" key={u.id}><div><strong>@{u.username || "utilisateur"}</strong><small>{u.display_name} · {u.account_status}</small></div></article>)}</section>
+            <section className="admin-page"><div className="section-kicker">ESPACE SÉCURISÉ</div><h1>Administration ZAVO</h1><p>Surveillance des contenus, signalements et campagnes. Les actions sensibles restent réservées aux comptes administrateurs.</p><div className="admin-stats"><article><strong>{adminData.users.length}</strong><span>Comptes récents</span></article><article><strong>{adminData.reports.length}</strong><span>Signalements</span></article><article><strong>{adminData.campaigns.length}</strong><span>Campagnes</span></article></div><h2>Signalements</h2>{adminData.reports.map((r: any) => <article className="admin-row" key={r.id}><div><strong>{r.reason}</strong><small>{r.target_type} · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")}</small></div><button onClick={async () => { await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id); loadAdmin(); }}>Prendre en charge</button></article>)}<h2>Campagnes</h2>{adminData.campaigns.map((c: any) => <article className="admin-row" key={c.id}><div><strong>{c.title}</strong><small>{c.budget} {c.currency} · {c.status}</small></div><span>{c.objective}</span></article>)}<h2>Contenus publiés</h2>{adminData.videos.map((v: any) => <article className="admin-row" key={v.id}><div><strong>{(v.caption || "Vidéo sans légende").slice(0,90)}</strong><small>@{v.profiles?.username || "créateur"} · {v.moderation_status} · {v.visibility}</small></div><button onClick={async () => { const nextStatus = v.moderation_status === "restricted" ? "approved" : "restricted"; await db()!.from("videos").update({moderation_status:nextStatus}).eq("id",v.id); await db()!.from("moderation_actions").insert({admin_id:session.user.id,target_video_id:v.id,action:nextStatus==="restricted"?"video_removed":"restore",reason:"Décision de modération depuis le tableau de bord"}); loadAdmin(); }}>{v.moderation_status === "restricted" ? "Restaurer" : "Retirer"}</button></article>)}<h2>Comptes récents</h2>{adminData.users.map((u: any) => <article className="admin-row" key={u.id}><div><strong>@{u.username || "utilisateur"}</strong><small>{u.display_name} · {u.account_status}</small></div><button onClick={async () => { const suspended = u.account_status !== "suspended"; await db()!.from("profiles").update({account_status:suspended?"suspended":"active"}).eq("id",u.id); await db()!.from("moderation_actions").insert({admin_id:session.user.id,target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision de modération depuis le tableau de bord"}); loadAdmin(); }}>{u.account_status === "suspended" ? "Réactiver" : "Suspendre"}</button></article>)}</section>
           ) : tab === "Messages" ? (
             <section className="messages-page">
               <div className="feed-toolbar"><div><div className="section-kicker">ÉCHANGES PRIVÉS</div><h2>Messages</h2></div></div>
