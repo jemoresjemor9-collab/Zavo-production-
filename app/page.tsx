@@ -6,11 +6,12 @@ import {
   Share2, Bell, LogIn, LogOut, Clapperboard, Bookmark, Download, WifiOff,
   Flag, Megaphone, Play, Eye, Settings, X, UploadCloud, Send, Check, Trash2,
   MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck, Repeat2,
-  Mic, Pause, ArrowLeft, Camera, Images, Link2, PlayCircle, EyeOff
+  Mic, Pause, ArrowLeft, Camera, Images, Link2, PlayCircle, EyeOff, BarChart3
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
+import CreatorStudio from "@/app/creator-studio";
 
 type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; identity_changed_at?: string | null; followers_count?: number; followers?: { count: number }[] };
 type Video = {
@@ -581,7 +582,13 @@ export default function HomePage() {
   async function loadNotifications() {
     if (!db() || !session) return;
     const { data } = await db()!.from("notifications").select("*").eq("recipient_id", session.user.id).order("created_at", { ascending: false }).limit(50);
-    setNotifications(data || []);
+    const rows = data || [];
+    const unreadIds = rows.filter((item:any) => !item.read_at).map((item:any) => item.id);
+    if (unreadIds.length) {
+      const readAt = new Date().toISOString();
+      await db()!.from("notifications").update({ read_at: readAt }).eq("recipient_id", session.user.id).in("id", unreadIds);
+      setNotifications(rows.map((item:any) => unreadIds.includes(item.id) ? { ...item, read_at: readAt } : item));
+    } else setNotifications(rows);
   }
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
@@ -1045,7 +1052,7 @@ export default function HomePage() {
     { label: "Pour toi", icon: Home }, { label: "Shorts", icon: Play }, { label: "Vidéos", icon: Clapperboard }, { label: "Découvrir", icon: Compass },
     { label: "Abonnements", icon: Users }, { label: "Messages", icon: MessageCircle },
     { label: "Enregistrés", icon: Bookmark }, { label: "Téléchargements", icon: Download },
-    { label: "Notifications", icon: Bell }, { label: "Profil", icon: UserRound }
+    { label: "Studio", icon: BarChart3 }, { label: "Notifications", icon: Bell }, { label: "Profil", icon: UserRound }
   ];
 
   if (offline) {
@@ -1058,7 +1065,7 @@ export default function HomePage() {
       <aside className="sidebar">
         <a className="brand-lockup" href="/"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><span>ZAVO</span></a>
         <div className="brand-caption">REGARDE · CRÉE · PARTAGE</div>
-        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === item.label ? "nav-link active" : "nav-link"} onClick={() => setTab(item.label)}><Icon size={19}/><span>{item.label}</span></button>; })}</nav>
+        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === item.label ? "nav-link active" : "nav-link"} onClick={() => { if(item.label === "Studio" && !session){setAuthMode("signin");return;} setTab(item.label); }}><Icon size={19}/><span>{item.label}</span></button>; })}</nav>
         <button className="publish-side" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}><Plus size={19}/> Publier</button>
         {isAdmin && <button className="nav-link" onClick={() => setTab("Administration")}><ShieldCheck size={18}/> Administration</button>}
         <div className="sidebar-bottom"><div className="live-indicator"><span/> ZAVO est ouvert à tous</div><p>Une plateforme. Toutes les voix.</p></div>
@@ -1131,8 +1138,10 @@ export default function HomePage() {
               <div className="feed-toolbar"><div><div className="section-kicker">VISIBILITÉ DE TON CONTENU</div><h2>Mes promotions</h2></div><button className="primary-action" onClick={()=>session?setCampaignOpen(true):setAuthMode("signin")}><Megaphone size={15}/> Nouvelle campagne</button></div>
               {myCampaigns.length ? myCampaigns.map((campaign:any)=><article className="campaign-card" key={campaign.id}><div className="campaign-card-top"><strong>{campaign.title}</strong><span className="campaign-status">{campaign.status==="awaiting_payment"?"Paiement en attente":campaign.status==="pending"?"Paiement confirmé — validation ZAVO":campaign.status==="active"?"En diffusion":campaign.status==="paused"?"Suspendue":campaign.status==="completed"?"Terminée":campaign.status==="rejected"?"Refusée":campaign.status}</span></div><div className="campaign-card-meta">{campaign.target_type==="profile"?"Promotion du compte":campaign.target_type==="product"?"Promotion d’un produit ou service":"Promotion d’une vidéo"} · {campaign.country_codes?.length||0} pays · {Number(campaign.daily_budget||600).toLocaleString("fr-FR")} FCFA/jour · {campaign.duration_days||1} jour(s) · total {Number(campaign.budget).toLocaleString("fr-FR")} FCFA · {campaign.objective}</div><div className="campaign-metrics"><span><Eye size={14}/> {campaign.impressions||0} impressions</span><span><ExternalLink size={14}/> {campaign.clicks||0} clics</span><span><Check size={14}/> {campaign.objective_results||0} {campaign.objective==="views"?"vues obtenues":campaign.objective==="profile_visits"?"visites du profil":campaign.objective==="website_clicks"?"visites de l’offre":"demandes de contact"}</span></div>{campaign.status==="active"&&campaign.end_at&&<p className="campaign-note">Ta campagne est en cours de diffusion. Fin prévue le {new Date(campaign.end_at).toLocaleString("fr-FR")}.</p>}{campaign.status==="paused"&&<p className="campaign-note">Ta campagne est temporairement suspendue. Le temps restant est conservé : {Math.floor(Number(campaign.remaining_seconds||0)/86400)} j {Math.floor((Number(campaign.remaining_seconds||0)%86400)/3600)} h.</p>}{campaign.status==="completed"&&<p className="campaign-note">Cette campagne est terminée. Consulte les résultats enregistrés : {campaign.impressions||0} impressions et {campaign.clicks||0} clics.</p>}{campaign.status==="rejected"&&campaign.admin_note&&<p className="campaign-note">Motif : {campaign.admin_note}</p>}{campaign.status==="awaiting_payment"&&<><p className="campaign-note">En attente du règlement. La diffusion commencera uniquement après confirmation du paiement et validation par ZAVO.</p><button className="primary-action" disabled={busy} onClick={()=>startCampaignCheckout(campaign.id)}>{busy?"Préparation…":"Payer ma publicité"}</button></>}</article>) : <section className="empty-state"><div className="empty-icon"><Megaphone/></div><h3>Aucune campagne pour le moment</h3><p>Fais connaître ton compte, une vidéo ou ton produit auprès d’une nouvelle audience.</p><button className="primary-action" onClick={()=>session?setCampaignOpen(true):setAuthMode("signin")}>Créer une campagne</button></section>}
             </section>
+          ) : tab === "Studio" ? (
+            session?.user?.id ? <CreatorStudio key={session.user.id} userId={session.user.id} onNotice={setNotice}/> : <section className="empty-state"><div className="empty-icon"><BarChart3/></div><h3>Ton espace créateur t’attend</h3><p>Connecte-toi pour consulter tes statistiques et gérer tes vidéos.</p><button className="primary-action" onClick={()=>setAuthMode("signin")}>Se connecter</button></section>
           ) : tab === "Notifications" ? (
-            <section><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div></div>{notifications.map((n) => <article className="notification-row" key={n.id}><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></article>)}</section>
+            <section className="notifications-page"><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div><span className="notifications-read-note">Les notifications sont marquées comme lues à l’ouverture.</span></div>{notifications.length ? notifications.map((n) => <article className={"notification-row "+(n.read_at?"notification-read":"notification-unread")} key={n.id}><div className="notification-indicator"/><div><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></div></article>) : <div className="creator-empty-videos"><Bell size={30}/><strong>Aucune notification pour le moment</strong><span>Les nouvelles activités de ta communauté apparaîtront ici.</span></div>}</section>
           ) : tab === "Profil" ? (
             <section className="profile-page">
               <div className="profile-banner" style={profile?.banner_url?{backgroundImage:"url("+profile.banner_url+")"}:undefined}><span>{profile?.banner_url ? "" : "BANNIÈRE ZAVO"}</span></div>
