@@ -147,3 +147,34 @@ html,body,.zavo-app{background:var(--bg)!important;color:var(--text)!important}
 .business-card button{color:#117747!important;background:rgba(21,155,89,.09)!important}.install-help ol{color:#42546b!important}
 .campaign-status{background:#edf3f9!important;color:#176bd1!important}
 @media(max-width:760px){.main-column{background:var(--bg)!important}.mobile-nav{box-shadow:0 -4px 20px rgba(24,48,78,.08)}}
+
+/* ZAVO brand-only palette: every interface surface uses blue, red or green */
+:root{--bg:#103a8a;--surface:#164b9d;--surface-2:#1c5db4;--line:rgba(76,157,255,.48);--muted:#8ab8f5;--text:#d7eaff;--red:#f02645;--blue:#1675e8;--green:#13b96a;--red-soft:rgba(240,38,69,.22);--blue-soft:rgba(22,117,232,.24);--green-soft:rgba(19,185,106,.22)}
+html,body,.zavo-app{background:linear-gradient(145deg,#092c73 0%,#10469b 48%,#073c83 100%)!important;color:#d7eaff!important}
+body{color:#d7eaff!important}
+.sidebar,.topbar,.right-rail,.modal,.profile-panel,.welcome-panel,.video-card,.search-box,.top-icon,.mobile-nav,.dm-chat,.dm-results button,.campaign-card,.admin-stats article,.notification-row,.admin-row,.profile-hero,.rail-card,.business-card,.comment-list article,.offline-screen,.offline-grid article{background:#164b9d!important;color:#d7eaff!important;border-color:rgba(76,157,255,.48)!important}
+.sidebar,.topbar,.video-card,.modal,.welcome-panel{border-color:rgba(76,157,255,.48)!important}
+.brand-caption,.sidebar-bottom,.sidebar-bottom p,.eyebrow,.section-kicker,.field-hint,.video-stats,.creator-meta span,.campaign-card-meta,.offline-header span,.offline-screen>p{color:#8ab8f5!important}
+.nav-link,.mobile-nav button,.secondary-action,.login-button,.switch-auth,.video-menu button,.dm-results button{color:#b9d9ff!important}
+.nav-link:hover,.nav-link.active{background:rgba(22,117,232,.3)!important;color:#d7eaff!important}
+.search-box,.search-box input,.modal input,.modal textarea,.modal select,.modal .upload-drop,.dm-send input,.dm-search input{background:#0c367f!important;color:#d7eaff!important;border-color:#2879d2!important}
+.search-box input::placeholder,.modal input::placeholder,.modal textarea::placeholder{color:#83b4f0!important}
+.welcome-panel,.business-card{background:linear-gradient(120deg,#0e3d91 0%,#1456a5 55%,#087b65 100%)!important}
+.welcome h1 span{color:#13b96a!important}.welcome-copy>p,.modal p,.video-caption,.comment-list p,.notification-row p,.campaign-metrics,.admin-page>p,.profile-hero p,.profile-hero span,.dm-message p{color:#b9d9ff!important}
+.secondary-action,.login-button,.switch-auth{border-color:rgba(76,157,255,.6)!important;background:#104187!important}
+.primary-action,.modal-submit,.mobile-nav button.mobile-publish{background:linear-gradient(105deg,#ed2443 0%,#176fe0 52%,#10a95c 100%)!important;color:#dffff0!important;border:0!important}
+.video-details,.video-menu{background:#0e367c!important;color:#d7eaff!important;border-color:#2879d2!important}
+.video-caption,.creator-meta strong,.video-details strong,.dm-chat-head,.dm-message p,.dm-results button,.admin-row strong,.business-card h3,.business-card p,.business-topline{color:#d7eaff!important}
+.video-frame,.social-video-card .video-frame video{background:#082d70!important}
+.video-label{background:rgba(8,45,112,.94)!important;color:#d7eaff!important}
+.signup-modal{background:#103d8b!important}
+.interest-chip{border:1px solid #2879d2!important;background:#0d367e!important;color:#b9d9ff!important}
+.interest-chip.selected{background:linear-gradient(105deg,rgba(240,38,69,.42),rgba(22,117,232,.45),rgba(19,185,106,.42))!important;border-color:#13b96a!important;color:#e0fff0!important}
+.interest-chip:hover{border-color:#f02645!important}
+.dm-message{background:#0c367f!important;border-color:#2879d2!important}.dm-message.mine{background:#104f9d!important;border-color:#13b96a!important}
+.offline-header{border-color:#2879d2!important}
+.business-card button{color:#b8ffdc!important;background:rgba(19,185,106,.24)!important}
+.campaign-status{background:rgba(22,117,232,.28)!important;color:#b9d9ff!important}
+.video-menu button:hover{background:#164b9d!important}
+.mobile-nav{box-shadow:0 -4px 20px rgba(3,25,74,.45)!important}
+@media(max-width:760px){.main-column{background:transparent!important}}
