@@ -6,7 +6,7 @@ import {
   Share2, Bell, LogIn, LogOut, Clapperboard, Bookmark, Download, WifiOff,
   Flag, Megaphone, Play, Eye, Settings, X, UploadCloud, Send, Check, Trash2,
   MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck, Repeat2,
-  Mic, Pause, ArrowLeft, Camera, Images, Link2, PlayCircle, Eye, EyeOff
+  Mic, Pause, ArrowLeft, Camera, Images, Link2, PlayCircle, EyeOff
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
