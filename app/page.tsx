@@ -202,7 +202,7 @@ export default function HomePage() {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
-  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [] });
+  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [], payments: [] });
   const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
   const [myReposts, setMyReposts] = useState<Video[]>([]);
 
@@ -591,13 +591,14 @@ export default function HomePage() {
 
   async function loadAdmin() {
     if (!isAdmin || !db()) return;
-    const [{ data: reports }, { data: campaigns }, { data: users }, { data: adminVideos }] = await Promise.all([
+    const [{ data: reports }, { data: campaigns }, { data: users }, { data: adminVideos }, { data: payments }] = await Promise.all([
       db()!.from("reports").select("*").order("created_at", { ascending: false }).limit(100),
       db()!.from("ad_campaigns").select("*").order("created_at", { ascending: false }).limit(100),
       db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(100),
-      db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles(username,display_name)").order("created_at", { ascending: false }).limit(100)
+      db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles(username,display_name)").order("created_at", { ascending: false }).limit(100),
+      db()!.from("ad_payments").select("id,campaign_id,owner_id,amount,currency,status,provider,created_at").order("created_at", { ascending: false }).limit(200)
     ]);
-    setAdminData({ reports: reports || [], campaigns: campaigns || [], users: users || [], videos: adminVideos || [] });
+    setAdminData({ reports: reports || [], campaigns: campaigns || [], users: users || [], videos: adminVideos || [], payments: payments || [] });
   }
   useEffect(() => { if (tab === "Administration") loadAdmin(); if (tab === "Promotions") loadMyCampaigns(); }, [tab, isAdmin, session?.user?.id]);
 
@@ -644,7 +645,46 @@ export default function HomePage() {
           <PwaInstall />
           {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Fermer"><X size={15}/></button></div>}
           {tab === "Administration" && isAdmin ? (
-            <section className="admin-page"><div className="section-kicker">ESPACE SÉCURISÉ</div><h1>Administration ZAVO</h1><p>Surveillance des contenus, signalements et campagnes. Les actions sensibles restent réservées aux comptes administrateurs.</p><div className="admin-stats"><article><strong>{adminData.users.length}</strong><span>Comptes récents</span></article><article><strong>{adminData.reports.length}</strong><span>Signalements</span></article><article><strong>{adminData.campaigns.length}</strong><span>Campagnes</span></article></div><h2>Signalements</h2>{adminData.reports.map((r: any) => <article className="admin-row" key={r.id}><div><strong>{r.reason}</strong><small>{r.target_type} · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")}</small></div><button onClick={async () => { await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id); loadAdmin(); }}>Prendre en charge</button></article>)}<h2>Campagnes</h2>{adminData.campaigns.map((c: any) => <article className="admin-row" key={c.id}><div><strong>{c.title}</strong><small>{c.budget} {c.currency} · {c.status}</small></div><span>{c.objective}</span>{c.status !== "active" && c.status !== "cancelled" && c.status !== "rejected" && <button onClick={async () => { await db()!.from("ad_campaigns").update({status:"active",start_at:new Date().toISOString()}).eq("id",c.id); loadAdmin(); }}>Activer après paiement vérifié</button>}</article>)}<h2>Contenus publiés</h2>{adminData.videos.map((v: any) => <article className="admin-row" key={v.id}><div><strong>{(v.caption || "Vidéo sans légende").slice(0,90)}</strong><small>@{v.profiles?.username || "créateur"} · {v.moderation_status} · {v.visibility}</small></div><button onClick={async () => { const nextStatus = v.moderation_status === "restricted" ? "approved" : "restricted"; await db()!.from("videos").update({moderation_status:nextStatus}).eq("id",v.id); await db()!.from("moderation_actions").insert({admin_id:session.user.id,target_video_id:v.id,action:nextStatus==="restricted"?"video_removed":"restore",reason:"Décision de modération depuis le tableau de bord"}); loadAdmin(); }}>{v.moderation_status === "restricted" ? "Restaurer" : "Retirer"}</button></article>)}<h2>Comptes récents</h2>{adminData.users.map((u: any) => <article className="admin-row" key={u.id}><div><strong>@{u.username || "utilisateur"}</strong><small>{u.display_name} · {u.account_status}</small></div><button onClick={async () => { const suspended = u.account_status !== "suspended"; const { error } = await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision de modération depuis le tableau de bord"}}); setNotice(error?.message || (suspended?"Compte suspendu.":"Compte réactivé.")); loadAdmin(); }}>{u.account_status === "suspended" ? "Réactiver" : "Suspendre"}</button></article>)}</section>
+            <section className="admin-page">
+              <div className="section-kicker">ESPACE SÉCURISÉ</div><h1>Administration ZAVO</h1>
+              <p>Centre de contrôle réservé aux administrateurs autorisés. Les paiements ne peuvent pas être validés depuis le navigateur.</p>
+              <div className="admin-stats">
+                <article><strong>{adminData.users.length}</strong><span>Comptes récents</span></article>
+                <article><strong>{adminData.reports.length}</strong><span>Signalements</span></article>
+                <article><strong>{adminData.campaigns.length}</strong><span>Campagnes</span></article>
+                <article><strong>{adminData.payments.length}</strong><span>Transactions</span></article>
+              </div>
+              <h2>Signalements</h2>
+              {adminData.reports.map((r: any) => <article className="admin-row" key={r.id}>
+                <div><strong>{r.reason}</strong><small>{r.target_type} · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")}</small></div>
+                {r.status === "open" && <button onClick={async () => { const { error } = await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id); setNotice(error?.message || "Signalement pris en charge."); await loadAdmin(); }}>Prendre en charge</button>}
+              </article>)}
+              <h2>Campagnes publicitaires</h2>
+              {adminData.campaigns.map((c: any) => {
+                const payment = adminData.payments.find((item: any) => item.campaign_id === c.id && item.status === "succeeded" && item.currency === c.currency && Number(item.amount) >= Number(c.budget));
+                return <article className="admin-row" key={c.id}>
+                  <div><strong>{c.title}</strong><small>{c.budget} {c.currency} · {c.status}</small></div><span>{c.objective}</span>
+                  {c.status !== "active" && c.status !== "cancelled" && c.status !== "rejected" && (payment
+                    ? <button onClick={async () => { const { error } = await db()!.from("ad_campaigns").update({status:"active",start_at:new Date().toISOString()}).eq("id",c.id); setNotice(error?.message || "Campagne activée après vérification du paiement."); await loadAdmin(); }}>Activer la campagne payée</button>
+                    : <small>Paiement non confirmé — activation verrouillée</small>)}
+                </article>;
+              })}
+              <h2>Transactions</h2>
+              {adminData.payments.map((payment: any) => <article className="admin-row" key={payment.id}>
+                <div><strong>{payment.amount} {payment.currency}</strong><small>{payment.provider} · {payment.status} · {new Date(payment.created_at).toLocaleString("fr-FR")}</small></div>
+                <span>Campagne {String(payment.campaign_id).slice(0,8)}</span>
+              </article>)}
+              <h2>Contenus publiés</h2>
+              {adminData.videos.map((v: any) => <article className="admin-row" key={v.id}>
+                <div><strong>{(v.caption || "Vidéo sans légende").slice(0,90)}</strong><small>@{v.profiles?.username || "créateur"} · {v.moderation_status} · {v.visibility}</small></div>
+                <button onClick={async () => { const action = v.moderation_status === "restricted" ? "restore" : "restrict"; const { error } = await db()!.functions.invoke("admin-moderate-video",{body:{video_id:v.id,action,reason:"Décision de modération depuis le tableau de bord"}}); setNotice(error?.message || (action === "restrict" ? "Vidéo retirée." : "Vidéo restaurée.")); await loadAdmin(); }}>{v.moderation_status === "restricted" ? "Restaurer" : "Retirer"}</button>
+              </article>)}
+              <h2>Comptes récents</h2>
+              {adminData.users.map((u: any) => <article className="admin-row" key={u.id}>
+                <div><strong>@{u.username || "utilisateur"}</strong><small>{u.display_name} · {u.account_status}</small></div>
+                <button onClick={async () => { const suspended = u.account_status !== "suspended"; const { error } = await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision de modération depuis le tableau de bord"}}); setNotice(error?.message || (suspended?"Compte suspendu.":"Compte réactivé.")); await loadAdmin(); }}>{u.account_status === "suspended" ? "Réactiver" : "Suspendre"}</button>
+              </article>)}
+            </section>
           ) : tab === "Messages" ? (
             <section className="messages-page">
               <div className="feed-toolbar"><div><div className="section-kicker">ÉCHANGES PRIVÉS</div><h2>Messages</h2></div></div>
