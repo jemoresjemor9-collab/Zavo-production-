@@ -25,6 +25,14 @@ const COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD 
 const COUNTRY_NAMES = new Intl.DisplayNames(["fr"], { type: "region" });
 const COUNTRIES = [...COUNTRY_CODES.map(code => [code, COUNTRY_NAMES.of(code) || code] as const), ["OTHER", "Autre pays"] as const].sort((a,b) => a[1].localeCompare(b[1], "fr"));
 const INTERESTS = ["Super-héros","Animaux","Musique","Divertissement","Jeux vidéo","Chrétien & Bible","Comédie & humour","Sport","Cuisine","Beauté & mode","Technologie & IA","Éducation","Voyage","Actualités","Cinéma & séries","Business & entrepreneuriat","Science","Art & créativité"];
+const FEEDBACK_QUESTION_PRESETS = [
+  "Qu’est-ce que tu apprécies le plus sur ZAVO ?",
+  "Quelle amélioration devrait être prioritaire sur ZAVO ?",
+  "Quelle fonctionnalité de ZAVO t’est la plus utile et pourquoi ?",
+  "Qu’est-ce qui pourrait te donner envie d’inviter tes amis sur ZAVO ?",
+  "As-tu rencontré un problème en utilisant ZAVO ? Décris-le.",
+  "Quelle nouvelle fonctionnalité aimerais-tu retrouver sur ZAVO ?"
+];
 const CURRENCY_BY_COUNTRY: Record<string,{code:string;symbol:string;perUsd:number}> = {
   BJ:{code:"XOF",symbol:"FCFA",perUsd:600},CI:{code:"XOF",symbol:"FCFA",perUsd:600},SN:{code:"XOF",symbol:"FCFA",perUsd:600},TG:{code:"XOF",symbol:"FCFA",perUsd:600},BF:{code:"XOF",symbol:"FCFA",perUsd:600},ML:{code:"XOF",symbol:"FCFA",perUsd:600},NE:{code:"XOF",symbol:"FCFA",perUsd:600},
   FR:{code:"EUR",symbol:"€",perUsd:0.92},DE:{code:"EUR",symbol:"€",perUsd:0.92},BE:{code:"EUR",symbol:"€",perUsd:0.92},ES:{code:"EUR",symbol:"€",perUsd:0.92},IT:{code:"EUR",symbol:"€",perUsd:0.92},PT:{code:"EUR",symbol:"€",perUsd:0.92},NL:{code:"EUR",symbol:"€",perUsd:0.92},
@@ -330,8 +338,9 @@ export default function HomePage() {
   const [adminSection, setAdminSection] = useState("overview");
   const [adminSearch, setAdminSearch] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
-  const [feedbackTitle, setFeedbackTitle] = useState("Ton avis compte pour ZAVO");
-  const [feedbackDescription, setFeedbackDescription] = useState("Aide-nous à améliorer ZAVO. Note ton expérience, dis-nous ce que tu apprécies et ce que tu aimerais voir évoluer.");
+  const [feedbackTitle, setFeedbackTitle] = useState(FEEDBACK_QUESTION_PRESETS[0]);
+  const [feedbackQuestionPreset, setFeedbackQuestionPreset] = useState(FEEDBACK_QUESTION_PRESETS[0]);
+  const [feedbackDescription, setFeedbackDescription] = useState("Prends un instant pour répondre à cette question. Ta réponse sera transmise uniquement à l’équipe ZAVO.");
   const [feedbackStartsAt, setFeedbackStartsAt] = useState(() => new Date(Date.now() + 2 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16));
   const [feedbackEndsAt, setFeedbackEndsAt] = useState(() => new Date(Date.now() + 24 * 60 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16));
   const [feedbackCampaignBusy, setFeedbackCampaignBusy] = useState(false);
@@ -1644,11 +1653,12 @@ export default function HomePage() {
               {adminSection==="reports" && <section className="admin-panel"><h2>Traitement des signalements</h2><p className="admin-note">Les signalements sont confidentiels : seul l’équipe d’administration peut consulter les dossiers et prendre une décision.</p>{adminData.reports.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((r:any)=><article className="admin-row" key={r.id}><div><strong>{r.reason} · {r.target_type}</strong><small>Cible : {String(r.target_id).slice(0,8)}… · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")} · {r.details||"Aucun détail"}</small></div><div className="admin-campaign-actions">{(r.status==="open"||r.status==="reviewing")&&<><button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement pris en charge.");await loadAdmin();}}>En examen</button>{r.target_type==="video"&&<button onClick={async()=>{const {error}=await db()!.functions.invoke("admin-moderate-video",{body:{video_id:r.target_id,action:"restrict",reason:"Retrait après signalement communautaire"}});if(error)setNotice("Retrait impossible : "+error.message);else{await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice("Vidéo retirée après examen.");}await loadAdmin();}}>Retirer la vidéo</button>}{r.target_type==="profile"&&<button onClick={async()=>{const {error}=await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:r.target_id,action:"suspend",reason:"Suspension après signalement communautaire"}});if(error)setNotice("Suspension impossible : "+error.message);else{await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice("Compte suspendu après examen.");}await loadAdmin();}}>Suspendre le compte</button>}{r.target_type==="comment"&&<button onClick={async()=>{const {data,error}=await db()!.functions.invoke("admin-moderate-comment",{body:{comment_id:r.target_id,action:"hide"}});if(error||!data?.success)setNotice("Masquage impossible : "+(data?.error||error?.message||"erreur"));else{await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice("Commentaire masqué après examen.");}await loadAdmin();}}>Masquer le commentaire</button>}<button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement traité.");await loadAdmin();}}>Traité</button><button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"dismissed",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement classé sans suite.");await loadAdmin();}}>Classer</button></>}</div></article>)}</section>}
               {adminSection==="feedback" && <div className="admin-feedback-layout">
                 <section className="admin-panel">
-                  <h2>Créer et programmer un avis utilisateur</h2>
-                  <p className="admin-note">Tu choisis le titre, le message, la date et l'heure de lancement ainsi que la date de fin. L'avis apparaît automatiquement chez les utilisateurs connectés qui n'ont pas encore répondu. Une seule campagne d'avis peut être ouverte à la fois.</p>
+                  <h2>Créer et programmer une question</h2>
+                  <p className="admin-note">Tu choisis une question, tu peux partir d’un modèle ou écrire la tienne, puis tu programmes son lancement et sa fin. Chaque compte peut répondre une seule fois à chaque campagne. Les réponses restent privées : seul le tableau d’administration les affiche. Tu peux aussi arrêter une campagne à tout moment.</p>
                   <form className="feedback-admin-form" onSubmit={createFeedbackCampaign}>
-                    <label>Titre de l'avis<input value={feedbackTitle} onChange={e=>setFeedbackTitle(e.target.value)} maxLength={120} required/></label>
-                    <label>Message présenté aux utilisateurs<textarea value={feedbackDescription} onChange={e=>setFeedbackDescription(e.target.value)} maxLength={600} rows={3} required/></label>
+                    <label>Question préenregistrée<select value={feedbackQuestionPreset} onChange={e=>{setFeedbackQuestionPreset(e.target.value);if(e.target.value!=="__custom__")setFeedbackTitle(e.target.value);}}><option value="__custom__">Écrire ma propre question</option>{FEEDBACK_QUESTION_PRESETS.map(question=><option key={question} value={question}>{question}</option>)}</select></label>
+                    <label>Ta question<input value={feedbackTitle} onChange={e=>{setFeedbackTitle(e.target.value);setFeedbackQuestionPreset("__custom__");}} maxLength={300} required placeholder="Écris la question que les utilisateurs verront"/></label>
+                    <label>Petit message d’introduction (facultatif)<textarea value={feedbackDescription} onChange={e=>setFeedbackDescription(e.target.value)} maxLength={600} rows={2} placeholder="Ajoute une précision pour aider les utilisateurs à répondre…"/></label>
                     <div className="feedback-date-grid">
                       <label>Date et heure de lancement<input type="datetime-local" value={feedbackStartsAt} onChange={e=>setFeedbackStartsAt(e.target.value)} required/></label>
                       <label>Date et heure de fin<input type="datetime-local" value={feedbackEndsAt} onChange={e=>setFeedbackEndsAt(e.target.value)} min={feedbackStartsAt} required/></label>
@@ -1669,7 +1679,7 @@ export default function HomePage() {
                   })}
                 </section>
                 <section className="admin-panel feedback-responses-panel">
-                  <h2>Réponses reçues · {adminData.feedbackResponses.length}</h2>
+                  <h2>Réponses privées reçues · {adminData.feedbackResponses.length}</h2>
                   <div className="feedback-rating-summary">{[5,4,3,2,1].map(star=>{const count=adminData.feedbackResponses.filter((r:any)=>Number(r.rating)===star).length;const pct=adminData.feedbackResponses.length?count/adminData.feedbackResponses.length*100:0;return <div className="feedback-rating-row" key={star}><b>{star} ★</b><span><i style={{width:pct+"%"}}/></span><small>{count}</small></div>;})}</div>
                   {adminData.feedbackResponses.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((response:any)=>{
                     const person=response.profile;
@@ -1679,7 +1689,7 @@ export default function HomePage() {
                         <div><strong>{person?.display_name||"Utilisateur ZAVO"}</strong><small>@{person?.username||"profil indisponible"} · {person?.country_code||"Pays non renseigné"}</small><small>ID : {response.user_id}</small></div>
                       </div>
                       <div className="feedback-response-rating"><span>{"★".repeat(Number(response.rating))}{"☆".repeat(5-Number(response.rating))}</span><small>{response.rating}/5 · {new Date(response.created_at).toLocaleString("fr-FR")}</small></div>
-                      <p><b>Son avis :</b> {response.feedback||"Aucun commentaire écrit."}</p>
+                      <p><b>Sa réponse à la question :</b> {response.feedback||"Aucune réponse écrite."}</p>
                       <p><b>Ce qu'il souhaite voir évoluer :</b> {response.suggestions||"Aucune suggestion ajoutée."}</p>
                       <small>Campagne : {adminData.feedbackCampaigns.find((c:any)=>c.id===response.campaign_id)?.title||"Avis archivé"}</small>
                     </article>;
@@ -1821,12 +1831,12 @@ export default function HomePage() {
                 <div>{[1,2,3,4,5].map(star=><button type="button" key={star} aria-label={star+" étoile(s)"} aria-pressed={feedbackRating===star} className={feedbackRating>=star?"selected":""} onClick={()=>setFeedbackRating(star)}>★</button>)}</div>
                 <small>{feedbackRating?["","Très mauvais","Insuffisant","Moyen","Bien","Excellent"][feedbackRating]:"Choisis de 1 à 5 étoiles"}</small>
               </fieldset>
-              <label>Qu'est-ce que tu penses de ZAVO ?<textarea value={feedbackText} onChange={e=>setFeedbackText(e.target.value)} maxLength={4000} rows={3} placeholder="Ce que tu aimes, ce qui fonctionne moins bien, ton expérience…"/></label>
-              <label>Qu'aimerais-tu voir ajouté ou amélioré ?<textarea value={feedbackSuggestions} onChange={e=>setFeedbackSuggestions(e.target.value)} maxLength={4000} rows={3} placeholder="Fonctionnalités, idées, corrections, attentes…"/></label>
+              <label>Ta réponse à la question<textarea value={feedbackText} onChange={e=>setFeedbackText(e.target.value)} maxLength={4000} rows={4} required placeholder="Écris ta réponse ici…"/></label>
+              <label>Une remarque ou une suggestion supplémentaire (facultatif)<textarea value={feedbackSuggestions} onChange={e=>setFeedbackSuggestions(e.target.value)} maxLength={4000} rows={2} placeholder="Tu peux ajouter une idée ou une précision…"/></label>
               <button className="primary-action modal-submit" type="submit" disabled={feedbackBusy||feedbackRating===0}>{feedbackBusy?"Envoi de ton avis…":"Envoyer mon avis"}</button>
             </form>
             <small className="feedback-privacy-note">Ton nom, ton nom d'utilisateur et ta photo de profil seront visibles uniquement dans le tableau d'administration pour permettre à l'équipe ZAVO de comprendre les retours.</small>
-          </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci d'avoir répondu !</h2><p>Ton avis a bien été transmis à l'équipe ZAVO. Tes retours nous aideront à améliorer l'application.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
+          </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci pour ta réponse !</h2><p>Ta réponse a bien été envoyée en privé à l’équipe ZAVO. Tu as terminé pour cette campagne.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
         </section>
       </div>}
       <nav className="mobile-nav">{nav.slice(0,6).map(item=>{const Icon=item.icon;return <button key={item.label} className={tab===item.label?"active":""} onClick={()=>setTab(item.label)}><Icon size={18}/><span>{item.label}</span></button>;})}<button className={tab==="Studio"?"active":""} onClick={()=>session?setTab("Studio"):setAuthMode("signin")}><BarChart3 size={18}/><span>Studio</span></button></nav>
