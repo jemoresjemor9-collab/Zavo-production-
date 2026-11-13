@@ -354,7 +354,10 @@ export default function HomePage() {
     setBusy(true);
     const base = session.user.id + "/" + crypto.randomUUID();
     const videoPath = base + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const videoMime = getVideoMime(file);\n    let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };\n    try { videoMetadata = await getVideoMetadata(file); } catch {}\n    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, file, { contentType: videoMime, upsert: false });
+    const videoMime = getVideoMime(file);
+    let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };
+    try { videoMetadata = await getVideoMetadata(file); } catch {}
+    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, file, { contentType: videoMime, upsert: false });
     if (upload.error) { setNotice(upload.error.message); setBusy(false); return; }
     const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
     let thumbnailUrl: string | null = null;
