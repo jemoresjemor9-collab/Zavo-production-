@@ -10,13 +10,14 @@ import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
 
+type Profile = { username: string; display_name: string; avatar_url?: string | null };
 type Video = {
   id: string;
   caption: string;
   video_url: string;
   user_id: string;
   views_count: number;
-  profiles?: { username: string; display_name: string; avatar_url?: string | null };
+  profiles?: Profile | Profile[] | null;
 };
 
 export default function HomePage() {
@@ -233,7 +234,9 @@ export default function HomePage() {
             </section>
           ) : (
             <div className="video-grid">
-              {videos.map((video) => (
+              {videos.map((video) => {
+                const creator = Array.isArray(video.profiles) ? video.profiles[0] : video.profiles;
+                return (
                 <article className="video-card" key={video.id}>
                   <div className="video-frame">
                     <video src={video.video_url} controls playsInline preload="metadata" />
@@ -241,8 +244,8 @@ export default function HomePage() {
                   </div>
                   <div className="video-details">
                     <div className="creator-row">
-                      <div className="creator-avatar">{(video.profiles?.display_name || "Z").slice(0, 1).toUpperCase()}</div>
-                      <div className="creator-meta"><strong>{video.profiles?.display_name || "Créateur ZAVO"}</strong><span>@{video.profiles?.username || "createur"}</span></div>
+                      <div className="creator-avatar">{(creator?.display_name || "Z").slice(0, 1).toUpperCase()}</div>
+                      <div className="creator-meta"><strong>{creator?.display_name || "Créateur ZAVO"}</strong><span>@{creator?.username || "createur"}</span></div>
                       <button className="follow-button" onClick={() => setNotice("Les abonnements seront activés dans la prochaine mise à jour.")}>Suivre</button>
                     </div>
                     <p className="video-caption">{video.caption}</p>
@@ -254,7 +257,8 @@ export default function HomePage() {
                     </div>
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           )}
           <footer className="site-footer">
