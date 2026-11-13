@@ -732,12 +732,15 @@ export default function HomePage() {
     if (!db() || !session || !file) return;
     if (!getVideoMime(file).startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
     setBusy(true);
+    let uploadFile:File;
+    try { uploadFile=await trimVideoFile(file,trimStart,trimEnd,trimDuration); }
+    catch(error:any){setNotice(error?.message||"Impossible de découper la vidéo.");setBusy(false);return;}
     const base = session.user.id + "/" + crypto.randomUUID();
-    const videoPath = base + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const videoMime = getVideoMime(file);
+    const videoPath = base + "-" + uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const videoMime = getVideoMime(uploadFile);
     let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };
-    try { videoMetadata = await getVideoMetadata(file); } catch {}
-    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, file, { contentType: videoMime, upsert: false });
+    try { videoMetadata = await getVideoMetadata(uploadFile); } catch {}
+    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, uploadFile, { contentType: videoMime, upsert: false });
     if (upload.error) { setNotice("Impossible d’importer la vidéo : " + upload.error.message); setBusy(false); return; }
     const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
     let thumbnailUrl: string | null = null;
@@ -775,14 +778,17 @@ export default function HomePage() {
     if (!db() || !session || !file) return;
     if (!getVideoMime(file).startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
     setBusy(true);
+    let uploadFile:File;
+    try { uploadFile=await trimVideoFile(file,trimStart,trimEnd,trimDuration); }
+    catch(error:any){setNotice(error?.message||"Impossible de découper la vidéo.");setBusy(false);return;}
     const base=session.user.id+"/"+crypto.randomUUID();
-    const videoPath=base+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const videoPath=base+"-"+uploadFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
     let videoUrl:string|null=null;
     let thumbnailUrl:string|null=null;
     let thumbPath:string|null=null;
     let videoMetadata:{duration_seconds:number|null;aspect_ratio:string|null}={duration_seconds:null,aspect_ratio:null};
-    try { videoMetadata=await getVideoMetadata(file); } catch {}
-    const upload=await db()!.storage.from("zavo-videos").upload(videoPath,file,{contentType:getVideoMime(file),upsert:false});
+    try { videoMetadata=await getVideoMetadata(uploadFile); } catch {}
+    const upload=await db()!.storage.from("zavo-videos").upload(videoPath,uploadFile,{contentType:getVideoMime(uploadFile),upsert:false});
     if(upload.error){setNotice("Le brouillon n’a pas pu être enregistré : "+upload.error.message);setBusy(false);return;}
     videoUrl=db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
     if(thumbnail){
@@ -1309,8 +1315,8 @@ export default function HomePage() {
         <div className="studio-content"><div className="studio-intro"><div className="section-kicker">TON CONTENU, TES RÈGLES</div><h1>Prépare ta publication</h1><p>Importe ta vidéo, vérifie son aperçu et choisis comment elle sera présentée sur ZAVO.</p></div>
           <form onSubmit={publish} className="studio-form">
             <div className="studio-main-column">
-              <label className="studio-upload-drop"><UploadCloud size={28}/><strong>{file?file.name:"Importer une vidéo"}</strong><span>MP4, MOV, WebM et autres formats vidéo courants</span><input type="file" accept="video/*,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.3g2,.ts" required onChange={async e=>{const selected=e.target.files?.[0]||null;setFile(selected);if(selected){try{setThumbnail(await createVideoThumbnail(selected));}catch{setThumbnail(null);}}}}/></label>
-              {videoPreviewUrl && <div className="studio-preview"><div className="studio-preview-head"><strong>Aperçu de ta vidéo</strong><span>{contentType==="short"?"Format Short":"Format vidéo"}</span></div><video src={videoPreviewUrl} controls playsInline preload="metadata"/></div>}
+              <label className="studio-upload-drop"><UploadCloud size={28}/><strong>{file?file.name:"Importer une vidéo"}</strong><span>MP4, MOV, WebM et autres formats vidéo courants</span><input type="file" accept="video/*,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.3g2,.ts" required onChange={async e=>{const selected=e.target.files?.[0]||null;setFile(selected);setTrimStart(0);setTrimEnd(0);setTrimDuration(0);if(selected){try{const metadata=await getVideoMetadata(selected);const duration=metadata.duration_seconds||0;setTrimDuration(duration);setTrimEnd(duration);setThumbnail(await createVideoThumbnail(selected));}catch{setThumbnail(null);}}}}/></label>
+              {videoPreviewUrl && <div className="studio-preview"><div className="studio-preview-head"><strong>Aperçu de ta vidéo</strong><span>{contentType==="short"?"Format Short":"Format vidéo"}</span></div><video src={videoPreviewUrl} controls playsInline preload="metadata"/>{trimDuration>0&&<div className="studio-trim-controls"><strong>Découper la vidéo</strong><p>Définis le passage à conserver. Le fichier publié ou enregistré en brouillon sera généré avec cette coupe.</p><div><label>Début (secondes)<input type="number" min="0" max={Math.max(0,trimEnd-1)} step="1" value={trimStart} onChange={e=>setTrimStart(Math.max(0,Math.min(Number(e.target.value)||0,trimEnd-1)))}/></label><label>Fin (secondes)<input type="number" min={trimStart+1} max={trimDuration} step="1" value={trimEnd} onChange={e=>setTrimEnd(Math.max(trimStart+1,Math.min(Number(e.target.value)||trimDuration,trimDuration)))}/></label></div><small>Passage conservé : {Math.max(0,trimEnd-trimStart)} s sur {trimDuration} s. Sans modification, la vidéo entière est conservée.</small></div>}</div>}
               <div className="studio-section"><h2>Type de publication</h2><p className="studio-hint">Choisis Short ou Vidéo longue. Ce choix est indépendant de l’orientation et du format du fichier : une vidéo verticale peut être une vidéo longue, et une vidéo horizontale peut être un Short.</p><div className="publish-format-grid"><button type="button" className={contentType==="short"?"format-choice selected":"format-choice"} onClick={()=>setContentType("short")}><PlayCircle size={22}/><strong>Short</strong><span>Vidéo courte, verticale ou horizontale</span></button><button type="button" className={contentType==="video"?"format-choice selected":"format-choice"} onClick={()=>setContentType("video")}><Film size={22}/><strong>Vidéo</strong><span>Publication vidéo longue ou complète</span></button></div></div>
               <div className="studio-section"><h2>Miniature de la publication</h2><div className="thumbnail-editor">{thumbnail&&<img src={thumbnailPreviewUrl} alt="Miniature sélectionnée"/>}<div><strong>{thumbnail?"Miniature prête":"Miniature automatique"}</strong><p>ZAVO sélectionne automatiquement une image de ta vidéo. Tu peux la remplacer par une image de ton choix.</p><label className="secondary-action"><ImageIcon size={16}/> Importer une miniature<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setThumbnail(e.target.files?.[0]||null)}/></label></div></div></div>
               <div className="studio-section"><h2>Description et lien</h2><label>Description<textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Présente ta vidéo, ajoute des hashtags et donne envie de la regarder…"/></label><label>Lien externe (facultatif)<div className="input-with-icon"><Link2 size={17}/><input type="url" value={videoTargetUrl} onChange={e=>setVideoTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></div></label><p className="studio-hint">Les liens HTTPS sont reconnus et deviennent cliquables dans la publication.</p></div>
