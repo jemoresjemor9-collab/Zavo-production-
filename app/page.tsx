@@ -488,8 +488,10 @@ export default function HomePage() {
       const remaining = [...ranked];
       while (remaining.length) {
         const previousCreator = diversified.length ? diversified[diversified.length - 1].user_id : null;
-        const previousRun = previousCreator ? diversified.slice().reverse().findIndex((video) => video.user_id !== previousCreator) : -1;
-        const sameCreatorRun = previousCreator ? (previousRun === -1 ? diversified.length : previousRun) : 0;
+        let sameCreatorRun = 0;
+        if (previousCreator) {
+          for (let i = diversified.length - 1; i >= 0 && diversified[i].user_id === previousCreator; i--) sameCreatorRun++;
+        }
         let pickIndex = remaining.findIndex((item) => sameCreatorRun < 2 || item.video.user_id !== previousCreator);
         if (pickIndex < 0) pickIndex = 0;
         diversified.push(remaining.splice(pickIndex, 1)[0].video);
