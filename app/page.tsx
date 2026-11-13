@@ -541,11 +541,29 @@ export default function HomePage() {
 
 function VideoCard({ video, session, liked, saved, following, onLike, onSave, onFollow, onComments, onShare, onReport, onDownload, onBoost, onView, onToggleStats, onToggleDownload, onRepost }: any) {
   const creator = creatorOf(video);
-  const [menu, setMenu] = useState(false);\n  const playerRef = useRef<HTMLVideoElement | null>(null);
+  const [menu, setMenu] = useState(false);
+  const playerRef = useRef<HTMLVideoElement | null>(null);
   const [watchSeconds, setWatchSeconds] = useState(0);
-  const [hiddenStats, setHiddenStats] = useState(false);
   const owner = session?.user?.id === video.user_id;
   const likesCount = video.likes?.[0]?.count || 0;
   const commentsCount = video.comments?.[0]?.count || 0;
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
+          document.querySelectorAll<HTMLVideoElement>("video[data-zavo-feed]").forEach((other) => {
+            if (other !== player) other.pause();
+          });
+          player.play().catch(() => {});
+        } else {
+          player.pause();
+        }
+      }
+    }, { threshold: [0, 0.25, 0.65, 1] });
+    observer.observe(player);
+    return () => observer.disconnect();
+  }, [video.id]);
   return <article className="video-card social-video-card"><div className="video-frame"><video ref={playerRef} data-zavo-feed src={video.video_url} poster={video.thumbnail_url || undefined} controls playsInline muted loop preload="metadata" controlsList="nodownload" onContextMenu={e=>e.preventDefault()} onTimeUpdate={e=>{const s=Math.floor(e.currentTarget.currentTime);if(s>watchSeconds){setWatchSeconds(s);if(s>=2 && watchSeconds<2)onView(video,s);}}}/><span className="video-label">{video.content_type === "short" ? "SHORT" : "VIDÉO"}</span><button className="video-menu-button" onClick={()=>setMenu(!menu)}><MoreHorizontal size={20}/></button>{menu && <div className="video-menu"><button onClick={()=>{onReport(video);setMenu(false);}}><Flag size={14}/> Signaler</button>{owner && <button onClick={()=>{onBoost(video);setMenu(false);}}><Megaphone size={14}/> Booster</button>}{owner && <button onClick={()=>{onToggleStats(video);setMenu(false);}}><Eye size={14}/> {video.show_stats?"Masquer":"Afficher"} mes statistiques</button>}{owner && <button onClick={()=>{onToggleDownload(video);setMenu(false);}}><Download size={14}/> {video.allow_download?"Désactiver":"Autoriser"} le téléchargement</button>}{video.allow_download && <button onClick={()=>{onDownload(video,true);setMenu(false);}}><Download size={14}/> Hors connexion</button>}</div>}</div><div className="video-details"><div className="creator-row"><div className="creator-avatar">{(creator?.display_name||"Z").slice(0,1).toUpperCase()}</div><div className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"}</span></div>{!owner && <button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"Suivre"}</button>}</div><p className="video-caption"><Caption value={video.caption||""}/></p><div className="video-controls"><button className={liked.includes(video.id)?"engagement liked":"engagement"} onClick={()=>onLike(video)}><Heart size={17} fill={liked.includes(video.id)?"currentColor":"none"}/>{(video.show_stats || owner) ? likesCount+(liked.includes(video.id)?1:0) : "J’aime"}</button><button className="engagement" onClick={()=>onComments(video)}><MessageSquare size={17}/>{commentsCount}</button><button className={saved.includes(video.id)?"save-button saved":"save-button"} onClick={()=>onSave(video)} aria-label="Enregistrer"><Bookmark size={17} fill={saved.includes(video.id)?"currentColor":"none"}/></button><button className="save-button" onClick={()=>onRepost(video)} aria-label="Partager sur mon profil"><Repeat2 size={17}/></button><button className="save-button" onClick={()=>onShare(video)} aria-label="Partager"><Share2 size={17}/></button>{video.allow_download && <button className="save-button" onClick={()=>onDownload(video,false)} aria-label="Télécharger"><Download size={17}/></button>}<button className="save-button" onClick={()=>onBoost(video)} aria-label="Booster"><Megaphone size={17}/></button></div>{(video.show_stats || owner) && <div className="video-stats"><Eye size={13}/> {video.views_count||0} vues</div>}</div></article>;
 }
