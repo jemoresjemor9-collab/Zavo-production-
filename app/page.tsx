@@ -814,7 +814,7 @@ export default function HomePage() {
   ];
 
   if (offline) {
-    return <main className="offline-screen"><div className="offline-header"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><strong>ZAVO</strong><span><WifiOff size={16}/> Hors connexion</span></div><h1>Tes vidéos téléchargées</h1><p>Sans Internet, tu peux regarder uniquement les vidéos enregistrées sur cet appareil.</p><div className="offline-grid">{offlineVideos.map((v) => <article key={v.id}><video controls playsInline src={URL.createObjectURL(v.blob)} /><strong>{v.caption || "Vidéo ZAVO"}</strong></article>)}</div>{offlineVideos.length === 0 && <div className="empty-state">Aucune vidéo téléchargée pour le moment.</div>}</main>;
+    return <main className="offline-screen"><div className="offline-header"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><strong>ZAVO</strong><span><WifiOff size={16}/> Hors connexion</span></div><h1>Tes vidéos téléchargées</h1><p>Sans Internet, tu peux regarder uniquement les vidéos enregistrées sur cet appareil.</p><div className="offline-grid">{offlineVideos.map((v) => <OfflineVideoPlayer key={v.id} item={v}/>)}</div>{offlineVideos.length === 0 && <div className="empty-state">Aucune vidéo téléchargée pour le moment.</div>}</main>;
   }
 
   return (
@@ -886,7 +886,7 @@ export default function HomePage() {
             <section className="downloads-page">
               <div className="feed-toolbar"><div><div className="section-kicker">TA BIBLIOTHÈQUE PERSONNELLE</div><h2>Téléchargements ZAVO</h2></div><span>{offlineVideos.length} vidéo(s)</span></div>
               <p className="section-description">Ces vidéos sont enregistrées sur cet appareil. Tu peux les regarder même sans connexion Internet.</p>
-              {offlineVideos.length ? <div className="offline-grid">{offlineVideos.map((v:any)=><article key={v.id}><video controls playsInline preload="metadata" src={URL.createObjectURL(v.blob)} /><strong>{v.caption || "Vidéo ZAVO"}</strong><small>{v.contentType === "short" ? "Short" : "Vidéo"} · Enregistrée le {new Date(v.savedAt).toLocaleDateString("fr-FR")}</small></article>)}</div> : <section className="empty-state"><div className="empty-icon"><Download/></div><h3>Aucun téléchargement pour le moment</h3><p>Sur une vidéo, utilise l’option « Enregistrer dans ZAVO » lorsque le créateur l’autorise. Elle apparaîtra ici.</p><button className="primary-action" onClick={()=>setTab("Pour toi")}>Découvrir les vidéos</button></section>}
+              {offlineVideos.length ? <div className="offline-grid">{offlineVideos.map((v:any)=><OfflineVideoPlayer key={v.id} item={v}/>)}</div> : <section className="empty-state"><div className="empty-icon"><Download/></div><h3>Aucun téléchargement pour le moment</h3><p>Sur une vidéo, utilise l’option « Enregistrer dans ZAVO » lorsque le créateur l’autorise. Elle apparaîtra ici.</p><button className="primary-action" onClick={()=>setTab("Pour toi")}>Découvrir les vidéos</button></section>}
             </section>
           ) : tab === "Messages" ? (          ) : tab === "Promotions" ? (
             <section className="campaigns-page">
@@ -970,6 +970,17 @@ export default function HomePage() {
       <nav className="mobile-nav">      <nav className="mobile-nav">{nav.slice(0,6).map(item=>{const Icon=item.icon;return <button key={item.label} className={tab===item.label?"active":""} onClick={()=>setTab(item.label)}><Icon size={18}/><span>{item.label}</span></button>;})}<button className="mobile-publish" onClick={()=>session?setUploadOpen(true):setAuthMode("signup")}><Plus size={19}/><span>Publier</span></button></nav>
     </main>
   );
+}
+
+function OfflineVideoPlayer({ item }: { item: any }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    if (!item?.blob) return;
+    const url = URL.createObjectURL(item.blob);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [item?.blob]);
+  return <article><video controls playsInline preload="metadata" src={src || undefined}/><strong>{item.caption || "Vidéo ZAVO"}</strong><small>{item.contentType === "short" ? "Short" : "Vidéo"}{item.savedAt ? " · Enregistrée le " + new Date(item.savedAt).toLocaleDateString("fr-FR") : ""}</small></article>;
 }
 
 function VideoCard({ video, session, liked, saved, following, onLike, onSave, onFollow, onComments, onShare, onReport, onDownload, onBoost, onView, onToggleStats, onToggleDownload, onRepost, onCampaignEvent }: any) {
