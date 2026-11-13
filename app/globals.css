@@ -383,3 +383,10 @@ body{color:#d7eaff!important}
 .admin-campaign-row>div{display:flex;flex-direction:column;gap:5px}
 .admin-campaign-row>span{flex:0 0 auto}
 @media(max-width:680px){.admin-overview-grid{grid-template-columns:1fr}.admin-heading{align-items:stretch}.admin-refresh{width:100%}.admin-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.admin-tabs button{width:100%}.admin-row{align-items:flex-start;flex-wrap:wrap}.admin-row>button{margin-left:auto}}
+
+.admin-stats article,.admin-row,.notification-row{border-color:#2879d2!important;background:#0b347a!important;color:#d7eaff!important}
+.admin-row small,.notification-row small{color:#8ab8f5!important}
+.admin-panel{background:#0c367f!important;border-color:#2879d2!important}
+.admin-panel .admin-row{background:#0b347a!important}
+.admin-empty,.admin-loading{color:#8ab8f5!important}
+.admin-note{color:#8ab8f5!important}
