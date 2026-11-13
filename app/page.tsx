@@ -239,7 +239,7 @@ export default function HomePage() {
   const [bio, setBio] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
   const [currencyInfo, setCurrencyInfo] = useState(CURRENCY_BY_COUNTRY.BJ);
-  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [], payments: [] });
+  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [], payments: [], presence: [], activeUsers: 0, totalUsers: 0 });
   const [adminSection, setAdminSection] = useState("overview");
   const [adminSearch, setAdminSearch] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
@@ -938,14 +938,19 @@ export default function HomePage() {
       const results = await Promise.all([
         db()!.from("reports").select("*").order("created_at", { ascending: false }).limit(100),
         db()!.from("ad_campaigns").select("*").order("created_at", { ascending: false }).limit(100),
-        db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(100),
+        db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(1000),
         db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles(username,display_name)").order("created_at", { ascending: false }).limit(100),
-        db()!.from("ad_payments").select("id,campaign_id,owner_id,amount,currency,status,provider,provider_reference,created_at,paid_at").order("created_at", { ascending: false }).limit(200)
+        db()!.from("ad_payments").select("id,campaign_id,owner_id,amount,currency,status,provider,provider_reference,created_at,paid_at").order("created_at", { ascending: false }).limit(200),
+        db()!.functions.invoke("admin-user-analytics")
       ]);
-      const failed = results.find((result:any) => result.error);
+      const failed = results.slice(0,5).find((result:any) => result.error);
       if (failed?.error) throw failed.error;
-      const [reports, campaigns, users, adminVideos, payments] = results.map((result:any) => result.data || []);
-      setAdminData({ reports, campaigns, users, videos: adminVideos, payments });
+      if (results[5].error) throw results[5].error;
+      const [reports, campaigns, profiles, adminVideos, payments] = results.slice(0,5).map((result:any) => result.data || []);
+      const analytics = results[5].data || {};
+      const profileById = new Map(profiles.map((p:any) => [p.id, p]));
+      const users = (analytics.users || []).map((u:any) => ({ ...(profileById.get(u.id) || {}), ...u }));
+      setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence: analytics.presence || [], activeUsers: analytics.active_users || 0, totalUsers: analytics.users?.length || users.length });
     } catch (error:any) {
       setNotice("Chargement du dashboard impossible : " + (error?.message || "erreur inconnue"));
     } finally {
@@ -959,6 +964,21 @@ export default function HomePage() {
     setTab("Promotions");
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id || !db()) return;
+    const userId = session.user.id;
+    const ping = async () => {
+      if (document.visibilityState !== "visible") return;
+      const now = new Date().toISOString();
+      await db()!.from("user_presence").upsert({ user_id: userId, last_seen_at: now, updated_at: now }, { onConflict: "user_id" });
+    };
+    void ping();
+    const interval = window.setInterval(ping, 60000);
+    const onVisible = () => { if (document.visibilityState === "visible") void ping(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
+  }, [session?.user?.id]);
 
   useEffect(() => { if (isAdmin) setTab("Administration"); }, [isAdmin]);
   useEffect(() => { if (tab === "Administration") loadAdmin(); if (tab === "Promotions") loadMyCampaigns(); }, [tab, isAdmin, session?.user?.id]);
@@ -1012,7 +1032,8 @@ export default function HomePage() {
                 <button className="admin-refresh" onClick={loadAdmin} disabled={adminLoading}>{adminLoading ? "Actualisation…" : "Actualiser les données"}</button>
               </div>
               <div className="admin-stats">
-                <article><strong>{adminData.users.length}</strong><span>Comptes chargés</span></article>
+                <article><strong>{adminData.totalUsers}</strong><span>Comptes inscrits</span></article>
+                <article><strong>{adminData.activeUsers}</strong><span>Comptes actifs (5 min)</span></article>
                 <article><strong>{adminData.videos.length}</strong><span>Vidéos chargées</span></article>
                 <article><strong>{adminData.reports.filter((r:any)=>r.status==="open"||r.status==="reviewing").length}</strong><span>Signalements à traiter</span></article>
                 <article><strong>{adminData.campaigns.filter((c:any)=>c.status==="active").length}</strong><span>Campagnes actives</span></article>
@@ -1030,7 +1051,7 @@ export default function HomePage() {
                 <section className="admin-panel"><h2>Campagnes récentes</h2>{adminData.campaigns.slice(0,6).map((c:any)=><article className="admin-row" key={c.id}><div><strong>{c.title}</strong><small>{c.budget} {c.currency} · {c.status}</small></div><span>{c.objective}</span></article>)}{!adminData.campaigns.length&&<p className="admin-empty">Aucune campagne enregistrée.</p>}</section>
                 <section className="admin-panel"><h2>Derniers paiements</h2>{adminData.payments.slice(0,6).map((p:any)=><article className="admin-row" key={p.id}><div><strong>{p.amount} {p.currency}</strong><small>{p.provider} · {p.status}</small></div><span>{new Date(p.created_at).toLocaleDateString("fr-FR")}</span></article>)}{!adminData.payments.length&&<p className="admin-empty">Aucune transaction enregistrée.</p>}</section>
               </div>}
-              {adminSection==="users" && <section className="admin-panel"><h2>Gestion des utilisateurs</h2>{adminData.users.filter((u:any)=>JSON.stringify(u).toLowerCase().includes(adminSearch.toLowerCase())).map((u:any)=><article className="admin-row" key={u.id}><div><strong>@{u.username||"utilisateur"} · {u.display_name||"Sans nom"}</strong><small>{u.account_status} · Inscrit le {new Date(u.created_at).toLocaleDateString("fr-FR")}</small></div><button onClick={async()=>{const suspended=u.account_status!=="suspended";const {error}=await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(suspended?"Compte suspendu.":"Compte réactivé."));await loadAdmin();}}>{u.account_status==="suspended"?"Réactiver":"Suspendre"}</button></article>)}</section>}
+              {adminSection==="users" && <section className="admin-panel"><h2>Gestion des utilisateurs · {adminData.totalUsers} comptes</h2><p className="admin-note">Un compte est indiqué « actif » s’il a envoyé un signal de présence au cours des 5 dernières minutes. La dernière connexion correspond à la date fournie par le service d’authentification.</p>{adminData.users.filter((u:any)=>JSON.stringify(u).toLowerCase().includes(adminSearch.toLowerCase())).map((u:any)=>{const presence=adminData.presence.find((p:any)=>p.user_id===u.id);const online=!!presence?.is_online;return <article className="admin-row admin-user-row" key={u.id}><div className="admin-user-identity"><strong>@{u.username||"utilisateur"} · {u.display_name||u.user_metadata?.display_name||u.user_metadata?.full_name||"Sans nom"}</strong><small>{u.email||"Adresse e-mail non disponible"}</small><small>{u.account_status||"active"} · Inscrit le {u.created_at?new Date(u.created_at).toLocaleDateString("fr-FR"):"—"} · Dernière connexion : {u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString("fr-FR"):"Jamais enregistrée"}</small><small>Dernière activité ZAVO : {presence?.last_seen_at?new Date(presence.last_seen_at).toLocaleString("fr-FR"):"Aucune activité enregistrée"}</small></div><span className={online?"admin-presence online":"admin-presence"}><i/> {online?"En ligne":"Hors ligne"}</span><button onClick={async()=>{const suspended=u.account_status!=="suspended";const {error}=await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(suspended?"Compte suspendu.":"Compte réactivé."));await loadAdmin();}}>{u.account_status==="suspended"?"Réactiver":"Suspendre"}</button></article>})}{!adminData.users.length&&<p className="admin-empty">Aucun compte utilisateur trouvé.</p>}</section>}
               {adminSection==="videos" && <section className="admin-panel"><h2>Modération des vidéos</h2>{adminData.videos.filter((v:any)=>JSON.stringify(v).toLowerCase().includes(adminSearch.toLowerCase())).map((v:any)=><article className="admin-row" key={v.id}><div><strong>{(v.caption||"Vidéo sans légende").slice(0,100)}</strong><small>@{v.profiles?.username||"créateur"} · {v.moderation_status} · {v.visibility}</small></div><button onClick={async()=>{const action=v.moderation_status==="restricted"?"restore":"restrict";const {error}=await db()!.functions.invoke("admin-moderate-video",{body:{video_id:v.id,action,reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(action==="restrict"?"Vidéo retirée.":"Vidéo restaurée."));await loadAdmin();}}>{v.moderation_status==="restricted"?"Restaurer":"Retirer"}</button></article>)}</section>}
               {adminSection==="reports" && <section className="admin-panel"><h2>Traitement des signalements</h2>{adminData.reports.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((r:any)=><article className="admin-row" key={r.id}><div><strong>{r.reason} · {r.target_type}</strong><small>{r.status} · {new Date(r.created_at).toLocaleString("fr-FR")} · {r.details||"Aucun détail"}</small></div>{r.status==="open"&&<button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement pris en charge.");await loadAdmin();}}>Prendre en charge</button>}</article>)}</section>}
               {adminSection==="campaigns" && <section className="admin-panel"><h2>Suivi des campagnes publicitaires</h2>{adminData.campaigns.filter((c:any)=>JSON.stringify(c).toLowerCase().includes(adminSearch.toLowerCase())).map((c:any)=><article className="admin-row admin-campaign-row" key={c.id}><div><strong>{c.title}</strong><small>{Number(c.daily_budget||600).toLocaleString("fr-FR")} FCFA/jour × {c.duration_days||1} jour(s) = {Number(c.budget).toLocaleString("fr-FR")} FCFA · {c.status} · {c.objective}</small><small>{(c.country_codes||[]).join(", ")||"Aucun pays ciblé"} · {c.impressions||0} impressions · {c.clicks||0} clics</small></div><span>{c.status==="awaiting_payment"?"En attente de paiement":c.status==="pending"?"Paiement confirmé — à valider":c.status}</span>{c.status==="pending"&&<button className="primary-action" onClick={()=>activateCampaign(c)}>Valider et lancer</button>}</article>)}</section>}
