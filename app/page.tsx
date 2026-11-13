@@ -312,6 +312,13 @@ export default function HomePage() {
         </div>
       )}
 
+      <nav className="mobile-nav" aria-label="Navigation mobile">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return <button key={item.label} className={tab === item.label ? "active" : ""} onClick={() => setTab(item.label)}><Icon size={19} /><span>{item.label}</span></button>;
+        })}
+        <button className="mobile-publish" onClick={() => session ? setUploadOpen(true) : setAuthMode("signin")}><Plus size={20} /><span>Publier</span></button>
+      </nav>
       {uploadOpen && (
         <div className="modal-backdrop" onClick={() => setUploadOpen(false)}>
           <section className="modal" onClick={(event) => event.stopPropagation()}>
