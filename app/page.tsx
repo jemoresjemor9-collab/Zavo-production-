@@ -1270,7 +1270,7 @@ export default function HomePage() {
         </div>
       </section></div>}
       {logoutConfirm && <div className="modal-backdrop" onClick={()=>setLogoutConfirm(false)}><section className="modal confirm-logout" onClick={e=>e.stopPropagation()}><div className="section-kicker">SESSION ZAVO</div><h2>Es-tu sûr de vouloir te déconnecter ?</h2><p>Tu pourras te reconnecter à tout moment avec ton adresse e-mail et ton mot de passe.</p><div className="confirm-actions"><button className="secondary-action" onClick={()=>setLogoutConfirm(false)}>Annuler</button><button className="primary-action" onClick={performLogout} disabled={busy}>{busy?"Déconnexion…":"Oui, me déconnecter"}</button></div></section></div>}
-      <nav className="mobile-nav">{nav.slice(0,6).map(item=>{const Icon=item.icon;return <button key={item.label} className={tab===item.label?"active":""} onClick={()=>setTab(item.label)}><Icon size={18}/><span>{item.label}</span></button>;})}<button className="mobile-publish" onClick={()=>session?setUploadOpen(true):setAuthMode("signup")}><Plus size={19}/><span>Publier</span></button></nav>
+      <nav className="mobile-nav">{nav.slice(0,6).map(item=>{const Icon=item.icon;return <button key={item.label} className={tab===item.label?"active":""} onClick={()=>setTab(item.label)}><Icon size={18}/><span>{item.label}</span></button>;})}<button className={tab==="Studio"?"active":""} onClick={()=>session?setTab("Studio"):setAuthMode("signin")}><BarChart3 size={18}/><span>Studio</span></button><button className="mobile-publish" onClick={()=>session?setUploadOpen(true):setAuthMode("signup")}><Plus size={19}/><span>Publier</span></button></nav>
     </main>
   );
 }
