@@ -666,6 +666,17 @@ export default function HomePage() {
     return () => { client.removeChannel(channel); };
   }, [session?.user?.id, activeConversation]);
 
+  useEffect(() => {
+    if (tab !== "Messages" || !session?.user?.id || !db()) return;
+    const client = db()!;
+    const channel = client.channel("zavo-inbox-live-" + session.user.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
+        loadConversations();
+      })
+      .subscribe();
+    return () => { client.removeChannel(channel); };
+  }, [tab, session?.user?.id]);
+
   useEffect(() => { if (tab === "Téléchargements") readOfflineVideos().then(setOfflineVideos).catch(() => setOfflineVideos([])); }, [tab]);
 
   async function loadConversations() {
