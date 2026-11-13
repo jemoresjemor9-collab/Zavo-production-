@@ -20,7 +20,7 @@ const fmt=(n:number)=>Math.round(n||0).toLocaleString("fr-FR");
 const shortDate=(s:string)=>new Date(s+"T12:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"short"});
 const storagePath=(url:string|null,bucket:string)=>{if(!url)return null;const marker="/storage/v1/object/public/"+bucket+"/";const i=url.indexOf(marker);return i<0?null:decodeURIComponent(url.slice(i+marker.length).split("?")[0]);};
 
-export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:(s:string)=>void}) {
+export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;onNotice:(s:string)=>void;onCreate?:()=>void}) {
   const [period,setPeriod]=useState(30);
   const [videos,setVideos]=useState<CreatorVideo[]>([]);
   const [views,setViews]=useState<ViewEvent[]>([]);
@@ -207,13 +207,13 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
   return <section className="creator-dashboard">
     <header className="creator-dashboard-hero">
       <div><div className="creator-kicker"><BarChart3 size={15}/> ESPACE CRÉATEUR</div><h1>Studio <span>ZAVO</span></h1><p>Comprends ton audience, suis tes progrès et améliore tes publications.</p></div>
-      <button className="creator-refresh" onClick={()=>void load(false)} disabled={refreshing}><RefreshCw size={16} className={refreshing?"creator-spin":""}/> {refreshing?"Actualisation…":"Actualiser"}</button>
+      <div className="creator-hero-actions">{onCreate&&<button className="creator-create-button" onClick={onCreate}><ImagePlus size={16}/> Créer</button>}<button className="creator-refresh" onClick={()=>void load(false)} disabled={refreshing}><RefreshCw size={16} className={refreshing?"creator-spin":""}/> {refreshing?"Actualisation…":"Actualiser"}</button></div>
     </header>
     <div className="creator-periods" aria-label="Période des statistiques">{[{v:7,l:"7 jours"},{v:30,l:"30 jours"},{v:90,l:"90 jours"}].map(x=><button key={x.v} className={period===x.v?"active":""} onClick={()=>setPeriod(x.v)}>{x.l}</button>)}</div>
     <div className="creator-type-filters" aria-label="Filtrer par type de publication">
       <button className={selectedType==="all"?"active":""} onClick={()=>setSelectedType("all")}>Tout <span>{videos.length}</span></button>
       <button className={selectedType==="short"?"active":""} onClick={()=>setSelectedType("short")}><Play size={14}/> Shorts <span>{metrics.shortCount}</span></button>
-      <button className={selectedType==="video"?"active":""} onClick={()=>setSelectedType("video")}><VideoIcon size={14}/> Vidéos longues <span>{metrics.longCount}</span></button>
+      <button className={selectedType==="video"?"active":""} onClick={()=>setSelectedType("video")}><VideoIcon size={14}/> Vidéos <span>{metrics.longCount}</span></button>
     </div>
     <div className="creator-metric-grid">
       <article className="creator-metric creator-metric-blue"><span><Eye/> Vues totales</span><strong>{fmt(metrics.lifetimeViews)}</strong><small>{fmt(metrics.periodViews)} vues suivies sur {period} jours</small></article>
