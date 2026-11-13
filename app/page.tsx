@@ -445,14 +445,55 @@ export default function HomePage() {
 
   async function sendDirectMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!session || !activeConversation || !dmText.trim()) return;
+    if (!session || !activeConversation || (!dmText.trim() && !dmFile)) return;
+    setDmBusy(true);
+    let mediaUrl: string | null = null;
+    let messageType: "text"|"image"|"video"|"audio" = "text";
+    let mimeType: string | null = null;
+    const mediaName = dmFile?.name || null;
+    if (dmFile) {
+      mimeType = dmFile.type || "application/octet-stream";
+      messageType = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : mimeType.startsWith("audio/") ? "audio" : "text";
+      if (messageType === "text") { setNotice("Format de pièce jointe non pris en charge."); setDmBusy(false); return; }
+      const path = session.user.id + "/messages/" + crypto.randomUUID() + "-" + dmFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const upload = await db()!.storage.from("zavo-media").upload(path, dmFile, { contentType: mimeType });
+      if (upload.error) { setNotice("Le fichier n’a pas pu être envoyé : " + upload.error.message); setDmBusy(false); return; }
+      mediaUrl = db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
+    }
     const body = dmText.trim();
-    setDmText("");
     const { error } = await db()!.from("messages").insert({
-      conversation_id: activeConversation, sender_id: session.user.id, body
+      conversation_id: activeConversation, sender_id: session.user.id, body,
+      message_type: messageType, media_url: mediaUrl, media_name: mediaName, mime_type: mimeType
     });
-    if (error) { setNotice(error.message); setDmText(body); }
-    else await loadMessages(activeConversation);
+    if (error) setNotice(error.message);
+    else { setDmText(""); setDmFile(null); await loadMessages(activeConversation); }
+    setDmBusy(false);
+  }
+
+  async function toggleVoiceRecording() {
+    if (isRecording) { mediaRecorderRef.current?.stop(); setIsRecording(false); return; }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setNotice("L’enregistrement vocal n’est pas disponible sur cet appareil ou ce navigateur.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) recordingChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        setDmFile(new File([blob], "vocal-zavo.webm", { type: blob.type }));
+        stream.getTracks().forEach(track => track.stop());
+        setIsRecording(false);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+    } catch {
+      setNotice("Autorise l’accès au microphone pour envoyer un message vocal.");
+    }
   }
 
   useEffect(() => {
@@ -648,24 +689,66 @@ export default function HomePage() {
   }
 
   async function createCampaign(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!session || !campaignVideo) return;
+    event.preventDefault();
+    if (!session || !db()) { setAuthMode("signin"); return; }
     if (campaignCountries.length < 1 || campaignCountries.length > 8) { setNotice("Sélectionne entre 1 et 8 pays pour ta campagne."); return; }
+    if (campaignType === "video" && !campaignVideo) { setNotice("Choisis la vidéo que tu souhaites promouvoir."); return; }
     const selectedCurrency = currencyInfo;
     const amount = Number(campaignBudget);
     if (!Number.isFinite(amount) || amount < selectedCurrency.perUsd) { setNotice("Le budget minimum est équivalent à 1 USD dans ta devise."); return; }
+    const targetUrl = safeUrl(campaignTargetUrl) || (campaignType === "video" && campaignVideo ? window.location.origin + "/?video=" + campaignVideo.id : campaignType === "profile" ? window.location.origin + "/?profile=" + session.user.id : null);
+    if (campaignType === "product" && !targetUrl) { setNotice("Ajoute un lien valide vers le produit ou la page à présenter."); return; }
+    setBusy(true);
     const { error } = await db()!.from("ad_campaigns").insert({
-      owner_id: session.user.id, video_id: campaignVideo.id, title: "Promotion de ma vidéo",
-      target_url: safeUrl(campaignTargetUrl) || (window.location.origin + "/?video=" + campaignVideo.id),
-      budget: amount, currency: selectedCurrency.code, objective: campaignObjective, country_codes: campaignCountries, status: "awaiting_payment"
+      owner_id: session.user.id,
+      target_type: campaignType,
+      target_profile_id: campaignType === "profile" ? session.user.id : null,
+      video_id: campaignType === "video" ? campaignVideo?.id : null,
+      title: campaignTitle.trim() || (campaignType === "video" ? "Promotion de ma vidéo" : campaignType === "profile" ? "Promotion de mon compte" : "Promotion de mon produit"),
+      target_label: campaignTitle.trim() || null,
+      description: campaignDescription.trim() || null,
+      target_url: targetUrl,
+      budget: amount, currency: selectedCurrency.code, objective: campaignObjective,
+      country_codes: campaignCountries, status: "awaiting_payment"
     });
-    setNotice(error?.message || "Campagne enregistrée en attente de paiement. Aucun débit n'a été effectué.");
-    setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl("");
+    setBusy(false);
+    if (error) setNotice("La campagne n’a pas pu être enregistrée : " + error.message);
+    else {
+      setNotice("Campagne enregistrée. Elle restera en attente : le paiement et la diffusion ne sont pas encore activés.");
+      setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl(""); setCampaignTitle(""); setCampaignDescription("");
+      setCampaignType("video");
+      await loadMyCampaigns();
+    }
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!session) return;
-    const { error } = await db()!.from("profiles").update({ display_name: displayName, bio, country_code: countryCode }).eq("id", session.user.id);
-    setNotice(error?.message || "Profil mis à jour."); setProfileOpen(false); await loadUserData(session.user.id);
+    event.preventDefault();
+    if (!session || !db()) return;
+    setBusy(true);
+    let bannerUrl = profile?.banner_url || null;
+    const photoUrls = [...(profile?.profile_photos || [])];
+    if (profileBannerFile) {
+      const path = session.user.id + "/profile/banner-" + crypto.randomUUID() + "-" + profileBannerFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const result = await db()!.storage.from("zavo-media").upload(path, profileBannerFile, { contentType: profileBannerFile.type || "image/jpeg", upsert: true });
+      if (result.error) { setNotice("La bannière n’a pas pu être envoyée : " + result.error.message); setBusy(false); return; }
+      bannerUrl = db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
+    }
+    for (const photo of profilePhotoFiles) {
+      const path = session.user.id + "/profile/photos/" + crypto.randomUUID() + "-" + photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const result = await db()!.storage.from("zavo-media").upload(path, photo, { contentType: photo.type || "image/jpeg" });
+      if (!result.error) photoUrls.push(db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl);
+    }
+    const { error } = await db()!.from("profiles").update({
+      display_name: displayName, bio, country_code: countryCode,
+      banner_url: bannerUrl, profile_photos: photoUrls.slice(-12)
+    }).eq("id", session.user.id);
+    setBusy(false);
+    if (error) setNotice("Profil non enregistré : " + error.message);
+    else {
+      setNotice("Profil mis à jour.");
+      setProfileOpen(false); setProfileBannerFile(null); setProfilePhotoFiles([]);
+      await loadUserData(session.user.id);
+    }
   }
 
   async function loadMyCampaigns() {
