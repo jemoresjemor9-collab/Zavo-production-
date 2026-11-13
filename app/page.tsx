@@ -152,7 +152,10 @@ export default function HomePage() {
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [signupName, setSignupName] = useState("");
-  const [signupCountry, setSignupCountry] = useState("BJ");
+  const [signupCountry, setSignupCountry] = useState("");
+  const [signupLanguage, setSignupLanguage] = useState("fr");
+  const [languageManuallySelected, setLanguageManuallySelected] = useState(false);
+  const [countryDetection, setCountryDetection] = useState("Détection automatique du pays…");
   const [signupInterests, setSignupInterests] = useState<string[]>([]);
   const [skipInterests, setSkipInterests] = useState(false);
   const [signupStep, setSignupStep] = useState(1);
@@ -202,6 +205,25 @@ export default function HomePage() {
   const [myReposts, setMyReposts] = useState<Video[]>([]);
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
+
+  useEffect(() => {
+    let active = true;
+    fetch("https://ipapi.co/json/").then(r => r.ok ? r.json() : Promise.reject()).then((geo:any) => {
+      if (!active) return;
+      const code = String(geo?.country_code || "").toUpperCase();
+      if (COUNTRIES.some(([c]) => c === code)) setSignupCountry(code);
+      else if (code) setSignupCountry("OTHER");
+      const detected = String(geo?.languages || navigator.language || "fr").split(",")[0].split("-")[0].toLowerCase();
+      if (!languageManuallySelected && ["fr","en","es","pt","de","ar","zh","hi","ja"].includes(detected)) setSignupLanguage(detected);
+      setCountryDetection(code ? "Pays détecté automatiquement — tu peux le modifier." : "Choisis ton pays pour continuer.");
+    }).catch(() => {
+      if (!active) return;
+      const region = (navigator.language || "fr-BJ").split("-")[1]?.toUpperCase();
+      if (region && COUNTRIES.some(([c]) => c === region)) setSignupCountry(region);
+      setCountryDetection("Détection indisponible : sélectionne ton pays manuellement.");
+    });
+    return () => { active = false; };
+  }, [languageManuallySelected]);
 
   useEffect(() => { const info = CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US; setCampaignBudget(String(Math.ceil(info.perUsd))); }, [countryCode]);
 
@@ -378,9 +400,9 @@ export default function HomePage() {
     event.preventDefault(); if (!db()) return; setBusy(true);
     const clean = username.toLowerCase().trim().replace(/[^a-z0-9_]/g, "");
     const { error } = await db()!.auth.signUp({ email, password, options: { data: {
-      username: clean, display_name: signupName.trim(), country_code: signupCountry, interest_tags: skipInterests ? [] : signupInterests
+      username: clean, display_name: signupName.trim(), country_code: signupCountry, preferred_language: signupLanguage, interest_tags: skipInterests ? [] : signupInterests
     } } });
-    setNotice(error?.code === "23505" ? "Cet identifiant vient d'être pris. Retourne aux informations et choisis-en un autre." : error?.message || "Compte créé. Vérifie ton adresse e-mail si une confirmation est demandée.");
+    setNotice(error?.code === "23505" ? "Cet identifiant vient d'être pris. Retourne aux informations et choisis-en un autre." : error?.message || "Compte créé. Bienvenue sur ZAVO !");
     setBusy(false); if (!error) { setAuthMode(null); setSignupStep(1); setSignupInterests([]); }
   }
 
@@ -654,7 +676,7 @@ export default function HomePage() {
 
       {authMode && <div className="modal-backdrop" onClick={() => setAuthMode(null)}><section className="modal signup-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAuthMode(null)}><X/></button><div className="modal-brand"><img src="/icons/zavo-192.png" alt=""/><span>ZAVO</span></div><div className="section-kicker">{authMode === "signin" ? "HEUREUX DE TE REVOIR" : signupStep === 1 ? "REJOINS LA COMMUNAUTÉ" : "PERSONNALISONS TON FIL"}</div><h2>{authMode === "signin" ? "Connexion" : signupStep === 1 ? "Créer ton compte" : "Qu’aimes-tu regarder ?"}</h2>
       {authMode === "signin" ? <form onSubmit={signIn}><label>Adresse e-mail</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required/><label>Mot de passe</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="current-password" required/><button className="primary-action modal-submit" disabled={busy}>{busy ? "Patiente..." : "Se connecter"}</button></form> :
-      signupStep === 1 ? <form onSubmit={continueSignup}><label>Nom complet ou nom d’affichage</label><input value={signupName} onChange={e=>setSignupName(e.target.value)} maxLength={60} placeholder="Comment doit-on t’appeler ?" required/><label>Identifiant unique</label><input value={username} onChange={e=>{setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""));setUsernameStatus("");}} minLength={3} maxLength={24} placeholder="ex. alex_2026" required/><small className="field-hint">3 à 24 caractères : lettres, chiffres et _. Un identifiant déjà utilisé sera refusé.</small>{usernameStatus && <p className="field-error">{usernameStatus}</p>}<label>Adresse e-mail</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required/><label>Pays de résidence</label><select value={signupCountry} onChange={e=>setSignupCountry(e.target.value)} required>{COUNTRIES.map(([code,name])=><option key={code} value={code}>{name}</option>)}</select><label>Mot de passe</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="new-password" required/><button className="primary-action modal-submit" disabled={busy}>{busy ? "Vérification..." : "Continuer"}</button></form> :
+      signupStep === 1 ? <form onSubmit={continueSignup}><label>Nom complet ou nom d’affichage</label><input value={signupName} onChange={e=>setSignupName(e.target.value)} maxLength={60} placeholder="Comment doit-on t’appeler ?" required/><label>Identifiant unique</label><input value={username} onChange={e=>{setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""));setUsernameStatus("");}} minLength={3} maxLength={24} placeholder="ex. alex_2026" required/><small className="field-hint">3 à 24 caractères : lettres, chiffres et _. Un identifiant déjà utilisé sera refusé.</small>{usernameStatus && <p className="field-error">{usernameStatus}</p>}<label>Adresse e-mail</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required/><label>Pays de résidence (obligatoire)</label><select value={signupCountry} onChange={e=>setSignupCountry(e.target.value)} required><option value="" disabled>Choisis ton pays</option>{COUNTRIES.map(([code,name])=><option key={code} value={code}>{name}</option>)}</select><small className="field-hint">{countryDetection}</small><label>Langue de l’application</label><select value={signupLanguage} onChange={e=>{setSignupLanguage(e.target.value);setLanguageManuallySelected(true);}}><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="pt">Português</option><option value="de">Deutsch</option><option value="ar">العربية</option><option value="zh">中文</option><option value="hi">हिन्दी</option><option value="ja">日本語</option></select><small className="field-hint">La langue est proposée selon ton pays ou ton navigateur. Tu peux la modifier.</small><label>Mot de passe</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="new-password" required/><button className="primary-action modal-submit" disabled={busy}>{busy ? "Vérification..." : "Continuer"}</button></form> :
       <form onSubmit={signUp}><p className="interest-intro">Choisis les thèmes que tu aimes. ZAVO s’en servira pour personnaliser ton fil de vidéos. Plusieurs choix sont possibles.</p><div className="interest-grid">{INTERESTS.map(tag=><button type="button" key={tag} className={"interest-chip "+(signupInterests.includes(tag)?"selected":"")} onClick={()=>{setSkipInterests(false);setSignupInterests(old=>old.includes(tag)?old.filter(x=>x!==tag):[...old,tag]);}}>{tag}</button>)}</div><div className="interest-actions"><button type="button" className="secondary-action" onClick={()=>{setSkipInterests(false);setSignupInterests(INTERESTS.slice());}}>Tout sélectionner</button><button type="button" className="secondary-action" onClick={()=>{setSkipInterests(false);setSignupInterests([]);}}>Effacer</button></div><button className="primary-action modal-submit" disabled={busy}>{busy ? "Création..." : "Terminer et créer mon compte"}</button><button type="button" className="switch-auth" onClick={()=>setSignupStep(1)}>Retour aux informations</button><button type="button" className="switch-auth" onClick={()=>{setSkipInterests(true);setSignupInterests([]);}}>Passer cette étape (sans préférences)</button></form>}
       <button className="switch-auth" onClick={() => {setAuthMode(authMode === "signin" ? "signup" : "signin");setSignupStep(1);}}>{authMode === "signin" ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}</button></section></div>}
 
