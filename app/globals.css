@@ -521,3 +521,15 @@ body{color:#d7eaff!important}
 .creator-edit-permissions input{accent-color:#13b96a;width:17px;height:17px;flex:0 0 auto}
 .creator-edit-modal input:focus,.creator-edit-modal select:focus,.creator-edit-modal textarea:focus{outline:2px solid #13b96a;outline-offset:2px}
 @media(max-width:560px){.creator-edit-grid{grid-template-columns:1fr}.creator-edit-modal{padding:16px;max-height:94vh}}
+
+/* ZAVO: creator entry and studio trim controls */
+.create-top-button,.creator-create-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #13b96a;border-radius:9px;padding:9px 13px;background:#0b5c65;color:#13b96a;font-size:12px;font-weight:850;cursor:pointer;white-space:nowrap}
+.create-top-button:hover,.creator-create-button:hover{background:#0b347a;border-color:#2879d2;color:#d7eaff}
+.creator-hero-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.studio-trim-controls{display:flex;flex-direction:column;gap:9px;margin-top:13px;padding:14px;border:1px solid #2879d2;border-radius:11px;background:#0b347a}
+.studio-trim-controls>strong{color:#13b96a;font-size:13px}
+.studio-trim-controls p,.studio-trim-controls small{margin:0;color:#8ab8f5;font-size:11px;line-height:1.55}
+.studio-trim-controls>div{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.studio-trim-controls label{display:flex;flex-direction:column;gap:6px;color:#b9d9ff;font-size:11px;font-weight:800}
+.studio-trim-controls input{width:100%;padding:9px;border:1px solid #2879d2;border-radius:8px;background:#092b6c;color:#d7eaff}
+@media(max-width:760px){.create-top-button{padding:8px 9px}.create-top-button span{display:inline}.creator-hero-actions{width:100%}.creator-hero-actions button{flex:1}}
