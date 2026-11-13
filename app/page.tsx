@@ -20,7 +20,7 @@ type Video = {
   show_stats: boolean; moderation_status?: string; isSponsored?: boolean; campaign_id?: string; target_url?: string | null; objective?: string; category?: string | null; allow_offline_download?: boolean; allow_gallery_download?: boolean; profiles?: Profile | Profile[] | null;
   likes?: { count: number }[]; comments?: { count: number }[];
 };
-type Comment = { id: string; body: string; created_at: string; profiles?: Profile | Profile[] | null };
+type Comment = { id: string; body: string; created_at: string; parent_id?: string | null; likes?: { count: number }[]; likedByMe?: boolean; profiles?: Profile | Profile[] | null };
 const COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW".split(" ");
 const COUNTRY_NAMES = new Intl.DisplayNames(["fr"], { type: "region" });
 const COUNTRIES = [...COUNTRY_CODES.map(code => [code, COUNTRY_NAMES.of(code) || code] as const), ["OTHER", "Autre pays"] as const].sort((a,b) => a[1].localeCompare(b[1], "fr"));
@@ -192,6 +192,7 @@ export default function HomePage() {
   const [commentsVideo, setCommentsVideo] = useState<Video | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState("");
+  const [replyToComment, setReplyToComment] = useState<Comment | null>(null);
   const [search, setSearch] = useState("");
   const [offline, setOffline] = useState(false);
   const [offlineVideos, setOfflineVideos] = useState<any[]>([]);
@@ -755,17 +756,32 @@ export default function HomePage() {
   }
 
   async function openComments(video: Video) {
-    setCommentsVideo(video); setCommentText("");
-    const { data } = await db()!.from("comments").select("id,body,created_at,profiles(id,username,display_name,avatar_url)").eq("video_id", video.id).order("created_at", { ascending: true }).limit(100);
-    setComments((data || []) as Comment[]);
+    setCommentsVideo(video); setCommentText(""); setReplyToComment(null);
+    const { data, error } = await db()!.from("comments").select("id,body,created_at,parent_id,profiles(id,username,display_name,avatar_url),likes:comment_likes(count)").eq("video_id", video.id).order("created_at", { ascending: true }).limit(150);
+    if (error) { setNotice("Impossible de charger les commentaires : "+error.message); return; }
+    const rows=(data||[]) as Comment[];
+    if (session?.user?.id && rows.length) {
+      const {data:mine}=await db()!.from("comment_likes").select("comment_id").eq("user_id",session.user.id).in("comment_id",rows.map(c=>c.id));
+      const likedIds=new Set((mine||[]).map((x:any)=>x.comment_id));
+      setComments(rows.map(c=>({...c,likedByMe:likedIds.has(c.id)})));
+    } else setComments(rows);
+  }
+  async function toggleCommentLike(comment:Comment) {
+    if (!session) { setAuthMode("signin"); return; }
+    const liked=!!comment.likedByMe;
+    const result=liked
+      ? await db()!.from("comment_likes").delete().eq("comment_id",comment.id).eq("user_id",session.user.id)
+      : await db()!.from("comment_likes").insert({comment_id:comment.id,user_id:session.user.id});
+    if (result.error) { setNotice("Impossible de mettre à jour le J’aime : "+result.error.message); return; }
+    setComments(items=>items.map(c=>c.id===comment.id?{...c,likedByMe:!liked,likes:[{count:Math.max(0,(c.likes?.[0]?.count||0)+(liked?-1:1))}]}:c));
   }
   async function sendComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session) { setAuthMode("signin"); return; }
     if (!commentsVideo || !commentText.trim()) return;
-    const { error } = await db()!.from("comments").insert({ video_id: commentsVideo.id, user_id: session.user.id, body: commentText.trim() });
+    const { error } = await db()!.from("comments").insert({ video_id: commentsVideo.id, user_id: session.user.id, body: commentText.trim(), parent_id: replyToComment?.id || null });
     if (error) setNotice(error.message);
-    else { setCommentText(""); await openComments(commentsVideo); await loadVideos(); }
+    else { setCommentText(""); setReplyToComment(null); await openComments(commentsVideo); await loadVideos(); }
   }
 
   async function recordView(video: Video, seconds: number) {
@@ -1189,7 +1205,7 @@ export default function HomePage() {
         </div>
       </section></div>}
 
-      {commentsVideo && <div className="modal-backdrop" onClick={()=>setCommentsVideo(null)}><section className="modal comments-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCommentsVideo(null)}><X/></button><h2>Commentaires</h2><div className="comment-list">{comments.map(c=>{const p=Array.isArray(c.profiles)?c.profiles[0]:c.profiles;return <article key={c.id}><strong>{p?.display_name || "Utilisateur"}</strong><p><Caption value={c.body}/></p></article>;})}{comments.length===0 && <p>Aucun commentaire. Lance la conversation.</p>}</div><form onSubmit={sendComment} className="comment-form"><input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Écrire un commentaire..." maxLength={1000}/><button className="primary-action" disabled={!commentText.trim()}><Send size={16}/></button></form></section></div>}
+      {commentsVideo && <div className="modal-backdrop" onClick={()=>setCommentsVideo(null)}><section className="modal comments-modal comments-modal-enhanced" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCommentsVideo(null)}><X/></button><h2>Commentaires <span>{comments.length}</span></h2><div className="comment-list">{comments.filter(c=>!c.parent_id).map(c=>{const p=Array.isArray(c.profiles)?c.profiles[0]:c.profiles;const replies=comments.filter(r=>r.parent_id===c.id);return <article className="comment-thread" key={c.id}><div className="comment-author-line"><strong>{p?.display_name || "Utilisateur"}</strong><small>{new Date(c.created_at).toLocaleDateString("fr-FR")}</small></div><p><Caption value={c.body}/></p><div className="comment-actions"><button onClick={()=>void toggleCommentLike(c)} className={c.likedByMe?"comment-liked":""}><Heart size={13} fill={c.likedByMe?"currentColor":"none"}/> {c.likes?.[0]?.count||0}</button><button onClick={()=>setReplyToComment(c)}>Répondre</button></div>{replies.map(reply=>{const rp=Array.isArray(reply.profiles)?reply.profiles[0]:reply.profiles;return <div className="comment-reply" key={reply.id}><div className="comment-author-line"><strong>{rp?.display_name||"Utilisateur"}</strong><small>{new Date(reply.created_at).toLocaleDateString("fr-FR")}</small></div><p><Caption value={reply.body}/></p><div className="comment-actions"><button onClick={()=>void toggleCommentLike(reply)} className={reply.likedByMe?"comment-liked":""}><Heart size={13} fill={reply.likedByMe?"currentColor":"none"}/> {reply.likes?.[0]?.count||0}</button></div></div>;})}</article>;})}{comments.length===0 && <p>Aucun commentaire. Lance la conversation.</p>}</div>{replyToComment&&<div className="comment-replying"><span>Réponse à : {(Array.isArray(replyToComment.profiles)?replyToComment.profiles[0]:replyToComment.profiles)?.display_name||"Utilisateur"}</span><button onClick={()=>setReplyToComment(null)} aria-label="Annuler la réponse"><X size={14}/></button></div>}<form onSubmit={sendComment} className="comment-form"><input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder={replyToComment?"Écrire une réponse…":"Écrire un commentaire…"} maxLength={1000}/><button className="primary-action" disabled={!commentText.trim()}><Send size={16}/></button></form></section></div>}
 
       {campaignOpen && <div className="creator-studio-overlay"><section className="creator-studio boost-studio">
         <header className="studio-header"><button type="button" onClick={()=>setCampaignOpen(false)}><ArrowLeft size={18}/> Retour</button><div className="studio-brand"><img src="/icons/zavo-192.png" alt=""/> <strong>Centre de promotion ZAVO</strong></div><span>CAMPAGNE</span></header>
