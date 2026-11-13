@@ -26,6 +26,39 @@ const visitorKey = () => {
   if (!key) { key = crypto.randomUUID(); localStorage.setItem("zavo_visitor_key", key); }
   return key;
 };
+function getVideoMime(file: File) {
+  if (file.type) return file.type;
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  const types: Record<string, string> = {
+    mkv: "video/x-matroska", avi: "video/x-msvideo", wmv: "video/x-ms-wmv",
+    flv: "video/x-flv", mpg: "video/mpeg", mpeg: "video/mpeg",
+    "3gp": "video/3gpp", "3g2": "video/3gpp2", ts: "video/mp2t",
+    mov: "video/quicktime", mp4: "video/mp4", webm: "video/webm", ogv: "video/ogg"
+  };
+  return types[ext || ""] || "video/mp4";
+}
+
+async function getVideoMetadata(file: File) {
+  const objectUrl = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.preload = "metadata";
+  video.src = objectUrl;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Metadata unavailable"));
+    });
+    return {
+      duration_seconds: Number.isFinite(video.duration) ? Math.round(video.duration) : null,
+      aspect_ratio: video.videoWidth && video.videoHeight ? (video.videoWidth / video.videoHeight).toFixed(3) : null
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
 async function createVideoThumbnail(file: File): Promise<File | null> {
   const objectUrl = URL.createObjectURL(file);
   const video = document.createElement("video");
@@ -297,7 +330,7 @@ export default function HomePage() {
     setBusy(true);
     const base = session.user.id + "/" + crypto.randomUUID();
     const videoPath = base + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, file, { contentType: file.type, upsert: false });
+    const videoMime = getVideoMime(file);\n    let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };\n    try { videoMetadata = await getVideoMetadata(file); } catch {}\n    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, file, { contentType: videoMime, upsert: false });
     if (upload.error) { setNotice(upload.error.message); setBusy(false); return; }
     const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
     let thumbnailUrl: string | null = null;
@@ -308,7 +341,7 @@ export default function HomePage() {
     }
     const { error } = await db()!.from("videos").insert({
       user_id: session.user.id, caption, video_url: videoUrl, thumbnail_url: thumbnailUrl,
-      content_type: contentType, allow_download: allowDownload, show_stats: showStats, visibility: "public"
+      content_type: contentType, allow_download: allowDownload, show_stats: showStats, visibility: "public", ...videoMetadata
     });
     if (error) setNotice(error.message);
     else { setNotice("Ta vidéo est publiée sur ZAVO."); setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setAllowDownload(false); await loadVideos(); }
@@ -525,7 +558,7 @@ export default function HomePage() {
 
       {authMode && <div className="modal-backdrop" onClick={() => setAuthMode(null)}><section className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAuthMode(null)}><X/></button><div className="modal-brand"><img src="/icons/zavo-192.png" alt=""/><span>ZAVO</span></div><div className="section-kicker">{authMode === "signin" ? "HEUREUX DE TE REVOIR" : "REJOINS LA COMMUNAUTÉ"}</div><h2>{authMode === "signin" ? "Connexion" : "Créer ton compte"}</h2><form onSubmit={authMode === "signin" ? signIn : signUp}>{authMode === "signup" && <><label>Nom d'utilisateur</label><input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} placeholder="ex. monpseudo" required/></>}<label>Adresse e-mail</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/><label>Mot de passe</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} required/><button className="primary-action modal-submit" disabled={busy}>{busy ? "Patiente..." : authMode === "signin" ? "Se connecter" : "Créer mon compte"}</button></form><button className="switch-auth" onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}>{authMode === "signin" ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}</button></section></div>}
 
-      {uploadOpen && <div className="modal-backdrop" onClick={() => setUploadOpen(false)}><section className="modal wide-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setUploadOpen(false)}><X/></button><div className="section-kicker">PARTAGE TON CONTENU</div><h2>Publier sur ZAVO</h2><form onSubmit={publish}><label className="upload-drop"><UploadCloud size={25}/><span>{file ? file.name : "Choisir une vidéo (formats vidéo courants)"}</span><input type="file" accept="video/*" required onChange={async e=>{const selected=e.target.files?.[0]||null;setFile(selected);if(selected){try{setThumbnail(await createVideoThumbnail(selected));}catch{setThumbnail(null);}}}}/></label><div className="form-grid"><label>Format de publication<select value={contentType} onChange={e=>setContentType(e.target.value as "short"|"video")}><option value="short">Short / vidéo courte</option><option value="video">Vidéo complète</option></select></label><label>Miniature automatique ou image personnalisée<input type="file" accept="image/*" onChange={e=>setThumbnail(e.target.files?.[0] || null)}/></label></div><label>Légende et liens</label><textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Décris ta vidéo, ajoute des hashtags et des liens https://..."/><label className="check-line"><input type="checkbox" checked={allowDownload} onChange={e=>setAllowDownload(e.target.checked)}/> Autoriser le téléchargement de ma vidéo (galerie et hors connexion)</label><label className="check-line"><input type="checkbox" checked={showStats} onChange={e=>setShowStats(e.target.checked)}/> Afficher les statistiques publiques de cette vidéo</label><button className="primary-action modal-submit" disabled={busy || !file}>{busy ? "Publication en cours..." : "Publier maintenant"}</button></form></section></div>}
+      {uploadOpen && <div className="modal-backdrop" onClick={() => setUploadOpen(false)}><section className="modal wide-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setUploadOpen(false)}><X/></button><div className="section-kicker">PARTAGE TON CONTENU</div><h2>Publier sur ZAVO</h2><form onSubmit={publish}><label className="upload-drop"><UploadCloud size={25}/><span>{file ? file.name : "Choisir une vidéo (formats vidéo courants)"}</span><input type="file" accept="video/*,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.3g2,.ts" required onChange={async e=>{const selected=e.target.files?.[0]||null;setFile(selected);if(selected){try{setThumbnail(await createVideoThumbnail(selected));}catch{setThumbnail(null);}}}}/></label><div className="form-grid"><label>Format de publication<select value={contentType} onChange={e=>setContentType(e.target.value as "short"|"video")}><option value="short">Short / vidéo courte</option><option value="video">Vidéo complète</option></select></label><label>Miniature automatique ou image personnalisée<input type="file" accept="image/*" onChange={e=>setThumbnail(e.target.files?.[0] || null)}/></label></div><label>Légende et liens</label><textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Décris ta vidéo, ajoute des hashtags et des liens https://..."/><label className="check-line"><input type="checkbox" checked={allowDownload} onChange={e=>setAllowDownload(e.target.checked)}/> Autoriser le téléchargement de ma vidéo (galerie et hors connexion)</label><label className="check-line"><input type="checkbox" checked={showStats} onChange={e=>setShowStats(e.target.checked)}/> Afficher les statistiques publiques de cette vidéo</label><button className="primary-action modal-submit" disabled={busy || !file}>{busy ? "Publication en cours..." : "Publier maintenant"}</button></form></section></div>}
 
       {commentsVideo && <div className="modal-backdrop" onClick={()=>setCommentsVideo(null)}><section className="modal comments-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCommentsVideo(null)}><X/></button><h2>Commentaires</h2><div className="comment-list">{comments.map(c=>{const p=Array.isArray(c.profiles)?c.profiles[0]:c.profiles;return <article key={c.id}><strong>{p?.display_name || "Utilisateur"}</strong><p>{c.body}</p></article>;})}{comments.length===0 && <p>Aucun commentaire. Lance la conversation.</p>}</div><form onSubmit={sendComment} className="comment-form"><input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Écrire un commentaire..." maxLength={1000}/><button className="primary-action" disabled={!commentText.trim()}><Send size={16}/></button></form></section></div>}
 
