@@ -394,3 +394,8 @@ body{color:#d7eaff!important}
 /* Admin analytics and presence */
 .admin-user-row{align-items:center!important;gap:12px}.admin-user-identity{display:flex;flex:1;min-width:220px;flex-direction:column;gap:5px}.admin-user-identity strong{overflow-wrap:anywhere}.admin-user-identity small{overflow-wrap:anywhere}.admin-presence{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:#8ab8f5;font-size:12px;font-weight:750}.admin-presence i{width:8px;height:8px;border-radius:50%;background:#e52d3f;display:inline-block}.admin-presence.online{color:#13b96a}.admin-presence.online i{background:#13b96a;box-shadow:0 0 0 4px rgba(19,185,106,.13)}
 @media(max-width:680px){.admin-user-row{align-items:flex-start!important}.admin-user-identity{width:100%;min-width:0}.admin-presence{margin-right:auto}}
+
+.admin-campaign-mode{display:flex;flex-direction:column;gap:8px;padding:14px;margin:12px 0 16px;border:1px solid #2879d2;border-radius:12px;background:#0b347a}
+.admin-campaign-mode label{color:#13b96a;font-size:13px;font-weight:800}
+.admin-campaign-mode select{width:100%;max-width:520px;padding:11px 12px;border:1px solid #2879d2;border-radius:9px;background:#092b6c;color:#d7eaff;font:inherit;font-weight:700}
+.admin-campaign-mode small{color:#8ab8f5;font-size:12px;line-height:1.5}
