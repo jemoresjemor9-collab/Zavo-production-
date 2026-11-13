@@ -358,3 +358,28 @@ body{color:#d7eaff!important}
 .profile-password-form input{width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--text)}
 .profile-banner{background-size:cover;background-position:center}
 @media(max-width:640px){.profile-avatar{width:82px;height:82px;flex-basis:82px}.profile-password-form{padding:16px}}
+
+
+/* ZAVO admin workspace */
+.admin-page{display:flex;flex-direction:column;gap:18px;padding-bottom:35px}
+.admin-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.admin-heading h1{margin:5px 0 8px;color:#d7eaff;font-size:clamp(25px,4vw,34px)}
+.admin-heading p,.admin-note{margin:0;color:#8ab8f5;font-size:13px;line-height:1.65}
+.admin-refresh{border:1px solid #13b96a;border-radius:10px;padding:11px 15px;background:#0b347a;color:#13b96a;font-weight:800;cursor:pointer}
+.admin-refresh:disabled{opacity:.55;cursor:wait}
+.admin-toolbar{display:flex;flex-direction:column;gap:12px;padding:13px;border:1px solid #2879d2;border-radius:14px;background:#0b347a}
+.admin-tabs{display:flex;gap:7px;flex-wrap:wrap}
+.admin-tabs button{border:1px solid #2879d2;border-radius:9px;padding:9px 12px;background:#092b6c;color:#b9d9ff;font-weight:700;font-size:12px;cursor:pointer}
+.admin-tabs button.active{border-color:#13b96a;background:#0b5c65;color:#13b96a}
+.admin-search{width:100%;border:1px solid #2879d2;border-radius:9px;padding:11px 13px;background:#092b6c;color:#d7eaff;outline:none}
+.admin-search:focus{border-color:#13b96a}
+.admin-search::placeholder{color:#8ab8f5}
+.admin-loading,.admin-empty{padding:13px;color:#8ab8f5;font-size:13px}
+.admin-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.admin-panel{min-width:0;padding:16px;border:1px solid #2879d2;border-radius:14px;background:#0c367f}
+.admin-panel h2{margin:0 0 12px;color:#d7eaff;font-size:17px}
+.admin-panel .admin-row{padding:12px 0}
+.admin-campaign-row{align-items:flex-start}
+.admin-campaign-row>div{display:flex;flex-direction:column;gap:5px}
+.admin-campaign-row>span{flex:0 0 auto}
+@media(max-width:680px){.admin-overview-grid{grid-template-columns:1fr}.admin-heading{align-items:stretch}.admin-refresh{width:100%}.admin-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.admin-tabs button{width:100%}.admin-row{align-items:flex-start;flex-wrap:wrap}.admin-row>button{margin-left:auto}}
