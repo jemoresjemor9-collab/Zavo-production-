@@ -41,7 +41,8 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
     const [videoResult,followersResult,newFollowersResult,draftResult]=await Promise.all([
       supabase.from("videos").select("id,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
       supabase.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId),
-      supabase.from("follows").select("created_at").eq("following_id",userId).gte("created_at",since.toISOString())
+      supabase.from("follows").select("created_at").eq("following_id",userId).gte("created_at",since.toISOString()),
+      supabase.from("video_drafts").select("*").eq("user_id",userId).order("updated_at",{ascending:false}).limit(100)
     ]);
     if(videoResult.error){onNotice("Le Studio n’a pas pu charger tes vidéos : "+videoResult.error.message);setLoading(false);setRefreshing(false);return;}
     const ownVideos=(videoResult.data||[]) as CreatorVideo[];
