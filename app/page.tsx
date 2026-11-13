@@ -277,6 +277,9 @@ export default function HomePage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [dmSearch, setDmSearch] = useState("");
   const [dmUsers, setDmUsers] = useState<Profile[]>([]);
+  const [dmConversations, setDmConversations] = useState<any[]>([]);
+  const [dmInboxLoading, setDmInboxLoading] = useState(false);
+  const [activeConversationUser, setActiveConversationUser] = useState<Profile | null>(null);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [dmMessages, setDmMessages] = useState<any[]>([]);
   const [dmText, setDmText] = useState("");
@@ -630,7 +633,85 @@ export default function HomePage() {
       .subscribe();
     return () => { client.removeChannel(channel); };
   }, [session?.user?.id]);
+  useEffect(() => {
+    if (tab !== "Messages" || !session?.user?.id) return;
+    loadConversations();
+  }, [tab, session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !activeConversation || !db()) return;
+    const client = db()!;
+    const channel = client.channel("zavo-messages-" + activeConversation)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: "conversation_id=eq." + activeConversation }, async (payload) => {
+        if (payload.eventType === "INSERT") {
+          const incoming = payload.new as any;
+          if (incoming.sender_id !== session.user.id && incoming.read_at == null) {
+            const { data: signed } = incoming.media_url
+              ? await client.storage.from("zavo-message-media").createSignedUrl(incoming.media_url, 3600)
+              : { data: null };
+            const hydrated = { ...incoming, media_url: signed?.signedUrl || incoming.media_url };
+            setDmMessages(current => current.some((item:any) => item.id === incoming.id) ? current : [...current, hydrated]);
+            await client.from("messages").update({ read_at: new Date().toISOString() }).eq("id", incoming.id).is("read_at", null);
+          } else {
+            setDmMessages(current => current.some((item:any) => item.id === incoming.id) ? current : [...current, incoming]);
+          }
+          loadConversations();
+        } else if (payload.eventType === "UPDATE") {
+          const updated = payload.new as any;
+          setDmMessages(current => current.map((item:any) => item.id === updated.id ? { ...item, read_at: updated.read_at } : item));
+          loadConversations();
+        }
+      })
+      .subscribe();
+    return () => { client.removeChannel(channel); };
+  }, [session?.user?.id, activeConversation]);
+
   useEffect(() => { if (tab === "Téléchargements") readOfflineVideos().then(setOfflineVideos).catch(() => setOfflineVideos([])); }, [tab]);
+
+  async function loadConversations() {
+    if (!db() || !session?.user?.id) { setDmConversations([]); return; }
+    setDmInboxLoading(true);
+    const { data: rows, error } = await db()!.from("conversations")
+      .select("id,created_at,conversation_members(user_id,profiles!conversation_members_user_id_fkey(id,username,display_name,avatar_url))")
+      .order("created_at", { ascending: false }).limit(100);
+    if (error) {
+      setNotice("Impossible de charger les conversations : " + error.message);
+      setDmInboxLoading(false);
+      return;
+    }
+    const ids = (rows || []).map((row:any) => row.id);
+    if (!ids.length) {
+      setDmConversations([]);
+      setDmInboxLoading(false);
+      return;
+    }
+    const { data: messageRows, error: messagesError } = await db()!.from("messages")
+      .select("id,conversation_id,sender_id,body,created_at,read_at,message_type")
+      .in("conversation_id", ids).order("created_at", { ascending: false }).limit(1000);
+    if (messagesError) {
+      setNotice("Impossible de charger les derniers messages : " + messagesError.message);
+      setDmInboxLoading(false);
+      return;
+    }
+    const latest = new Map<string, any>();
+    const unread = new Map<string, number>();
+    for (const message of messageRows || []) {
+      if (!latest.has(message.conversation_id)) latest.set(message.conversation_id, message);
+      if (message.sender_id !== session.user.id && !message.read_at) {
+        unread.set(message.conversation_id, (unread.get(message.conversation_id) || 0) + 1);
+      }
+    }
+    const conversations = (rows || []).map((row:any) => {
+      const members = (row.conversation_members || []).map((member:any) => ({
+        ...member,
+        profile: Array.isArray(member.profiles) ? member.profiles[0] : member.profiles
+      }));
+      const other = members.find((member:any) => member.user_id !== session.user.id)?.profile || null;
+      return { id: row.id, created_at: row.created_at, other, lastMessage: latest.get(row.id) || null, unreadCount: unread.get(row.id) || 0 };
+    }).sort((a:any,b:any) => new Date(b.lastMessage?.created_at || b.created_at).getTime() - new Date(a.lastMessage?.created_at || a.created_at).getTime());
+    setDmConversations(conversations);
+    setDmInboxLoading(false);
+  }
 
   async function searchPeople() {
     if (!db() || !session || dmSearch.trim().length < 2) { setDmUsers([]); return; }
@@ -653,6 +734,7 @@ export default function HomePage() {
       return;
     }
     setActiveConversation(data.conversation_id);
+    setActiveConversationUser(dmUsers.find(user => user.id === recipientId) || null);
     setDmUsers([]);
     setDmSearch("");
     await loadMessages(data.conversation_id);
@@ -1390,8 +1472,23 @@ export default function HomePage() {
               <div className="feed-toolbar"><div><div className="section-kicker">ÉCHANGES PRIVÉS</div><h2>Messages</h2></div></div>
               {!session ? <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Connecte-toi pour écrire</h3><button className="primary-action" onClick={()=>setAuthMode("signin")}>Connexion</button></section> : <>
                 <div className="dm-search"><Search size={17}/><input value={dmSearch} onChange={e=>setDmSearch(e.target.value)} onKeyUp={e=>{if(e.key==="Enter")searchPeople();}} placeholder="Rechercher un créateur ou un utilisateur"/><button onClick={searchPeople}>Rechercher</button></div>
+                {!activeConversation && <section className="dm-inbox">
+                  <div className="dm-inbox-heading"><strong>Conversations récentes</strong><button type="button" onClick={loadConversations} disabled={dmInboxLoading}>{dmInboxLoading ? "Actualisation…" : "Actualiser"}</button></div>
+                  {dmInboxLoading && dmConversations.length===0 ? <p className="dm-loading">Chargement des conversations…</p> :
+                    dmConversations.length===0 ? <p className="dm-inbox-empty">Tes discussions apparaîtront ici. Recherche un utilisateur pour démarrer.</p> :
+                    dmConversations.map((conversation:any) => <button type="button" className="dm-inbox-item" key={conversation.id} onClick={async () => {
+                      setActiveConversation(conversation.id);
+                      setActiveConversationUser(conversation.other);
+                      await loadMessages(conversation.id);
+                    }}>
+                      <span className="dm-inbox-avatar">{(conversation.other?.display_name || conversation.other?.username || "Z").slice(0,1).toUpperCase()}</span>
+                      <span className="dm-inbox-copy"><strong>{conversation.other?.display_name || "Utilisateur ZAVO"}</strong><small>@{conversation.other?.username || "zavo"}</small><span>{conversation.lastMessage?.message_type==="image"?"📷 Photo":conversation.lastMessage?.message_type==="video"?"🎬 Vidéo":conversation.lastMessage?.message_type==="audio"?"🎙️ Message vocal":conversation.lastMessage?.body || "Nouvelle conversation"}</span></span>
+                      <span className="dm-inbox-meta">{conversation.lastMessage?.created_at ? new Date(conversation.lastMessage.created_at).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}) : ""}{conversation.unreadCount>0&&<b>{conversation.unreadCount>99?"99+":conversation.unreadCount}</b>}</span>
+                    </button>)
+                  }
+                </section>}
                 {dmUsers.length>0 && <div className="dm-results">{dmUsers.map(u=><button key={u.id} onClick={()=>openConversation(u.id)}><span className="creator-avatar">{(u.display_name||"Z").slice(0,1).toUpperCase()}</span><span><strong>{u.display_name||"Utilisateur"}</strong><small>@{u.username||"zavo"} · {(u.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</small></span><MessageCircle size={17}/></button>)}</div>}
-                {activeConversation ? <div className="dm-chat"><div className="dm-chat-head"><strong>Conversation privée</strong><button onClick={()=>setActiveConversation(null)}>Fermer</button></div><div className="dm-chat-list">{dmMessages.map(m=><div key={m.id} className={m.sender_id===session.user.id?"dm-message mine":"dm-message"}>{m.message_type==="image"&&m.media_url&&<a href={m.media_url} target="_blank" rel="noopener noreferrer"><img className="dm-media-image" src={m.media_url} alt={m.media_name||"Image reçue"}/></a>}{m.message_type==="video"&&m.media_url&&<video className="dm-media-video" src={m.media_url} controls playsInline/>}{m.message_type==="audio"&&m.media_url&&<audio className="dm-media-audio" src={m.media_url} controls/>}{m.body&&<p>{m.body}</p>}<small>{new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}{m.sender_id===session.user.id&&m.read_at?" · Lu":""}</small></div>)}</div>{dmFile&&<div className="dm-attachment-preview"><span>{dmFile.name}</span><button type="button" onClick={()=>setDmFile(null)} aria-label="Retirer la pièce jointe"><X size={14}/></button></div>}<form className="dm-send" onSubmit={sendDirectMessage}><label className="dm-attach" title="Joindre une photo ou une vidéo"><Images size={18}/><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={e=>setDmFile(e.target.files?.[0]||null)}/></label><button type="button" className={isRecording?"recording-button":"dm-attach"} onClick={toggleVoiceRecording} title={isRecording?"Arrêter l’enregistrement":"Enregistrer un vocal"}>{isRecording?<Pause size={18}/>:<Mic size={18}/>}</button><input value={dmText} onChange={e=>setDmText(e.target.value)} maxLength={4000} placeholder={isRecording?"Enregistrement vocal…":"Écrire un message..."}/><button className="primary-action" disabled={dmBusy||(!dmText.trim()&&!dmFile)}><Send size={16}/></button></form></div> : <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Parle directement aux créateurs</h3><p>Recherche un utilisateur pour commencer une conversation privée. Les messages sont synchronisés en temps réel.</p></section>}
+                {activeConversation ? <div className="dm-chat"><div className="dm-chat-head"><div className="dm-chat-person"><span className="dm-inbox-avatar">{(activeConversationUser?.display_name || activeConversationUser?.username || "Z").slice(0,1).toUpperCase()}</span><span><strong>{activeConversationUser?.display_name || "Conversation privée"}</strong><small>@{activeConversationUser?.username || "zavo"}</small></span></div><button onClick={()=>{setActiveConversation(null);setActiveConversationUser(null);loadConversations();}}>Retour</button></div><div className="dm-chat-list">{dmMessages.map(m=><div key={m.id} className={m.sender_id===session.user.id?"dm-message mine":"dm-message"}>{m.message_type==="image"&&m.media_url&&<a href={m.media_url} target="_blank" rel="noopener noreferrer"><img className="dm-media-image" src={m.media_url} alt={m.media_name||"Image reçue"}/></a>}{m.message_type==="video"&&m.media_url&&<video className="dm-media-video" src={m.media_url} controls playsInline/>}{m.message_type==="audio"&&m.media_url&&<audio className="dm-media-audio" src={m.media_url} controls/>}{m.body&&<p>{m.body}</p>}<small>{new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}{m.sender_id===session.user.id&&m.read_at?" · Lu":""}</small></div>)}</div>{dmFile&&<div className="dm-attachment-preview"><span>{dmFile.name}</span><button type="button" onClick={()=>setDmFile(null)} aria-label="Retirer la pièce jointe"><X size={14}/></button></div>}<form className="dm-send" onSubmit={sendDirectMessage}><label className="dm-attach" title="Joindre une photo ou une vidéo"><Images size={18}/><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={e=>setDmFile(e.target.files?.[0]||null)}/></label><button type="button" className={isRecording?"recording-button":"dm-attach"} onClick={toggleVoiceRecording} title={isRecording?"Arrêter l’enregistrement":"Enregistrer un vocal"}>{isRecording?<Pause size={18}/>:<Mic size={18}/>}</button><input value={dmText} onChange={e=>setDmText(e.target.value)} maxLength={4000} placeholder={isRecording?"Enregistrement vocal…":"Écrire un message..."}/><button className="primary-action" disabled={dmBusy||(!dmText.trim()&&!dmFile)}><Send size={16}/></button></form></div> : <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Parle directement aux créateurs</h3><p>Recherche un utilisateur pour commencer une conversation privée. Les messages sont synchronisés en temps réel.</p></section>}
                 {dmBusy&&<p className="dm-loading">Ouverture de la conversation…</p>}
               </>}
             </section>
