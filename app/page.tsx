@@ -700,6 +700,41 @@ export default function HomePage() {
     setBusy(false);
   }
 
+  async function saveVideoDraft() {
+    if (!db() || !session || !file) return;
+    if (!getVideoMime(file).startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
+    setBusy(true);
+    const base=session.user.id+"/"+crypto.randomUUID();
+    const videoPath=base+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    let videoUrl:string|null=null;
+    let thumbnailUrl:string|null=null;
+    let thumbPath:string|null=null;
+    let videoMetadata:{duration_seconds:number|null;aspect_ratio:string|null}={duration_seconds:null,aspect_ratio:null};
+    try { videoMetadata=await getVideoMetadata(file); } catch {}
+    const upload=await db()!.storage.from("zavo-videos").upload(videoPath,file,{contentType:getVideoMime(file),upsert:false});
+    if(upload.error){setNotice("Le brouillon n’a pas pu être enregistré : "+upload.error.message);setBusy(false);return;}
+    videoUrl=db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
+    if(thumbnail){
+      thumbPath=session.user.id+"/"+crypto.randomUUID()+"-"+thumbnail.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      const thumbUpload=await db()!.storage.from("zavo-media").upload(thumbPath,thumbnail,{contentType:thumbnail.type||"image/jpeg"});
+      if(!thumbUpload.error)thumbnailUrl=db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
+    }
+    const {error}=await db()!.from("video_drafts").insert({
+      user_id:session.user.id,caption:caption.trim(),video_url:videoUrl,thumbnail_url:thumbnailUrl,
+      target_url:safeUrl(videoTargetUrl),category:videoCategory,content_type:contentType,
+      interest_tags:videoInterestTags,allow_offline_download:allowOfflineDownload,
+      allow_gallery_download:allowGalleryDownload,show_stats:showStats,...videoMetadata
+    });
+    setBusy(false);
+    if(error){
+      await db()!.storage.from("zavo-videos").remove([videoPath]);
+      if(thumbPath)await db()!.storage.from("zavo-media").remove([thumbPath]);
+      setNotice("Impossible d’enregistrer le brouillon : "+error.message);return;
+    }
+    setUploadOpen(false);setFile(null);setThumbnail(null);setCaption("");setVideoTargetUrl("");
+    setNotice("Brouillon enregistré dans ton Studio ZAVO.");setTab("Studio");
+  }
+
   async function toggleVideoStats(video: Video) {
     if (!session || video.user_id !== session.user.id) return;
     const nextValue = !video.show_stats;
@@ -1200,7 +1235,7 @@ export default function HomePage() {
               <div className="studio-section"><h2>Description et lien</h2><label>Description<textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Présente ta vidéo, ajoute des hashtags et donne envie de la regarder…"/></label><label>Lien externe (facultatif)<div className="input-with-icon"><Link2 size={17}/><input type="url" value={videoTargetUrl} onChange={e=>setVideoTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></div></label><p className="studio-hint">Les liens HTTPS sont reconnus et deviennent cliquables dans la publication.</p></div>
               <div className="studio-section"><h2>Catégorie</h2><select value={videoCategory} onChange={e=>setVideoCategory(e.target.value)}>{INTERESTS.map(tag=><option key={tag} value={tag}>{tag}</option>)}</select><div className="interest-grid compact-interest-grid">{INTERESTS.map(tag=><button type="button" key={tag} className={"interest-chip "+(videoInterestTags.includes(tag)?"selected":"")} onClick={()=>setVideoInterestTags(old=>old.includes(tag)?old.filter(x=>x!==tag):[...old,tag])}>{tag}</button>)}</div></div>
             </div>
-            <aside className="studio-settings"><div className="studio-settings-card"><h2>Paramètres de la vidéo</h2><p>Tu gardes le contrôle sur les téléchargements.</p><label className="permission-row"><span><strong>Enregistrer dans ZAVO</strong><small>Permettre aux personnes de garder la vidéo dans leurs téléchargements pour la regarder hors connexion.</small></span><input type="checkbox" checked={allowOfflineDownload} onChange={e=>setAllowOfflineDownload(e.target.checked)}/></label><label className="permission-row"><span><strong>Télécharger dans la galerie</strong><small>Autoriser le téléchargement direct sur le téléphone ou l’ordinateur.</small></span><input type="checkbox" checked={allowGalleryDownload} onChange={e=>setAllowGalleryDownload(e.target.checked)}/></label><label className="permission-row"><span><strong>Afficher les statistiques</strong><small>Rendre visibles les vues et les interactions.</small></span><input type="checkbox" checked={showStats} onChange={e=>setShowStats(e.target.checked)}/></label></div><div className="studio-settings-card studio-boost-card"><div className="studio-boost-icon"><Megaphone/></div><h2>Booster cette vidéo</h2><p>Option facultative. Prépare une campagne pour toucher des personnes dans les pays que tu choisis.</p><label className="permission-row"><span><strong>Ouvrir le parcours de promotion après publication</strong><small>Tu pourras définir ton objectif, ton budget et tes pays ciblés.</small></span><input type="checkbox" checked={boostAfterPublish} onChange={e=>setBoostAfterPublish(e.target.checked)}/></label></div><div className="studio-submit-card"><button className="primary-action modal-submit" disabled={busy||!file}>{busy?"Publication en cours…":"Publier sur ZAVO"}</button><small>Vérifie l’aperçu et les autorisations avant de publier.</small></div></aside>
+            <aside className="studio-settings"><div className="studio-settings-card"><h2>Paramètres de la vidéo</h2><p>Tu gardes le contrôle sur les téléchargements.</p><label className="permission-row"><span><strong>Enregistrer dans ZAVO</strong><small>Permettre aux personnes de garder la vidéo dans leurs téléchargements pour la regarder hors connexion.</small></span><input type="checkbox" checked={allowOfflineDownload} onChange={e=>setAllowOfflineDownload(e.target.checked)}/></label><label className="permission-row"><span><strong>Télécharger dans la galerie</strong><small>Autoriser le téléchargement direct sur le téléphone ou l’ordinateur.</small></span><input type="checkbox" checked={allowGalleryDownload} onChange={e=>setAllowGalleryDownload(e.target.checked)}/></label><label className="permission-row"><span><strong>Afficher les statistiques</strong><small>Rendre visibles les vues et les interactions.</small></span><input type="checkbox" checked={showStats} onChange={e=>setShowStats(e.target.checked)}/></label></div><div className="studio-settings-card studio-boost-card"><div className="studio-boost-icon"><Megaphone/></div><h2>Booster cette vidéo</h2><p>Option facultative. Prépare une campagne pour toucher des personnes dans les pays que tu choisis.</p><label className="permission-row"><span><strong>Ouvrir le parcours de promotion après publication</strong><small>Tu pourras définir ton objectif, ton budget et tes pays ciblés.</small></span><input type="checkbox" checked={boostAfterPublish} onChange={e=>setBoostAfterPublish(e.target.checked)}/></label></div><div className="studio-submit-card"><button type="button" className="secondary-action draft-save-action" onClick={saveVideoDraft} disabled={busy||!file}>{busy?"Enregistrement…":"Enregistrer comme brouillon"}</button><button className="primary-action modal-submit" disabled={busy||!file}>{busy?"Publication en cours…":"Publier sur ZAVO"}</button><small>Tu peux publier maintenant ou enregistrer ta préparation pour plus tard.</small></div></aside>
           </form>
         </div>
       </section></div>}
