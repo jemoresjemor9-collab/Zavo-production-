@@ -351,11 +351,15 @@ export default function HomePage() {
     const preferred = profile?.interest_tags || [];
     if (preferred.length && (tab === "Pour toi" || tab === "Découvrir")) organic = [...organic].sort((a: any,b: any) => { const score=(v:any)=>(v.interest_tags||[]).filter((tag:string)=>preferred.includes(tag)).length*3+(v.hashtags||[]).filter((tag:string)=>preferred.includes(tag)).length; return score(b)-score(a); });
     if (tab === "Pour toi" || tab === "Découvrir") {
+      const audienceCountry = profile?.country_code || "BJ";
+      const campaignNow = new Date().toISOString();
       const { data: campaigns } = await db()!.from("ad_campaigns")
         .select("id,video_id,target_url,objective,country_codes,target_type,description,video:videos!ad_campaigns_video_id_fkey(id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,show_stats,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count))")
         .eq("status", "active").not("video_id", "is", null)
-        .or("start_at.is.null,start_at.lte." + new Date().toISOString())
-        .or("end_at.is.null,end_at.gt." + new Date().toISOString()).limit(12);
+        .lte("start_at", campaignNow).gt("end_at", campaignNow)
+        .or("country_codes.eq.{},country_codes.cs.{" + audienceCountry + "},country_codes.cs.{ALL}")
+        .order("last_served_at", { ascending: true, nullsFirst: true })
+        .order("created_at", { ascending: true }).limit(12);
       const sponsored = (campaigns || []).filter((campaign: any) => {
         const countries = campaign.country_codes || [];
         return !countries.length || countries.includes("ALL") || countries.includes(profile?.country_code || "BJ");
@@ -375,8 +379,10 @@ export default function HomePage() {
       const { data: promoRows } = await db()!.from("ad_campaigns")
         .select("id,title,target_type,description,target_url,target_profile_id,owner_id,country_codes,objective,start_at,end_at,owner:profiles!ad_campaigns_owner_id_fkey(id,username,display_name,avatar_url),target_profile:profiles!ad_campaigns_target_profile_id_fkey(id,username,display_name,avatar_url)")
         .eq("status", "active").in("target_type", ["profile", "product"])
-        .or("start_at.is.null,start_at.lte." + new Date().toISOString())
-        .or("end_at.is.null,end_at.gt." + new Date().toISOString()).limit(12);
+        .lte("start_at", campaignNow).gt("end_at", campaignNow)
+        .or("country_codes.eq.{},country_codes.cs.{" + audienceCountry + "},country_codes.cs.{ALL}")
+        .order("last_served_at", { ascending: true, nullsFirst: true })
+        .order("created_at", { ascending: true }).limit(12);
       setSponsoredPromos((promoRows || []).filter((campaign: any) => {
         const countries = campaign.country_codes || [];
         return !countries.length || countries.includes("ALL") || countries.includes(profile?.country_code || "BJ");
