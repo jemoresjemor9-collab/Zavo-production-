@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "Découvre des créateurs, partage tes vidéos et fais connaître ton activité sur ZAVO.",
   applicationName: "ZAVO",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "ZAVO" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "ZAVO" },
   icons: {
     icon: [
       { url: "/icons/zavo-192.png", sizes: "192x192", type: "image/png" },
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#090c12",
+  themeColor: "#103a8a",
   viewportFit: "cover"
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
