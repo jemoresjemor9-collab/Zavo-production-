@@ -412,7 +412,7 @@ export default function HomePage() {
       .eq("visibility", "public").eq("moderation_status", "approved");
     if (tab === "Shorts") query = query.eq("content_type", "short");
     if (tab === "Vidéos") query = query.eq("content_type", "video");
-    query = query.order("created_at", { ascending: false }).limit(40);
+    query = query.order("created_at", { ascending: false }).limit(120);
     if (tab === "Abonnements" && session?.user?.id) {
       const { data: follows } = await db()!.from("follows").select("following_id").eq("follower_id", session.user.id);
       const ids = (follows || []).map((row: any) => row.following_id);
@@ -428,8 +428,74 @@ export default function HomePage() {
     const { data, error } = await query;
     if (error) { console.error("ZAVO feed query failed", error); setNotice("Le fil n’a pas pu se connecter aux vidéos. Code : " + (error.code || "inconnu") + ". Réessaie dans un instant."); setVideos([]); return; }
     let organic = (data || []) as Video[];
-    const preferred = profile?.interest_tags || [];
-    if (preferred.length && (tab === "Pour toi" || tab === "Découvrir")) organic = [...organic].sort((a: any,b: any) => { const score=(v:any)=>(v.interest_tags||[]).filter((tag:string)=>preferred.includes(tag)).length*3+(v.hashtags||[]).filter((tag:string)=>preferred.includes(tag)).length; return score(b)-score(a); });
+    if (tab === "Pour toi" || tab === "Découvrir") {
+      // Build an interest profile from explicit preferences and the member's own positive actions.
+      // If the member is signed out or has no history, use recent engagement + freshness instead.
+      const preferred = profile?.interest_tags || [];
+      const userId = session?.user?.id;
+      let affinityTags = new Map<string, number>();
+      let affinityCategories = new Map<string, number>();
+      let followedCreators = new Set<string>();
+      if (userId) {
+        const [likeRows, savedRows, followRows] = await Promise.all([
+          db()!.from("likes").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
+          db()!.from("saved_videos").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
+          db()!.from("follows").select("following_id").eq("follower_id", userId)
+        ]);
+        followedCreators = new Set((followRows.data || []).map((row: any) => row.following_id));
+        const likedIds = (likeRows.data || []).map((row: any) => row.video_id);
+        const savedIds = (savedRows.data || []).map((row: any) => row.video_id);
+        const weights = new Map<string, number>();
+        likedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 3));
+        savedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 2));
+        const affinityIds = [...weights.keys()].slice(0, 100);
+        if (affinityIds.length) {
+          const { data: affinityVideos } = await db()!.from("videos")
+            .select("id,category,interest_tags,hashtags")
+            .in("id", affinityIds)
+            .eq("visibility", "public")
+            .eq("moderation_status", "approved");
+          (affinityVideos || []).forEach((video: any) => {
+            const weight = weights.get(video.id) || 1;
+            if (video.category) affinityCategories.set(video.category, (affinityCategories.get(video.category) || 0) + weight);
+            [...(video.interest_tags || []), ...(video.hashtags || [])].forEach((tag: string) => {
+              const normalized = String(tag).trim().toLocaleLowerCase();
+              if (normalized) affinityTags.set(normalized, (affinityTags.get(normalized) || 0) + weight);
+            });
+          });
+        }
+      }
+      const now = Date.now();
+      const scoreVideo = (video: any) => {
+        const tags = [...(video.interest_tags || []), ...(video.hashtags || [])]
+          .map((tag: string) => String(tag).trim().toLocaleLowerCase()).filter(Boolean);
+        const explicitMatches = tags.filter((tag: string) => preferred.some((item: string) => item.toLocaleLowerCase() === tag)).length;
+        const learnedAffinity = tags.reduce((sum: number, tag: string) => sum + (affinityTags.get(tag) || 0), 0);
+        const categoryAffinity = video.category ? (affinityCategories.get(video.category) || 0) : 0;
+        const followedBonus = followedCreators.has(video.user_id) ? 2.5 : 0;
+        const likeCount = Number(video.likes?.[0]?.count || 0);
+        const commentCount = Number(video.comments?.[0]?.count || 0);
+        const views = Number(video.views_count || 0);
+        const engagement = Math.log1p(likeCount * 2 + commentCount * 3) * 0.8 + Math.log1p(views) * 0.18;
+        const ageHours = Math.max(0, (now - new Date(video.created_at).getTime()) / 3600000);
+        const freshness = Math.exp(-ageHours / 168) * 1.4;
+        return explicitMatches * 5 + learnedAffinity * 1.6 + categoryAffinity * 1.1 + followedBonus + engagement + freshness;
+      };
+      const ranked = [...organic].map((video: any) => ({ video, score: scoreVideo(video) }))
+        .sort((a, b) => b.score - a.score);
+      // Light creator diversity: avoid showing more than two consecutive videos from one creator.
+      const diversified: Video[] = [];
+      const remaining = [...ranked];
+      while (remaining.length) {
+        const previousCreator = diversified.length ? diversified[diversified.length - 1].user_id : null;
+        const previousRun = previousCreator ? diversified.slice().reverse().findIndex((video) => video.user_id !== previousCreator) : -1;
+        const sameCreatorRun = previousCreator ? (previousRun === -1 ? diversified.length : previousRun) : 0;
+        let pickIndex = remaining.findIndex((item) => sameCreatorRun < 2 || item.video.user_id !== previousCreator);
+        if (pickIndex < 0) pickIndex = 0;
+        diversified.push(remaining.splice(pickIndex, 1)[0].video);
+      }
+      organic = diversified;
+    }
     if (tab === "Pour toi" || tab === "Découvrir") {
       const audienceCountry = profile?.country_code || "BJ";
       const campaignNow = new Date().toISOString();
