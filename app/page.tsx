@@ -12,7 +12,7 @@ import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
 
-type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; followers_count?: number; followers?: { count: number }[] };
+type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; identity_changed_at?: string | null; followers_count?: number; followers?: { count: number }[] };
 type Video = {
   id: string; caption: string; video_url: string; thumbnail_url?: string | null; user_id: string;
   views_count: number; created_at: string; content_type: "short" | "video"; allow_download: boolean;
@@ -221,6 +221,11 @@ export default function HomePage() {
   const [reportReason, setReportReason] = useState("spam");
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileBannerFile, setProfileBannerFile] = useState<File | null>(null);
+  const [profileAvatarFile, setProfileAvatarFile] = useState<File | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const [profilePhotoFiles, setProfilePhotoFiles] = useState<File[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -236,6 +241,8 @@ export default function HomePage() {
   const [myReposts, setMyReposts] = useState<Video[]>([]);
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
+  const identityCanChange = !profile?.identity_changed_at || Date.now() - new Date(profile.identity_changed_at).getTime() >= 14 * 24 * 60 * 60 * 1000;
+  const identityNextChange = profile?.identity_changed_at ? new Date(new Date(profile.identity_changed_at).getTime() + 14 * 24 * 60 * 60 * 1000) : null;
 
   useEffect(() => {
     if (!file) { setVideoPreviewUrl(""); return; }
@@ -397,14 +404,20 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!db()) return;
-    db()!.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session?.user?.id) loadUserData(data.session.user.id);
-    });
-    const { data: { subscription } } = db()!.auth.onAuthStateChange((_event, value) => {
+    let active = true;
+    const { data: { subscription } } = db()!.auth.onAuthStateChange((event, value) => {
+      if (!active) return;
       setSession(value);
-      if (value?.user?.id) loadUserData(value.user.id);
-      else { setProfile(null); setLiked([]); setSaved([]); setFollowing([]); }
+      if (value?.user?.id) {
+        // Keep the auth callback synchronous; load profile data after the auth lock is released.
+        Promise.resolve().then(() => { if (active) loadUserData(value.user.id); });
+      } else {
+        setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
+        setNotifications([]); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
+        setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
+        setProfileOpen(false); setUploadOpen(false); setCampaignOpen(false); setLogoutConfirm(false);
+        setTab("Pour toi");
+      }
     });
     loadVideos();
     const onOnline = () => { setOffline(false); setOfflineVideos([]); };
@@ -413,7 +426,7 @@ export default function HomePage() {
     if (!navigator.onLine) onOffline();
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
-    return () => { subscription.unsubscribe(); window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
+    return () => { active = false; subscription.unsubscribe(); window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
   }, [loadVideos, loadUserData]);
 
   useEffect(() => { loadVideos(); }, [loadVideos]);
@@ -535,7 +548,40 @@ export default function HomePage() {
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!db()) return; setBusy(true);
     const { error } = await db()!.auth.signInWithPassword({ email, password });
-    setNotice(error?.message || "Connexion réussie."); setBusy(false); if (!error) setAuthMode(null);
+    setBusy(false);
+    if (error) setNotice(error.message);
+    else { setNotice("Connexion réussie."); setAuthMode(null); setPassword(""); }
+  }
+
+  async function performLogout() {
+    if (!db()) return;
+    setBusy(true);
+    const { error } = await db()!.auth.signOut({ scope: "local" });
+    setBusy(false);
+    if (error) { setNotice("La déconnexion a échoué : " + error.message); return; }
+    setSession(null);
+    setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
+    setNotifications([]); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
+    setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
+    setProfileOpen(false); setUploadOpen(false); setCampaignOpen(false); setLogoutConfirm(false);
+    setAuthMode(null); setPassword(""); setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("");
+    setTab("Pour toi");
+    setNotice("Tu es déconnecté de ZAVO.");
+  }
+
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!db() || !session?.user?.email) return;
+    if (newPassword.length < 8 || !/\\d/.test(newPassword)) { setNotice("Le nouveau mot de passe doit contenir au moins 8 caractères et un chiffre."); return; }
+    if (newPassword !== confirmNewPassword) { setNotice("Les deux nouveaux mots de passe ne correspondent pas."); return; }
+    setPasswordBusy(true);
+    const verified = await db()!.auth.signInWithPassword({ email: session.user.email, password: currentPassword });
+    if (verified.error) { setPasswordBusy(false); setNotice("Mot de passe actuel incorrect."); return; }
+    const updated = await db()!.auth.updateUser({ password: newPassword });
+    setPasswordBusy(false);
+    if (updated.error) { setNotice("Le mot de passe n’a pas pu être modifié : " + updated.error.message); return; }
+    setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("");
+    setNotice("Ton mot de passe a été modifié avec succès.");
   }
   async function continueSignup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!db()) return;
@@ -768,29 +814,45 @@ export default function HomePage() {
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session || !db()) return;
+    const cleanUsername = username.toLowerCase().trim().replace(/^@+/, "").replace(/[^a-z0-9_]/g, "");
+    if (!/^[a-z0-9_]{3,24}$/.test(cleanUsername)) { setNotice("Identifiant invalide : 3 à 24 caractères, lettres, chiffres et _."); return; }
+    const identityChanged = cleanUsername !== (profile?.username || "") || displayName.trim() !== (profile?.display_name || "");
+    if (identityChanged && profile?.identity_changed_at && Date.now() - new Date(profile.identity_changed_at).getTime() < 14 * 24 * 60 * 60 * 1000) {
+      const nextDate = new Date(new Date(profile.identity_changed_at).getTime() + 14 * 24 * 60 * 60 * 1000);
+      setNotice("Tu pourras modifier ton nom et ton identifiant à partir du " + nextDate.toLocaleDateString("fr-FR") + ".");
+      return;
+    }
     setBusy(true);
     let bannerUrl = profile?.banner_url || null;
+    let avatarUrl = profile?.avatar_url || null;
     const photoUrls = [...(profile?.profile_photos || [])];
+    if (profileAvatarFile) {
+      const path = session.user.id + "/profile/avatar-" + crypto.randomUUID() + "-" + profileAvatarFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const result = await db()!.storage.from("zavo-media").upload(path, profileAvatarFile, { contentType: profileAvatarFile.type || "image/jpeg" });
+      if (result.error) { setNotice("La photo de profil n’a pas pu être envoyée : " + result.error.message); setBusy(false); return; }
+      avatarUrl = db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
+    }
     if (profileBannerFile) {
       const path = session.user.id + "/profile/banner-" + crypto.randomUUID() + "-" + profileBannerFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const result = await db()!.storage.from("zavo-media").upload(path, profileBannerFile, { contentType: profileBannerFile.type || "image/jpeg", upsert: true });
+      const result = await db()!.storage.from("zavo-media").upload(path, profileBannerFile, { contentType: profileBannerFile.type || "image/jpeg" });
       if (result.error) { setNotice("La bannière n’a pas pu être envoyée : " + result.error.message); setBusy(false); return; }
       bannerUrl = db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
     }
     for (const photo of profilePhotoFiles) {
       const path = session.user.id + "/profile/photos/" + crypto.randomUUID() + "-" + photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const result = await db()!.storage.from("zavo-media").upload(path, photo, { contentType: photo.type || "image/jpeg" });
-      if (!result.error) photoUrls.push(db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl);
+      if (result.error) { setNotice("Une photo n’a pas pu être envoyée : " + result.error.message); setBusy(false); return; }
+      photoUrls.push(db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl);
     }
     const { error } = await db()!.from("profiles").update({
-      display_name: displayName, bio, country_code: countryCode,
-      banner_url: bannerUrl, profile_photos: photoUrls.slice(-12)
+      username: cleanUsername, display_name: displayName.trim(), bio: bio.trim(), country_code: countryCode,
+      avatar_url: avatarUrl, banner_url: bannerUrl, profile_photos: photoUrls.slice(-12)
     }).eq("id", session.user.id);
     setBusy(false);
-    if (error) setNotice("Profil non enregistré : " + error.message);
+    if (error) setNotice(error.code === "23505" ? "Cet identifiant est déjà utilisé. Choisis-en un autre." : error.message.includes("14 jours") ? error.message : "Profil non enregistré : " + error.message);
     else {
       setNotice("Profil mis à jour.");
-      setProfileOpen(false); setProfileBannerFile(null); setProfilePhotoFiles([]);
+      setProfileOpen(false); setProfileBannerFile(null); setProfileAvatarFile(null); setProfilePhotoFiles([]);
       await loadUserData(session.user.id);
     }
   }
@@ -925,8 +987,8 @@ export default function HomePage() {
             <section><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div></div>{notifications.map((n) => <article className="notification-row" key={n.id}><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></article>)}</section>
           ) : tab === "Profil" ? (
             <section className="profile-page">
-              <div className="profile-banner" style={profile?.banner_url?{backgroundImage:"url("+profile.banner_url+")"}:undefined}><span>BANNIÈRE ZAVO</span></div>
-              <div className="profile-hero"><div className="profile-avatar">{(profile?.display_name || "Z").slice(0,1).toUpperCase()}</div><div className="profile-identity"><h1>{profile?.display_name || "Ton profil"}</h1><p>@{profile?.username || "nouveau_createur"}</p><span>{profile?.bio || "Présente-toi à la communauté ZAVO."}</span></div><button onClick={() => setProfileOpen(true)}><Settings size={16}/> Modifier</button></div>
+              <div className="profile-banner" style={profile?.banner_url?{backgroundImage:"url("+profile.banner_url+")"}:undefined}><span>{profile?.banner_url ? "" : "BANNIÈRE ZAVO"}</span></div>
+              <div className="profile-hero"><div className="profile-avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt={"Photo de profil de "+(profile.display_name||"membre ZAVO")}/> : (profile?.display_name || "Z").slice(0,1).toUpperCase()}</div><div className="profile-identity"><h1>{profile?.display_name || "Ton profil"}</h1><p>@{profile?.username || "nouveau_createur"}</p><span>{profile?.bio || "Présente-toi à la communauté ZAVO."}</span></div><button onClick={() => setProfileOpen(true)}><Settings size={16}/> Modifier</button></div>
               <div className="profile-stats"><button onClick={()=>setShowFollowers(v=>!v)}><strong>{followerCount.toLocaleString("fr-FR")}</strong><span>Abonnés</span></button><div><strong>{followingCount.toLocaleString("fr-FR")}</strong><span>Abonnements</span></div><div><strong>{videos.filter(v=>v.user_id===session?.user?.id).length}</strong><span>Vidéos</span></div><button className="profile-boost" onClick={()=>{setCampaignType("profile");setCampaignObjective("profile_visits");setCampaignVideo(null);setCampaignTitle("Promotion de mon compte");setCampaignOpen(true);}}><Megaphone size={15}/> Booster mon compte</button></div>
               {showFollowers && <section className="followers-panel"><div className="followers-panel-head"><h3>Personnes abonnées à ton compte</h3><button onClick={()=>setShowFollowers(false)} aria-label="Fermer"><X size={15}/></button></div>{followerProfiles.length?followerProfiles.map(person=><article className="follower-row" key={person.id}><span className="creator-avatar">{(person.display_name||"Z").slice(0,1).toUpperCase()}</span><div><strong>{person.display_name||"Utilisateur"}</strong><small>@{person.username||"zavo"}</small></div></article>):<p>Tu n’as pas encore d’abonné.</p>}</section>}
               {profile?.profile_photos?.length ? <><h2>Photos du profil</h2><div className="profile-photo-grid">{profile.profile_photos.map((photo,index)=><img key={photo+index} src={photo} alt={"Photo de profil "+(index+1)}/>)}</div></>:null}
@@ -948,7 +1010,7 @@ export default function HomePage() {
 
       {authMode && <div className="modal-backdrop" onClick={() => setAuthMode(null)}><section className="modal signup-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAuthMode(null)}><X/></button><div className="modal-brand"><img src="/icons/zavo-192.png" alt=""/><span>ZAVO</span></div><div className="section-kicker">{authMode === "signin" ? "HEUREUX DE TE REVOIR" : signupStep === 1 ? "REJOINS LA COMMUNAUTÉ" : "PERSONNALISONS TON FIL"}</div><h2>{authMode === "signin" ? "Connexion" : signupStep === 1 ? "Créer ton compte" : "Qu’aimes-tu regarder ?"}</h2>
       {authMode === "signin" ? <form onSubmit={signIn} autoComplete="on"><label>Adresse e-mail</label><input type="email" name="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="username" inputMode="email" spellCheck={false} required/><label>Mot de passe</label><div className="password-field"><input type={showSigninPassword ? "text" : "password"} name="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="current-password" required/><button type="button" className="password-toggle" onClick={()=>setShowSigninPassword(v=>!v)} aria-label={showSigninPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showSigninPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div><button className="primary-action modal-submit" disabled={busy}>{busy ? "Patiente..." : "Se connecter"}</button></form> :
-      signupStep === 1 ? <form onSubmit={continueSignup} autoComplete="on"><label>Nom complet ou nom d’affichage</label><input value={signupName} onChange={e=>setSignupName(e.target.value)} maxLength={60} placeholder="Comment doit-on t’appeler ?" required/><label>Identifiant unique</label><input value={username} onChange={e=>{setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""));setUsernameStatus("");}} minLength={3} maxLength={24} placeholder="ex. alex_2026" required/><small className="field-hint">3 à 24 caractères : lettres, chiffres et _. Un identifiant déjà utilisé sera refusé.</small>{usernameStatus && <p className="field-error">{usernameStatus}</p>}<label>Adresse e-mail</label><input type="email" name="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" inputMode="email" spellCheck={false} required/><label>Pays de résidence (obligatoire)</label><div className="signup-country-picker"><input type="search" value={signupCountrySearch} onFocus={()=>setSignupCountryOpen(true)} onChange={e=>{setSignupCountrySearch(e.target.value);setSignupCountryOpen(true);}} placeholder={signupCountry ? (COUNTRIES.find(([c])=>c===signupCountry)?.[1] || "Pays sélectionné") : "Rechercher un pays…"} aria-label="Rechercher un pays" autoComplete="off"/>{signupCountryOpen && <div className="signup-country-results">{COUNTRIES.filter(([code,name])=>!signupCountrySearch.trim() || name.toLocaleLowerCase("fr").includes(signupCountrySearch.trim().toLocaleLowerCase("fr")) || code.toLowerCase().includes(signupCountrySearch.trim().toLowerCase())).slice(0,60).map(([code,name])=><button type="button" key={code} onClick={()=>{setSignupCountry(code);setSignupCountrySearch("");setSignupCountryOpen(false);}}>{name}<span>{code==="OTHER" ? "Pays non répertorié" : code}</span></button>)}{COUNTRIES.filter(([code,name])=>!signupCountrySearch.trim() || name.toLocaleLowerCase("fr").includes(signupCountrySearch.trim().toLocaleLowerCase("fr")) || code.toLowerCase().includes(signupCountrySearch.trim().toLowerCase())).length===0 && <p>Aucun résultat. Choisis « Autre pays » si ton pays n’est pas répertorié.</p>}</div>}</div><small className="field-hint">{signupCountry ? `Pays sélectionné : ${COUNTRIES.find(([c])=>c===signupCountry)?.[1] || signupCountry}.` : countryDetection} Tu peux saisir son nom pour le retrouver.</small><label>Langue de l’application</label><select value={signupLanguage} onChange={e=>{setSignupLanguage(e.target.value);setLanguageManuallySelected(true);}}><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="pt">Português</option><option value="de">Deutsch</option><option value="ar">العربية</option><option value="zh">中文</option><option value="hi">हिन्दी</option><option value="ja">日本語</option></select><small className="field-hint">La langue est proposée selon ton pays ou ton navigateur. Tu peux la modifier.</small><label>Mot de passe</label><div className="password-field"><input type={showPassword ? "text" : "password"} name="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="new-password" required aria-describedby="signup-password-help"/><button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div><small className="field-hint" id="signup-password-help"><span className={password.length>=8 ? "password-rule valid" : "password-rule"}>• 8 caractères minimum</span> <span className={/\d/.test(password) ? "password-rule valid" : "password-rule"}>• Au moins un chiffre</span></small><button className="primary-action modal-submit" disabled={busy}>{busy ? "Vérification..." : "Continuer"}</button></form> :
+      signupStep === 1 ? <form onSubmit={continueSignup} autoComplete="on"><label>Nom complet ou nom d’affichage</label><input value={signupName} onChange={e=>setSignupName(e.target.value)} maxLength={60} placeholder="Comment doit-on t’appeler ?" required/><label>Identifiant unique</label><div className="username-input-wrap"><span>@</span><input value={username} onChange={e=>{setUsername(e.target.value.toLowerCase().replace(/^@+/,"").replace(/[^a-z0-9_]/g,""));setUsernameStatus("");}} minLength={3} maxLength={24} placeholder="ex. alex_2026" autoComplete="off" spellCheck={false} required/></div><small className="field-hint">3 à 24 caractères : lettres, chiffres et _. Un identifiant déjà utilisé sera refusé.</small>{usernameStatus && <p className="field-error">{usernameStatus}</p>}<label>Adresse e-mail</label><input type="email" name="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" inputMode="email" spellCheck={false} required/><label>Pays de résidence (obligatoire)</label><div className="signup-country-picker"><input type="search" value={signupCountrySearch} onFocus={()=>setSignupCountryOpen(true)} onChange={e=>{setSignupCountrySearch(e.target.value);setSignupCountryOpen(true);}} placeholder={signupCountry ? (COUNTRIES.find(([c])=>c===signupCountry)?.[1] || "Pays sélectionné") : "Rechercher un pays…"} aria-label="Rechercher un pays" autoComplete="off"/>{signupCountryOpen && <div className="signup-country-results">{COUNTRIES.filter(([code,name])=>!signupCountrySearch.trim() || name.toLocaleLowerCase("fr").includes(signupCountrySearch.trim().toLocaleLowerCase("fr")) || code.toLowerCase().includes(signupCountrySearch.trim().toLowerCase())).slice(0,60).map(([code,name])=><button type="button" key={code} onClick={()=>{setSignupCountry(code);setSignupCountrySearch("");setSignupCountryOpen(false);}}>{name}<span>{code==="OTHER" ? "Pays non répertorié" : code}</span></button>)}{COUNTRIES.filter(([code,name])=>!signupCountrySearch.trim() || name.toLocaleLowerCase("fr").includes(signupCountrySearch.trim().toLocaleLowerCase("fr")) || code.toLowerCase().includes(signupCountrySearch.trim().toLowerCase())).length===0 && <p>Aucun résultat. Choisis « Autre pays » si ton pays n’est pas répertorié.</p>}</div>}</div><small className="field-hint">{signupCountry ? `Pays sélectionné : ${COUNTRIES.find(([c])=>c===signupCountry)?.[1] || signupCountry}.` : countryDetection} Tu peux saisir son nom pour le retrouver.</small><label>Langue de l’application</label><select value={signupLanguage} onChange={e=>{setSignupLanguage(e.target.value);setLanguageManuallySelected(true);}}><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="pt">Português</option><option value="de">Deutsch</option><option value="ar">العربية</option><option value="zh">中文</option><option value="hi">हिन्दी</option><option value="ja">日本語</option></select><small className="field-hint">La langue est proposée selon ton pays ou ton navigateur. Tu peux la modifier.</small><label>Mot de passe</label><div className="password-field"><input type={showPassword ? "text" : "password"} name="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="new-password" required aria-describedby="signup-password-help"/><button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div><small className="field-hint" id="signup-password-help"><span className={password.length>=8 ? "password-rule valid" : "password-rule"}>• 8 caractères minimum</span> <span className={/\d/.test(password) ? "password-rule valid" : "password-rule"}>• Au moins un chiffre</span></small><button className="primary-action modal-submit" disabled={busy}>{busy ? "Vérification..." : "Continuer"}</button></form> :
       <form onSubmit={signUp}><p className="interest-intro">Choisis les thèmes que tu aimes. ZAVO s’en servira pour personnaliser ton fil de vidéos. Plusieurs choix sont possibles.</p><div className="interest-grid">{INTERESTS.map(tag=><button type="button" key={tag} className={"interest-chip "+(signupInterests.includes(tag)?"selected":"")} onClick={()=>{setSkipInterests(false);setSignupInterests(old=>old.includes(tag)?old.filter(x=>x!==tag):[...old,tag]);}}>{tag}</button>)}</div><div className="interest-actions"><button type="button" className="secondary-action" onClick={()=>{setSkipInterests(false);setSignupInterests(INTERESTS.slice());}}>Tout sélectionner</button><button type="button" className="secondary-action" onClick={()=>{setSkipInterests(false);setSignupInterests([]);}}>Effacer</button></div><button className="primary-action modal-submit" disabled={busy}>{busy ? "Création..." : "Terminer et créer mon compte"}</button><button type="button" className="switch-auth" onClick={()=>setSignupStep(1)}>Retour aux informations</button><button type="button" className="switch-auth" onClick={()=>{setSkipInterests(true);setSignupInterests([]);}}>Passer cette étape (sans préférences)</button></form>}
       <button className="switch-auth" onClick={() => {setAuthMode(authMode === "signin" ? "signup" : "signin");setSignupStep(1);}}>{authMode === "signin" ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}</button></section></div>}
 
@@ -991,10 +1053,10 @@ export default function HomePage() {
       {profileOpen && <div className="creator-studio-overlay"><section className="creator-studio profile-edit-studio">
         <header className="studio-header"><button type="button" onClick={()=>setProfileOpen(false)}><ArrowLeft size={18}/> Retour</button><div className="studio-brand"><img src="/icons/zavo-192.png" alt=""/> <strong>Personnaliser mon profil</strong></div><span>PROFIL</span></header>
         <div className="studio-content profile-edit-content"><div className="studio-intro"><div className="section-kicker">TON ESPACE, TON IDENTITÉ</div><h1>Fais bonne impression</h1><p>Ajoute une bannière et plusieurs photos pour présenter ton univers à la communauté.</p></div>
-          <form onSubmit={saveProfile} className="profile-edit-form"><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)} maxLength={60}/></label><label>Biographie<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={240} placeholder="Présente-toi en quelques mots…"/></label><label>Pays<select value={countryCode} onChange={e=>setCountryCode(e.target.value)}>{COUNTRIES.filter(([code])=>code!=="OTHER").map(([code,name])=><option key={code} value={code}>{name}</option>)}</select></label><div className="profile-upload-grid"><label className="profile-file-card"><Camera/><strong>Photo de couverture</strong><span>{profileBannerFile?.name||"Choisir une bannière"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setProfileBannerFile(e.target.files?.[0]||null)}/></label><label className="profile-file-card"><Images/><strong>Photos du profil</strong><span>{profilePhotoFiles.length?profilePhotoFiles.length+" photo(s) sélectionnée(s)":"Ajouter plusieurs photos"}</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>setProfilePhotoFiles(Array.from(e.target.files||[]))}/></label></div><button className="primary-action modal-submit" disabled={busy}>{busy?"Enregistrement…":"Enregistrer mon profil"}</button></form>
+          <form onSubmit={saveProfile} className="profile-edit-form"><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)} maxLength={60} disabled={!identityCanChange && displayName.trim() === (profile?.display_name||"")}/></label><label>Identifiant unique</label><div className="username-input-wrap"><span>@</span><input value={username} onChange={e=>setUsername(e.target.value.toLowerCase().replace(/^@+/,"").replace(/[^a-z0-9_]/g,""))} minLength={3} maxLength={24} disabled={!identityCanChange} autoComplete="off" spellCheck={false}/></div><small className="field-hint">{identityCanChange ? "3 à 24 caractères : lettres, chiffres et _. Cet identifiant doit être unique." : "Modification disponible à partir du "+(identityNextChange?.toLocaleDateString("fr-FR")||"bientôt")+"."}</small><label>Biographie<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={240} placeholder="Présente-toi en quelques mots…"/></label><label>Pays<select value={countryCode} onChange={e=>setCountryCode(e.target.value)}>{COUNTRIES.filter(([code])=>code!=="OTHER").map(([code,name])=><option key={code} value={code}>{name}</option>)}</select></label><div className="profile-upload-grid"><label className="profile-file-card"><Camera/><strong>Photo de profil</strong><span>{profileAvatarFile?.name||"Choisir une photo"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setProfileAvatarFile(e.target.files?.[0]||null)}/></label><label className="profile-file-card"><Camera/><strong>Photo de couverture</strong><span>{profileBannerFile?.name||"Choisir une bannière"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setProfileBannerFile(e.target.files?.[0]||null)}/></label><label className="profile-file-card"><Images/><strong>Galerie de photos</strong><span>{profilePhotoFiles.length?profilePhotoFiles.length+" photo(s) sélectionnée(s)":"Ajouter plusieurs photos"}</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>setProfilePhotoFiles(Array.from(e.target.files||[]))}/></label></div><button className="primary-action modal-submit" disabled={busy}>{busy?"Enregistrement…":"Enregistrer mon profil"}</button></form><form onSubmit={changePassword} className="profile-password-form"><h2>Modifier mon mot de passe</h2><label>Mot de passe actuel<input type="password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} autoComplete="current-password" required/></label><label>Nouveau mot de passe<input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} autoComplete="new-password" minLength={8} required/></label><small className="field-hint">8 caractères minimum et au moins un chiffre.</small><label>Confirmer le nouveau mot de passe<input type="password" value={confirmNewPassword} onChange={e=>setConfirmNewPassword(e.target.value)} autoComplete="new-password" minLength={8} required/></label><button className="primary-action modal-submit" disabled={passwordBusy}>{passwordBusy?"Modification…":"Mettre à jour le mot de passe"}</button></form>
         </div>
       </section></div>}
-      {logoutConfirm && <div className="modal-backdrop" onClick={()=>setLogoutConfirm(false)}><section className="modal confirm-logout" onClick={e=>e.stopPropagation()}><div className="section-kicker">SESSION ZAVO</div><h2>Es-tu sûr de vouloir te déconnecter ?</h2><p>Tu pourras te reconnecter à tout moment avec ton adresse e-mail et ton mot de passe.</p><div className="confirm-actions"><button className="secondary-action" onClick={()=>setLogoutConfirm(false)}>Annuler</button><button className="primary-action" onClick={async()=>{setLogoutConfirm(false);const {error}=await db()!.auth.signOut();if(error)setNotice(error.message);}}>Oui, me déconnecter</button></div></section></div>}
+      {logoutConfirm && <div className="modal-backdrop" onClick={()=>setLogoutConfirm(false)}><section className="modal confirm-logout" onClick={e=>e.stopPropagation()}><div className="section-kicker">SESSION ZAVO</div><h2>Es-tu sûr de vouloir te déconnecter ?</h2><p>Tu pourras te reconnecter à tout moment avec ton adresse e-mail et ton mot de passe.</p><div className="confirm-actions"><button className="secondary-action" onClick={()=>setLogoutConfirm(false)}>Annuler</button><button className="primary-action" onClick={performLogout} disabled={busy}>{busy?"Déconnexion…":"Oui, me déconnecter"}</button></div></section></div>}
       <nav className="mobile-nav">{nav.slice(0,6).map(item=>{const Icon=item.icon;return <button key={item.label} className={tab===item.label?"active":""} onClick={()=>setTab(item.label)}><Icon size={18}/><span>{item.label}</span></button>;})}<button className="mobile-publish" onClick={()=>session?setUploadOpen(true):setAuthMode("signup")}><Plus size={19}/><span>Publier</span></button></nav>
     </main>
   );
