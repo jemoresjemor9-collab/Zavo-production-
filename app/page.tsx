@@ -1670,6 +1670,7 @@ export default function HomePage() {
                 </section>
                 <section className="admin-panel feedback-responses-panel">
                   <h2>Réponses reçues · {adminData.feedbackResponses.length}</h2>
+                  <div className="feedback-rating-summary">{[5,4,3,2,1].map(star=>{const count=adminData.feedbackResponses.filter((r:any)=>Number(r.rating)===star).length;const pct=adminData.feedbackResponses.length?count/adminData.feedbackResponses.length*100:0;return <div className="feedback-rating-row" key={star}><b>{star} ★</b><span><i style={{width:pct+"%"}}/></span><small>{count}</small></div>;})}</div>
                   {adminData.feedbackResponses.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((response:any)=>{
                     const person=response.profile;
                     return <article className="feedback-response-card" key={response.id}>
