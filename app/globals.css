@@ -577,3 +577,44 @@ body{color:#d7eaff!important}
 .dm-blocked-list>div{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
 .dm-message-report{margin-top:5px;padding:4px 8px;font-size:11px}
 @media(max-width:600px){.dm-safety-actions{justify-content:flex-end}.dm-safety-actions button{padding:6px 8px;font-size:11px}}
+
+
+/* ZAVO user feedback campaign */
+.admin-feedback-layout{display:grid;gap:16px}
+.feedback-admin-form{display:grid;gap:13px;margin-top:16px}
+.feedback-admin-form label,.feedback-user-modal form>label{display:grid;gap:7px;font-size:13px;font-weight:700;color:var(--text)}
+.feedback-admin-form input,.feedback-admin-form textarea,.feedback-user-modal textarea{width:100%;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);color:var(--text);padding:11px 12px;font:inherit;resize:vertical}
+.feedback-date-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.feedback-campaign-card,.feedback-response-card{display:grid;gap:12px;padding:15px 0;border-bottom:1px solid var(--line)}
+.feedback-campaign-card strong{font-size:15px}
+.feedback-campaign-card p,.feedback-response-card p{margin:7px 0;color:var(--text);font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.feedback-campaign-card small,.feedback-response-card small{display:block;margin-top:5px;color:var(--muted);font-size:11px}
+.feedback-campaign-card>button{justify-self:start;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);color:var(--text);padding:8px 11px;font-weight:700}
+.feedback-person{display:flex;align-items:center;gap:11px}
+.feedback-person img,.feedback-person>span{width:42px;height:42px;flex:0 0 42px;border-radius:50%;object-fit:cover;background:var(--surface-2);display:grid;place-items:center;font-weight:800}
+.feedback-person>div{min-width:0}
+.feedback-person strong{display:block;font-size:13px}
+.feedback-response-rating{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.feedback-response-rating>span{color:#e5a400;font-size:20px;letter-spacing:2px}
+.feedback-modal-backdrop{z-index:120}
+.feedback-user-modal{position:relative;width:min(560px,calc(100vw - 28px));max-height:min(90vh,850px);overflow:auto;padding:25px}
+.feedback-modal-kicker{font-size:11px;font-weight:900;letter-spacing:.14em;color:var(--blue);margin-bottom:10px}
+.feedback-modal-close{position:absolute;right:16px;top:16px;border:0;border-radius:50%;width:34px;height:34px;display:grid;place-items:center;background:var(--surface-2);color:var(--text)}
+.feedback-user-modal h2{margin:0 42px 10px 0;font-size:24px;line-height:1.2}
+.feedback-user-modal>p{font-size:14px;line-height:1.6;color:var(--muted);margin:0 0 18px}
+.feedback-user-modal form{display:grid;gap:15px}
+.feedback-stars{border:0;padding:0;margin:0;min-width:0}
+.feedback-stars legend{font-size:13px;font-weight:800;margin-bottom:7px}
+.feedback-stars>div{display:flex;gap:8px}
+.feedback-stars button{border:0;background:transparent;color:var(--line);font-size:36px;line-height:1;padding:0 2px;cursor:pointer}
+.feedback-stars button.selected{color:#e5a400}
+.feedback-stars small{display:block;color:var(--muted);font-size:12px;margin-top:6px}
+.feedback-user-modal textarea{font-size:13px;min-height:88px}
+.feedback-user-modal .modal-submit{width:100%;margin-top:2px}
+.feedback-privacy-note{display:block;color:var(--muted);font-size:11px;line-height:1.5;margin-top:14px}
+.feedback-thankyou{text-align:center;padding:22px 4px 8px}
+.feedback-thankyou>div{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;margin:0 auto 17px;background:rgba(34,180,110,.13);color:#22b46e;font-size:30px;font-weight:900}
+.feedback-thankyou h2{margin:0 0 10px}
+.feedback-thankyou p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 20px}
+.feedback-thankyou .primary-action{width:100%}
+@media(max-width:600px){.feedback-date-grid{grid-template-columns:1fr}.feedback-user-modal{padding:21px 17px}.feedback-user-modal h2{font-size:21px}.feedback-stars button{font-size:33px}}
