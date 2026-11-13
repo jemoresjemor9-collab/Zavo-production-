@@ -5,17 +5,18 @@ import {
   Home, Compass, Plus, MessageCircle, UserRound, Search, Heart, MessageSquare,
   Share2, Bell, LogIn, LogOut, Clapperboard, Bookmark, Download, WifiOff,
   Flag, Megaphone, Play, Eye, Settings, X, UploadCloud, Send, Check, Trash2,
-  MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck, Repeat2
+  MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck, Repeat2,
+  Mic, Pause, ArrowLeft, Camera, Images, Link2, PlayCircle
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
 
-type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[] };
+type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; followers_count?: number };
 type Video = {
   id: string; caption: string; video_url: string; thumbnail_url?: string | null; user_id: string;
   views_count: number; created_at: string; content_type: "short" | "video"; allow_download: boolean;
-  show_stats: boolean; moderation_status?: string; isSponsored?: boolean; campaign_id?: string; target_url?: string | null; objective?: string; profiles?: Profile | Profile[] | null;
+  show_stats: boolean; moderation_status?: string; isSponsored?: boolean; campaign_id?: string; target_url?: string | null; objective?: string; category?: string | null; allow_offline_download?: boolean; allow_gallery_download?: boolean; profiles?: Profile | Profile[] | null;
   likes?: { count: number }[]; comments?: { count: number }[];
 };
 type Comment = { id: string; body: string; created_at: string; profiles?: Profile | Profile[] | null };
@@ -164,7 +165,13 @@ export default function HomePage() {
   const [usernameStatus, setUsernameStatus] = useState("");
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
   const [caption, setCaption] = useState("");
+  const [videoTargetUrl, setVideoTargetUrl] = useState("");
+  const [videoCategory, setVideoCategory] = useState("Divertissement");
+  const [allowOfflineDownload, setAllowOfflineDownload] = useState(false);
+  const [allowGalleryDownload, setAllowGalleryDownload] = useState(false);
+  const [boostAfterPublish, setBoostAfterPublish] = useState(false);
   const [videoInterestTags, setVideoInterestTags] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [thumbnail, setThumbnail] = useState<File | null>(null);
@@ -188,8 +195,15 @@ export default function HomePage() {
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [dmMessages, setDmMessages] = useState<any[]>([]);
   const [dmText, setDmText] = useState("");
+  const [dmFile, setDmFile] = useState<File | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
   const [dmBusy, setDmBusy] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
+  const [campaignType, setCampaignType] = useState<"video"|"profile"|"product">("video");
+  const [campaignTitle, setCampaignTitle] = useState("");
+  const [campaignDescription, setCampaignDescription] = useState("");
   const [campaignVideo, setCampaignVideo] = useState<Video | null>(null);
   const [campaignBudget, setCampaignBudget] = useState("600");
   const [campaignCountries, setCampaignCountries] = useState<string[]>(["BJ"]);
@@ -201,6 +215,13 @@ export default function HomePage() {
   const [reportVideo, setReportVideo] = useState<Video | null>(null);
   const [reportReason, setReportReason] = useState("spam");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileBannerFile, setProfileBannerFile] = useState<File | null>(null);
+  const [profilePhotoFiles, setProfilePhotoFiles] = useState<File[]>([]);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [followerProfiles, setFollowerProfiles] = useState<Profile[]>([]);
+  const [showFollowers, setShowFollowers] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
@@ -210,6 +231,13 @@ export default function HomePage() {
   const [myReposts, setMyReposts] = useState<Video[]>([]);
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
+
+  useEffect(() => {
+    if (!file) { setVideoPreviewUrl(""); return; }
+    const url = URL.createObjectURL(file);
+    setVideoPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   useEffect(() => {
     let active = true;
@@ -274,7 +302,7 @@ export default function HomePage() {
   const loadVideos = useCallback(async () => {
     if (!db()) return;
     let query = db()!.from("videos")
-      .select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,interest_tags,hashtags,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count)")
+      .select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,show_stats,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible,banner_url,profile_photos),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count)")
       .eq("visibility", "public").eq("moderation_status", "approved")
       .order("created_at", { ascending: false }).limit(40);
     if (tab === "Abonnements" && session?.user?.id) {
@@ -290,13 +318,13 @@ export default function HomePage() {
       query = query.in("id", ids);
     }
     const { data, error } = await query;
-    if (error) { setNotice("Le flux n'a pas pu être chargé. Réessaie dans un instant."); return; }
+    if (error) { console.error("ZAVO feed query failed", error); setNotice("Le fil n’a pas pu se connecter aux vidéos. Code : " + (error.code || "inconnu") + ". Réessaie dans un instant."); setVideos([]); return; }
     let organic = (data || []) as Video[];
     const preferred = profile?.interest_tags || [];
     if (preferred.length && (tab === "Pour toi" || tab === "Découvrir")) organic = [...organic].sort((a: any,b: any) => { const score=(v:any)=>(v.interest_tags||[]).filter((tag:string)=>preferred.includes(tag)).length*3+(v.hashtags||[]).filter((tag:string)=>preferred.includes(tag)).length; return score(b)-score(a); });
     if (tab === "Pour toi" || tab === "Découvrir") {
       const { data: campaigns } = await db()!.from("ad_campaigns")
-        .select("id,video_id,target_url,objective,country_codes,video:videos(id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count))")
+        .select("id,video_id,target_url,objective,country_codes,video:videos!ad_campaigns_video_id_fkey(id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,show_stats,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count))")
         .eq("status", "active").not("video_id", "is", null).limit(12);
       const sponsored = (campaigns || []).filter((campaign: any) => {
         const countries = campaign.country_codes || [];
@@ -315,7 +343,23 @@ export default function HomePage() {
     } else {
       setVideos(organic);
     }
-  }, [tab, session?.user?.id, profile?.country_code]);
+  }, [tab, session?.user?.id, profile?.country_code, profile?.interest_tags]);
+
+  const loadFollowStats = useCallback(async (userId: string) => {
+    if (!db()) return;
+    const [{ count: followers }, { count: following }, { data: rows }] = await Promise.all([
+      db()!.from("follows").select("follower_id", { count: "exact", head: true }).eq("following_id", userId),
+      db()!.from("follows").select("following_id", { count: "exact", head: true }).eq("follower_id", userId),
+      db()!.from("follows").select("follower_id").eq("following_id", userId).order("created_at", { ascending: false }).limit(100)
+    ]);
+    setFollowerCount(followers || 0);
+    setFollowingCount(following || 0);
+    const ids = (rows || []).map((row: any) => row.follower_id);
+    if (!ids.length) { setFollowerProfiles([]); return; }
+    const { data: people } = await db()!.from("profiles").select("id,username,display_name,avatar_url,bio").in("id", ids);
+    const byId = new Map((people || []).map((person: any) => [person.id, person]));
+    setFollowerProfiles(ids.map((id: string) => byId.get(id)).filter(Boolean) as Profile[]);
+  }, []);
 
   const loadUserData = useCallback(async (userId: string) => {
     if (!db()) return;
@@ -334,7 +378,8 @@ export default function HomePage() {
     setSaved((s || []).map((x: any) => x.video_id));
     setFollowing((f || []).map((x: any) => x.following_id));
     setMyReposts((rp || []).map((row: any) => Array.isArray(row.video) ? row.video[0] : row.video).filter(Boolean));
-  }, []);
+    await loadFollowStats(userId);
+  }, [loadFollowStats]);
 
   useEffect(() => {
     if (!db()) return;
@@ -390,7 +435,7 @@ export default function HomePage() {
   async function loadMessages(conversationId: string) {
     if (!db()) return;
     const { data, error } = await db()!.from("messages")
-      .select("id,conversation_id,sender_id,body,created_at,read_at")
+      .select("id,conversation_id,sender_id,body,created_at,read_at,message_type,media_url,media_name,mime_type,duration_seconds")
       .eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(200);
     if (error) { setNotice(error.message); return; }
     setDmMessages(data || []);
