@@ -141,6 +141,7 @@ async function createWatermarkedVideo(sourceUrl: string, username?: string | nul
     await new Promise<void>((resolve, reject) => { video.onloadedmetadata = () => resolve(); video.onerror = () => reject(new Error("La vidéo ne peut pas être lue pour le marquage.")); });
     const canvas = document.createElement("canvas"); canvas.width = video.videoWidth || 1280; canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("Impossible de préparer le marquage.");
+    const logo = new Image(); logo.src = "/icons/zavo-192.png"; try { await logo.decode(); } catch {}
     const output = canvas.captureStream(30); const source = video.captureStream();
     source.getAudioTracks().forEach(track => output.addTrack(track));
     const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find(type => MediaRecorder.isTypeSupported(type));
@@ -151,13 +152,16 @@ async function createWatermarkedVideo(sourceUrl: string, username?: string | nul
         const scale = Math.max(1, canvas.width / 1280), pad = 18 * scale, font = Math.max(18, Math.round(25 * scale));
         const brand = "ZAVO", creator = username ? "@" + username : "Créateur ZAVO";
         ctx.font = "800 " + font + "px Arial";
-        const brandWidth = ctx.measureText(brand).width, creatorWidth = ctx.measureText(creator).width;
-        const boxW = pad * 3 + brandWidth + creatorWidth, boxH = font + pad * 1.4;
+        const brandWidth = ctx.measureText(brand).width, creatorWidth = ctx.measureText(creator).width, logoSize = Math.round(font * 1.25);
+        const logoGap = logo.naturalWidth ? logoSize + pad : 0;
+        const boxW = pad * 4 + logoGap + brandWidth + creatorWidth, boxH = Math.max(font + pad * 1.4, logoSize + pad);
         const x = canvas.width - boxW - pad, y = canvas.height - boxH - pad;
         ctx.fillStyle = "rgba(5,28,76,.88)"; ctx.beginPath(); ctx.roundRect(x, y, boxW, boxH, 12 * scale); ctx.fill();
         ctx.strokeStyle = "#13b96a"; ctx.lineWidth = 2 * scale; ctx.stroke();
-        ctx.textBaseline = "middle"; ctx.fillStyle = "#13b96a"; ctx.fillText(brand, x + pad, y + boxH / 2);
-        ctx.fillStyle = "#ffffff"; ctx.fillText(creator, x + pad * 2 + brandWidth, y + boxH / 2);
+        ctx.textBaseline = "middle";
+        if (logo.naturalWidth) ctx.drawImage(logo, x + pad, y + (boxH - logoSize) / 2, logoSize, logoSize);
+        ctx.fillStyle = "#13b96a"; ctx.fillText(brand, x + pad * 2 + logoGap, y + boxH / 2);
+        ctx.fillStyle = "#ffffff"; ctx.fillText(creator, x + pad * 3 + logoGap + brandWidth, y + boxH / 2);
       }
       if (!video.paused && !video.ended) requestAnimationFrame(draw);
     };
