@@ -19,6 +19,14 @@ type Video = {
   likes?: { count: number }[]; comments?: { count: number }[];
 };
 type Comment = { id: string; body: string; created_at: string; profiles?: Profile | Profile[] | null };
+const COUNTRIES = [["BJ","Bénin"],["FR","France"],["US","États-Unis"],["CA","Canada"],["GB","Royaume-Uni"],["CI","Côte d’Ivoire"],["SN","Sénégal"],["TG","Togo"],["NG","Nigeria"],["GH","Ghana"],["CM","Cameroun"],["CD","RD Congo"],["ML","Mali"],["BF","Burkina Faso"],["NE","Niger"],["GN","Guinée"],["GA","Gabon"],["MA","Maroc"],["DZ","Algérie"],["TN","Tunisie"],["ZA","Afrique du Sud"],["KE","Kenya"],["DE","Allemagne"],["BE","Belgique"],["CH","Suisse"],["ES","Espagne"],["IT","Italie"],["PT","Portugal"],["NL","Pays-Bas"],["CN","Chine"],["IN","Inde"],["JP","Japon"],["BR","Brésil"],["MX","Mexique"],["AU","Australie"],["OTHER","Autre pays"]] as const;
+const INTERESTS = ["Super-héros","Animaux","Musique","Divertissement","Jeux vidéo","Chrétien & Bible","Comédie & humour","Sport","Cuisine","Beauté & mode","Technologie & IA","Éducation","Voyage","Actualités","Cinéma & séries","Business & entrepreneuriat","Science","Art & créativité"];
+const CURRENCY_BY_COUNTRY: Record<string,{code:string;symbol:string;perUsd:number}> = {
+  BJ:{code:"XOF",symbol:"FCFA",perUsd:600},CI:{code:"XOF",symbol:"FCFA",perUsd:600},SN:{code:"XOF",symbol:"FCFA",perUsd:600},TG:{code:"XOF",symbol:"FCFA",perUsd:600},BF:{code:"XOF",symbol:"FCFA",perUsd:600},ML:{code:"XOF",symbol:"FCFA",perUsd:600},NE:{code:"XOF",symbol:"FCFA",perUsd:600},
+  FR:{code:"EUR",symbol:"€",perUsd:0.92},DE:{code:"EUR",symbol:"€",perUsd:0.92},BE:{code:"EUR",symbol:"€",perUsd:0.92},ES:{code:"EUR",symbol:"€",perUsd:0.92},IT:{code:"EUR",symbol:"€",perUsd:0.92},PT:{code:"EUR",symbol:"€",perUsd:0.92},NL:{code:"EUR",symbol:"€",perUsd:0.92},
+  US:{code:"USD",symbol:"$",perUsd:1},CA:{code:"CAD",symbol:"CA$",perUsd:1.37},GB:{code:"GBP",symbol:"£",perUsd:0.79},CH:{code:"CHF",symbol:"CHF",perUsd:0.88},NG:{code:"NGN",symbol:"₦",perUsd:1500},GH:{code:"GHS",symbol:"GH₵",perUsd:15},KE:{code:"KES",symbol:"KSh",perUsd:130},ZA:{code:"ZAR",symbol:"R",perUsd:18.5},CN:{code:"CNY",symbol:"¥",perUsd:7.2},IN:{code:"INR",symbol:"₹",perUsd:84},JP:{code:"JPY",symbol:"¥",perUsd:150},BR:{code:"BRL",symbol:"R$",perUsd:5.7},MX:{code:"MXN",symbol:"MX$",perUsd:20},AU:{code:"AUD",symbol:"A$",perUsd:1.55}
+};
+
 
 const db = () => supabase;
 const visitorKey = () => {
@@ -143,6 +151,11 @@ export default function HomePage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
+  const [signupName, setSignupName] = useState("");
+  const [signupCountry, setSignupCountry] = useState("BJ");
+  const [signupInterests, setSignupInterests] = useState<string[]>([]);
+  const [signupStep, setSignupStep] = useState(1);
+  const [usernameStatus, setUsernameStatus] = useState("");
   const [authMode, setAuthMode] = useState<"signin" | "signup" | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [caption, setCaption] = useState("");
@@ -171,7 +184,8 @@ export default function HomePage() {
   const [dmBusy, setDmBusy] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [campaignVideo, setCampaignVideo] = useState<Video | null>(null);
-  const [campaignBudget, setCampaignBudget] = useState("5000");
+  const [campaignBudget, setCampaignBudget] = useState("600");
+  const [campaignCountries, setCampaignCountries] = useState<string[]>(["BJ"]);
   const [campaignObjective, setCampaignObjective] = useState("views");
   const [campaignCountry, setCampaignCountry] = useState("BJ");
   const [campaignTargetUrl, setCampaignTargetUrl] = useState("");
@@ -190,7 +204,7 @@ export default function HomePage() {
   const loadVideos = useCallback(async () => {
     if (!db()) return;
     let query = db()!.from("videos")
-      .select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count)")
+      .select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,interest_tags,hashtags,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count)")
       .eq("visibility", "public").eq("moderation_status", "approved")
       .order("created_at", { ascending: false }).limit(40);
     if (tab === "Abonnements" && session?.user?.id) {
@@ -207,7 +221,9 @@ export default function HomePage() {
     }
     const { data, error } = await query;
     if (error) { setNotice("Le flux n'a pas pu être chargé. Réessaie dans un instant."); return; }
-    const organic = (data || []) as Video[];
+    let organic = (data || []) as Video[];
+    const preferred = profile?.interest_tags || [];
+    if (preferred.length && (tab === "Pour toi" || tab === "Découvrir")) organic = [...organic].sort((a: any,b: any) => { const score=(v:any)=>(v.interest_tags||[]).filter((tag:string)=>preferred.includes(tag)).length*3+(v.hashtags||[]).filter((tag:string)=>preferred.includes(tag)).length; return score(b)-score(a); });
     if (tab === "Pour toi" || tab === "Découvrir") {
       const { data: campaigns } = await db()!.from("ad_campaigns")
         .select("id,video_id,target_url,objective,country_codes,video:videos(id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count))")
