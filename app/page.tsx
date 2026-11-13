@@ -210,7 +210,10 @@ export default function HomePage() {
   const [campaignTitle, setCampaignTitle] = useState("");
   const [campaignDescription, setCampaignDescription] = useState("");
   const [campaignVideo, setCampaignVideo] = useState<Video | null>(null);
-  const [campaignBudget, setCampaignBudget] = useState("200");
+  const [campaignBudget, setCampaignBudget] = useState("600");
+  const [campaignDurationDays, setCampaignDurationDays] = useState("1");
+  const [campaignProductPrice, setCampaignProductPrice] = useState("");
+  const [campaignProductContact, setCampaignProductContact] = useState("");
   const [campaignCountries, setCampaignCountries] = useState<string[]>(["BJ"]);
   const [campaignCountrySearch, setCampaignCountrySearch] = useState("");
   const [campaignCountryListOpen, setCampaignCountryListOpen] = useState(false);
@@ -310,11 +313,11 @@ export default function HomePage() {
         if (!active) return;
         const resolved = { code, symbol, perUsd };
         setCurrencyInfo(resolved);
-        setCampaignBudget(currencyInfo.code === "XOF" ? "200" : "1");
+        setCampaignBudget("600");
       } catch {
         if (!active) return;
         setCurrencyInfo(fallback);
-        setCampaignBudget("1");
+        setCampaignBudget("600");
       }
     }
     resolveCurrency();
@@ -812,10 +815,14 @@ export default function HomePage() {
     if (!session || !db()) { setAuthMode("signin"); return; }
     if (campaignCountries.length < 1 || campaignCountries.length > 8) { setNotice("Sélectionne entre 1 et 8 pays pour ta campagne."); return; }
     if (campaignType === "video" && !campaignVideo) { setNotice("Choisis la vidéo que tu souhaites promouvoir."); return; }
-    const selectedCurrency = currencyInfo;
-    const amount = Number(campaignBudget);
-    const minimumTestAmount = selectedCurrency.code === "XOF" ? 200 : 1;
-    if (!Number.isFinite(amount) || amount < minimumTestAmount) { setNotice("Le montant minimum pour ce test est de " + minimumTestAmount.toLocaleString("fr-FR") + " " + selectedCurrency.code + "."); return; }
+    const selectedCurrency = { code: "XOF" };
+    const dailyBudget = Number(campaignBudget);
+    const durationDays = Number(campaignDurationDays);
+    const amount = dailyBudget * durationDays;
+    if (!Number.isInteger(dailyBudget) || dailyBudget < 600) { setNotice("Le budget minimum est de 600 FCFA par jour."); return; }
+    if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 90) { setNotice("Choisis une durée comprise entre 1 et 90 jours."); return; }
+    if (campaignType === "product" && (!campaignTitle.trim() || !campaignDescription.trim() || (!safeUrl(campaignTargetUrl) && !campaignProductContact.trim()))) { setNotice("Pour promouvoir un produit, renseigne son nom, sa description et un lien ou un contact."); return; }
+    if (campaignType === "profile" && (!campaignTitle.trim() || !campaignDescription.trim())) { setNotice("Présente ton compte et explique pourquoi les visiteurs devraient te suivre."); return; }
     const targetUrl = safeUrl(campaignTargetUrl) || (campaignType === "video" && campaignVideo ? window.location.origin + "/?video=" + campaignVideo.id : campaignType === "profile" ? window.location.origin + "/?profile=" + session.user.id : null);
     if (campaignType === "product" && !targetUrl) { setNotice("Ajoute un lien valide vers le produit ou la page à présenter."); return; }
     setBusy(true);
@@ -826,9 +833,9 @@ export default function HomePage() {
       video_id: campaignType === "video" ? campaignVideo?.id : null,
       title: campaignTitle.trim() || (campaignType === "video" ? "Promotion de ma vidéo" : campaignType === "profile" ? "Promotion de mon compte" : "Promotion de mon produit"),
       target_label: campaignTitle.trim() || null,
-      description: campaignDescription.trim() || null,
+      description: campaignType === "product" ? [campaignDescription.trim(), campaignProductPrice.trim() ? "Prix : " + campaignProductPrice.trim() : "", campaignProductContact.trim() ? "Contact : " + campaignProductContact.trim() : ""].filter(Boolean).join("\n\n") : campaignDescription.trim() || null,
       target_url: targetUrl,
-      budget: amount, currency: selectedCurrency.code, objective: campaignObjective,
+      budget: amount, daily_budget: dailyBudget, duration_days: durationDays, currency: selectedCurrency.code, objective: campaignObjective,
       country_codes: campaignCountries, status: "awaiting_payment"
     }).select("id").single();
     setBusy(false);
@@ -836,7 +843,7 @@ export default function HomePage() {
       setNotice("La campagne n’a pas pu être enregistrée : " + (error?.message || "identifiant de campagne manquant"));
       return;
     }
-    setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl(""); setCampaignTitle(""); setCampaignDescription("");
+    setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl(""); setCampaignTitle(""); setCampaignDescription(""); setCampaignProductPrice(""); setCampaignProductContact(""); setCampaignBudget("600"); setCampaignDurationDays("1");
     setCampaignType("video"); setTab("Promotions");
     await loadMyCampaigns();
     const started = await startCampaignCheckout(data.id);
@@ -1080,11 +1087,13 @@ export default function HomePage() {
           <form onSubmit={createCampaign} className="boost-form">
             <section className="studio-section"><h2>Que veux-tu promouvoir ?</h2><div className="boost-type-grid"><button type="button" className={campaignType==="video"?"boost-type selected":"boost-type"} onClick={()=>{setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");}}><Film/><strong>Une vidéo</strong><span>Augmenter sa portée</span></button><button type="button" className={campaignType==="profile"?"boost-type selected":"boost-type"} onClick={()=>{setCampaignType("profile");setCampaignObjective("profile_visits");setCampaignTitle("Promotion de mon compte");}}><Users/><strong>Mon compte</strong><span>Attirer des abonnés</span></button><button type="button" className={campaignType==="product"?"boost-type selected":"boost-type"} onClick={()=>{setCampaignType("product");setCampaignObjective("website_clicks");setCampaignTitle("Promotion de mon produit ou service");}}><Megaphone/><strong>Un produit ou service</strong><span>Générer des visites ou ventes</span></button></div></section>
             {campaignType==="video" && <section className="studio-section"><h2>Vidéo à promouvoir</h2><select value={campaignVideo?.id||""} onChange={e=>setCampaignVideo(videos.find(v=>v.id===e.target.value)||null)} required><option value="">Sélectionner une de mes vidéos</option>{videos.filter(v=>v.user_id===session?.user?.id).map(v=><option key={v.id} value={v.id}>{(v.caption||"Ma vidéo").slice(0,70)} · {v.content_type==="short"?"Short":"Vidéo"}</option>)}</select></section>}
-            <section className="studio-section"><h2>Présentation de la campagne</h2><label>Nom de la campagne<input value={campaignTitle} onChange={e=>setCampaignTitle(e.target.value)} maxLength={100} placeholder={campaignType==="profile"?"Ex. Découvrir mon compte ZAVO":campaignType==="product"?"Ex. Présentation de mon produit":"Ex. Booster ma nouvelle vidéo"}/></label><label>{campaignType==="profile"?"Présente ton compte":campaignType==="product"?"Présente ton produit ou service":"Présente ta vidéo"}<textarea value={campaignDescription} onChange={e=>setCampaignDescription(e.target.value)} maxLength={1000} placeholder={campaignType==="profile"?"Présente ton activité, tes contenus et ce que les visiteurs gagneront à s’abonner.":campaignType==="product"?"Décris ton produit ou service, ses avantages, son prix ou son offre et comment l’obtenir.":"Décris le sujet de ta vidéo, ce que le public va découvrir et pourquoi il devrait la regarder."}/></label><label>{campaignType==="product"?"Lien vers ton produit ou ta boutique":"Lien de destination (facultatif)"}<div className="input-with-icon"><Link2 size={17}/><input type="url" value={campaignTargetUrl} onChange={e=>setCampaignTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></div></label></section>
-            <section className="studio-section"><h2>Objectif de la promotion</h2><div className="objective-grid"><label><input type="radio" checked={campaignObjective==="views"} onChange={()=>setCampaignObjective("views")}/> Plus de vues</label><label><input type="radio" checked={campaignObjective==="profile_visits"} onChange={()=>setCampaignObjective("profile_visits")}/> Visites du profil</label><label><input type="radio" checked={campaignObjective==="website_clicks"} onChange={()=>setCampaignObjective("website_clicks")}/> Clics vers mon site</label><label><input type="radio" checked={campaignObjective==="messages"} onChange={()=>setCampaignObjective("messages")}/> Recevoir des messages</label></div></section>
+            {campaignType==="video" && <section className="studio-section"><h2>Informations sur la vidéo</h2><label>Nom de la campagne<input value={campaignTitle} onChange={e=>setCampaignTitle(e.target.value)} maxLength={100} placeholder="Ex. Booster ma nouvelle vidéo"/></label><label>Que va découvrir le public ?<textarea value={campaignDescription} onChange={e=>setCampaignDescription(e.target.value)} maxLength={1000} placeholder="Décris le sujet, le message et ce qui rend cette vidéo intéressante."/></label></section>}
+            {campaignType==="profile" && <section className="studio-section"><h2>Informations sur ton compte</h2><label>Nom de la campagne<input value={campaignTitle} onChange={e=>setCampaignTitle(e.target.value)} maxLength={100} placeholder="Ex. Découvrir mon compte"/></label><label>Quelle activité présentes-tu ?<textarea value={campaignDescription} onChange={e=>setCampaignDescription(e.target.value)} maxLength={1000} placeholder="Présente ton activité, tes thèmes, tes contenus et pourquoi les visiteurs devraient te suivre."/></label><p>La promotion dirigera les visiteurs vers ton profil ZAVO.</p></section>}
+            {campaignType==="product" && <section className="studio-section"><h2>Informations sur ton produit ou service</h2><label>Nom du produit ou service<input value={campaignTitle} onChange={e=>setCampaignTitle(e.target.value)} maxLength={100} placeholder="Ex. Formation, vêtement, prestation…"/></label><label>Description et avantages<textarea value={campaignDescription} onChange={e=>setCampaignDescription(e.target.value)} maxLength={1000} placeholder="Quel problème ton offre résout-elle ? Quels sont ses avantages ?"/></label><label>Prix ou offre (facultatif)<input value={campaignProductPrice} onChange={e=>setCampaignProductPrice(e.target.value)} maxLength={100} placeholder="Ex. 5 000 FCFA, promotion spéciale…"/></label><label>Lien de vente ou de présentation (facultatif si contact renseigné)<div className="input-with-icon"><Link2 size={17}/><input type="url" value={campaignTargetUrl} onChange={e=>setCampaignTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></div></label><label>Contact pour commander ou demander des informations<input value={campaignProductContact} onChange={e=>setCampaignProductContact(e.target.value)} maxLength={120} placeholder="Téléphone, WhatsApp ou autre contact"/></label></section>}
+            <section className="studio-section"><h2>Objectif de la promotion</h2><div className="objective-grid">{(campaignType==="video"?[["views","Plus de vues"],["profile_visits","Visites du profil"]]:campaignType==="profile"?[["profile_visits","Visites de mon compte"],["views","Plus de portée"]]:[["website_clicks","Visites de mon offre"],["messages","Recevoir des demandes"]]).map(([value,label])=><label key={value}><input type="radio" checked={campaignObjective===value} onChange={()=>setCampaignObjective(value)}/>{label}</label>)}</div></section>
             <section className="studio-section"><h2>Pays ciblés (1 à 8)</h2><p>Recherche un pays par son nom ou son code, puis ajoute-le à ta campagne.</p><div className="country-picker"><input type="search" value={campaignCountrySearch} onFocus={()=>setCampaignCountryListOpen(true)} onChange={e=>{setCampaignCountrySearch(e.target.value);setCampaignCountryListOpen(true);}} onKeyDown={e=>{if(e.key==="Escape")setCampaignCountryListOpen(false);}} placeholder="Rechercher un pays (ex. Bénin, France, Canada)…" autoComplete="off" aria-label="Rechercher un pays à cibler"/><div className="country-picker-toolbar"><span>{campaignCountries.length}/8 pays sélectionnés</span><button type="button" onClick={()=>setCampaignCountryListOpen(v=>!v)}>{campaignCountryListOpen?"Masquer la liste":"Afficher les pays"}</button></div>{campaignCountries.length>0&&<div className="country-selected-list">{campaignCountries.map(code=>{const country=COUNTRIES.find(([item])=>item===code);return <span className="country-selected-chip" key={code}>{country?.[1]||code}<button type="button" aria-label={"Retirer "+(country?.[1]||code)} onClick={()=>setCampaignCountries(items=>items.filter(item=>item!==code))}>×</button></span>;})}</div>}{campaignCountryListOpen&&<div className="country-picker-results">{COUNTRIES.filter(([code,name])=>code!=="OTHER"&&!campaignCountries.includes(code)&&(name.toLocaleLowerCase("fr").includes(campaignCountrySearch.trim().toLocaleLowerCase("fr"))||code.toLowerCase().includes(campaignCountrySearch.trim().toLowerCase()))).map(([code,name])=><button type="button" key={code} disabled={campaignCountries.length>=8} onClick={()=>{if(campaignCountries.length<8){setCampaignCountries(items=>[...items,code]);setCampaignCountrySearch("");}}}>{name}<span>{code}</span></button>)}{COUNTRIES.filter(([code,name])=>code!=="OTHER"&&!campaignCountries.includes(code)&&(name.toLocaleLowerCase("fr").includes(campaignCountrySearch.trim().toLocaleLowerCase("fr"))||code.toLowerCase().includes(campaignCountrySearch.trim().toLowerCase()))).length===0&&<p>Aucun pays trouvé. Essaie une autre orthographe.</p>}</div>}</div></section>
-            <section className="studio-section budget-section"><h2>Budget de la campagne</h2><label>Montant ({currencyInfo.code})<input type="number" min={currencyInfo.code === "XOF" ? "200" : "1"} step="1" value={campaignBudget} onChange={e=>setCampaignBudget(e.target.value)} required/></label><small className="studio-hint">Montant de test : minimum 200 FCFA pour le XOF, conformément aux règles du prestataire. Après validation du paiement, le budget normal de 600 FCFA sera rétabli.</small></section>
-            <div className="boost-submit-panel"><div><strong>Récapitulatif</strong><p>{campaignCountries.length} pays · {Number(campaignBudget||0).toLocaleString("fr-FR")} {currencyInfo.code} · {campaignObjective==="views"?"Plus de vues":campaignObjective==="profile_visits"?"Visites du profil":campaignObjective==="website_clicks"?"Clics vers le site":"Messages"}</p><small>Après confirmation du paiement et validation de ta campagne, ZAVO lancera sa diffusion selon le budget choisi.</small></div><button className="primary-action modal-submit" disabled={busy||(campaignType==="video"&&!campaignVideo)}>{busy?"Préparation…":"Continuer vers le paiement"}</button></div>
+            <section className="studio-section budget-section"><h2>Budget et durée</h2><label>Budget par jour (FCFA)<input type="number" min="600" step="100" value={campaignBudget} onChange={e=>setCampaignBudget(e.target.value)} required/></label><label>Durée de la promotion<select value={campaignDurationDays} onChange={e=>setCampaignDurationDays(e.target.value)}><option value="1">1 jour</option><option value="2">2 jours</option><option value="3">3 jours</option><option value="7">7 jours</option><option value="14">14 jours</option><option value="30">30 jours</option><option value="90">90 jours</option></select></label><small className="studio-hint">Le tarif minimum est de 600 FCFA par jour. Le montant total est calculé automatiquement selon la durée.</small></section>
+            <div className="boost-submit-panel"><div><strong>Récapitulatif</strong><p>{campaignCountries.length} pays · {Number(campaignBudget||0).toLocaleString("fr-FR")} FCFA/jour × {campaignDurationDays} jour(s) = {(Number(campaignBudget||0)*Number(campaignDurationDays||1)).toLocaleString("fr-FR")} FCFA</p><small>Après confirmation du paiement et validation de ta campagne, ZAVO lancera sa diffusion pendant la durée choisie.</small></div><button className="primary-action modal-submit" disabled={busy||(campaignType==="video"&&!campaignVideo)}>{busy?"Préparation…":"Payer ma publicité"}</button></div>
           </form>
         </div>
       </section></div>}
