@@ -918,16 +918,24 @@ export default function HomePage() {
     setMyCampaigns(data || []);
   }
 
-  async function activateCampaign(campaign: any) {
-    if (!isAdmin || !db() || campaign?.status !== "pending") return;
-    const startsAt = new Date();
-    const durationDays = Math.max(1, Math.min(90, Number(campaign.duration_days || 1)));
-    const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-    const { error } = await db()!.from("ad_campaigns")
-      .update({ status: "active", start_at: startsAt.toISOString(), end_at: endsAt.toISOString() })
-      .eq("id", campaign.id).eq("status", "pending");
-    if (error) { setNotice("Activation impossible : " + error.message); return; }
-    setNotice("Campagne validée et lancée pour " + durationDays + " jour(s).");
+  async function manageCampaign(campaign: any, action: "approve" | "pause" | "resume") {
+    if (!isAdmin || !db() || !campaign?.id) return;
+    const prompts: Record<string, string> = {
+      approve: "Confirmer l'approbation et le lancement de cette campagne ?",
+      pause: "Suspendre cette campagne ? Le temps restant sera conservé.",
+      resume: "Reprendre cette campagne avec le temps restant conservé ?"
+    };
+    if (!window.confirm(prompts[action])) return;
+    setAdminLoading(true);
+    const { data, error } = await db()!.functions.invoke("admin-manage-campaign", {
+      body: { campaign_id: campaign.id, action }
+    });
+    setAdminLoading(false);
+    if (error || !data?.success) {
+      setNotice("Action impossible : " + (data?.error || error?.message || "réponse invalide du serveur"));
+      return;
+    }
+    setNotice(data.message || "Statut de la campagne actualisé.");
     await loadAdmin();
   }
 
@@ -945,13 +953,21 @@ export default function HomePage() {
       ]);
       const failed = results.slice(0,5).find((result:any) => result.error);
       if (failed?.error) throw failed.error;
-      const [reports, campaigns, profiles, adminVideos, payments] = results.slice(0,5).map((result:any) => result.data || []);
+      const [reports, campaignRows, profiles, adminVideos, paymentRows] = results.slice(0,5).map((result:any) => result.data || []);
       // Profiles are the primary source for the visible account list. A failure in the
       // privileged email/last-login endpoint must never blank the entire admin dashboard.
       const analytics = results[5].error ? {} : (results[5].data || {});
       const authUsers = Array.isArray(analytics.users) ? analytics.users : [];
       const authById = new Map(authUsers.map((u:any) => [u.id, u]));
       const users = profiles.map((p:any) => ({ ...p, ...(authById.get(p.id) || {}) }));
+      const profileById = new Map(users.map((u:any) => [u.id, u]));
+      const campaigns = campaignRows.map((c:any) => ({ ...c, owner_profile: profileById.get(c.owner_id) || null }));
+      const campaignById = new Map(campaigns.map((c:any) => [c.id, c]));
+      const payments = paymentRows.map((p:any) => ({
+        ...p,
+        owner_profile: profileById.get(p.owner_id) || null,
+        campaign_title: campaignById.get(p.campaign_id)?.title || "Campagne introuvable"
+      }));
       const presence = Array.isArray(analytics.presence) ? analytics.presence : [];
       const activeUsers = presence.filter((p:any) => p.is_online).length;
       setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence, activeUsers, totalUsers: users.length });
@@ -1042,7 +1058,9 @@ export default function HomePage() {
                 <article><strong>{adminData.videos.length}</strong><span>Vidéos chargées</span></article>
                 <article><strong>{adminData.reports.filter((r:any)=>r.status==="open"||r.status==="reviewing").length}</strong><span>Signalements à traiter</span></article>
                 <article><strong>{adminData.campaigns.filter((c:any)=>c.status==="active").length}</strong><span>Campagnes actives</span></article>
+                <article><strong>{adminData.campaigns.filter((c:any)=>c.status==="paused").length}</strong><span>Campagnes suspendues</span></article>
                 <article><strong>{adminData.payments.filter((p:any)=>p.status==="succeeded").length}</strong><span>Paiements confirmés</span></article>
+                <article><strong>{adminData.payments.filter((p:any)=>p.status==="succeeded").reduce((sum:number,p:any)=>sum+Number(p.amount||0),0).toLocaleString("fr-FR")} FCFA</strong><span>Total encaissé confirmé</span></article>
               </div>
               <div className="admin-toolbar">
                 <div className="admin-tabs">
@@ -1059,8 +1077,8 @@ export default function HomePage() {
               {adminSection==="users" && <section className="admin-panel"><h2>Gestion des utilisateurs · {adminData.totalUsers} comptes</h2><p className="admin-note">Un compte est indiqué « actif » s’il a envoyé un signal de présence au cours des 5 dernières minutes. La dernière connexion correspond à la date fournie par le service d’authentification.</p>{adminData.users.filter((u:any)=>JSON.stringify(u).toLowerCase().includes(adminSearch.toLowerCase())).map((u:any)=>{const presence=adminData.presence.find((p:any)=>p.user_id===u.id);const online=!!presence?.is_online;return <article className="admin-row admin-user-row" key={u.id}><div className="admin-user-identity"><strong>@{u.username||"utilisateur"} · {u.display_name||u.user_metadata?.display_name||u.user_metadata?.full_name||"Sans nom"}</strong><small>{u.email||"Adresse e-mail non disponible"}</small><small>{u.account_status||"active"} · Inscrit le {u.created_at?new Date(u.created_at).toLocaleDateString("fr-FR"):"—"} · Dernière connexion : {u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString("fr-FR"):"Jamais enregistrée"}</small><small>Dernière activité ZAVO : {presence?.last_seen_at?new Date(presence.last_seen_at).toLocaleString("fr-FR"):"Aucune activité enregistrée"}</small></div><span className={online?"admin-presence online":"admin-presence"}><i/> {online?"En ligne":"Hors ligne"}</span><button onClick={async()=>{const suspended=u.account_status!=="suspended";const {error}=await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(suspended?"Compte suspendu.":"Compte réactivé."));await loadAdmin();}}>{u.account_status==="suspended"?"Réactiver":"Suspendre"}</button></article>})}{!adminData.users.length&&<p className="admin-empty">Aucun compte utilisateur trouvé.</p>}</section>}
               {adminSection==="videos" && <section className="admin-panel"><h2>Modération des vidéos</h2>{adminData.videos.filter((v:any)=>JSON.stringify(v).toLowerCase().includes(adminSearch.toLowerCase())).map((v:any)=><article className="admin-row" key={v.id}><div><strong>{(v.caption||"Vidéo sans légende").slice(0,100)}</strong><small>@{v.profiles?.username||"créateur"} · {v.moderation_status} · {v.visibility}</small></div><button onClick={async()=>{const action=v.moderation_status==="restricted"?"restore":"restrict";const {error}=await db()!.functions.invoke("admin-moderate-video",{body:{video_id:v.id,action,reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(action==="restrict"?"Vidéo retirée.":"Vidéo restaurée."));await loadAdmin();}}>{v.moderation_status==="restricted"?"Restaurer":"Retirer"}</button></article>)}</section>}
               {adminSection==="reports" && <section className="admin-panel"><h2>Traitement des signalements</h2>{adminData.reports.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((r:any)=><article className="admin-row" key={r.id}><div><strong>{r.reason} · {r.target_type}</strong><small>{r.status} · {new Date(r.created_at).toLocaleString("fr-FR")} · {r.details||"Aucun détail"}</small></div>{r.status==="open"&&<button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement pris en charge.");await loadAdmin();}}>Prendre en charge</button>}</article>)}</section>}
-              {adminSection==="campaigns" && <section className="admin-panel"><h2>Suivi des campagnes publicitaires</h2>{adminData.campaigns.filter((c:any)=>JSON.stringify(c).toLowerCase().includes(adminSearch.toLowerCase())).map((c:any)=><article className="admin-row admin-campaign-row" key={c.id}><div><strong>{c.title}</strong><small>{Number(c.daily_budget||600).toLocaleString("fr-FR")} FCFA/jour × {c.duration_days||1} jour(s) = {Number(c.budget).toLocaleString("fr-FR")} FCFA · {c.status} · {c.objective}</small><small>{(c.country_codes||[]).join(", ")||"Aucun pays ciblé"} · {c.impressions||0} impressions · {c.clicks||0} clics</small></div><span>{c.status==="awaiting_payment"?"En attente de paiement":c.status==="pending"?"Paiement confirmé — à valider":c.status}</span>{c.status==="pending"&&<button className="primary-action" onClick={()=>activateCampaign(c)}>Valider et lancer</button>}</article>)}</section>}
-              {adminSection==="payments" && <section className="admin-panel"><h2>Historique des transactions</h2><p className="admin-note">Une transaction n’est considérée comme payée qu’après vérification serveur de la notification officielle du prestataire. Aucun statut ne doit être modifié manuellement depuis cette page.</p>{adminData.payments.filter((p:any)=>JSON.stringify(p).toLowerCase().includes(adminSearch.toLowerCase())).map((p:any)=><article className="admin-row" key={p.id}><div><strong>{p.amount} {p.currency} · {p.status}</strong><small>{p.provider} · {new Date(p.created_at).toLocaleString("fr-FR")}</small><small>Référence : {p.provider_reference||"Non renseignée"}</small></div><span>Campagne {String(p.campaign_id).slice(0,8)}</span></article>)}</section>}
+              {adminSection==="campaigns" && <section className="admin-panel"><h2>Gestion et suivi des campagnes publicitaires</h2><p className="admin-note">Une campagne payée reste en attente jusqu'à ton approbation. En cas de suspension, le temps restant est gelé puis restitué à la reprise.</p>{adminData.campaigns.filter((c:any)=>JSON.stringify(c).toLowerCase().includes(adminSearch.toLowerCase())).map((c:any)=><article className="admin-row admin-campaign-row" key={c.id}><div><strong>{c.title}</strong><small>Annonceur : {c.owner_profile?.display_name||c.owner_profile?.username||"Compte ZAVO"} · @{c.owner_profile?.username||"utilisateur"} · {c.owner_profile?.email||c.owner_profile?.email||"E-mail dans la liste des utilisateurs"}</small><small>Budget payé prévu : {Number(c.budget).toLocaleString("fr-FR")} {c.currency} · {Number(c.daily_budget||600).toLocaleString("fr-FR")} {c.currency}/jour × {c.duration_days||1} jour(s) · {c.objective}</small><small>{(c.country_codes||[]).join(", ")||"Aucun pays ciblé"} · {c.impressions||0} impressions · {c.clicks||0} clics · Statut : {c.status}</small>{c.status==="paused"&&<small>Temps restant conservé : {Math.floor(Number(c.remaining_seconds||0)/86400)} j {Math.floor((Number(c.remaining_seconds||0)%86400)/3600)} h</small>}</div><span>{c.status==="awaiting_payment"?"En attente de paiement":c.status==="pending"?"Payée — à valider":c.status==="active"?"En diffusion":c.status==="paused"?"Suspendue":c.status==="completed"?"Terminée":c.status}</span><div className="admin-campaign-actions">{c.status==="pending"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"approve")}>Approuver et lancer</button>}{c.status==="active"&&<button disabled={adminLoading} onClick={()=>manageCampaign(c,"pause")}>Suspendre</button>}{c.status==="paused"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"resume")}>Reprendre</button>}</div></article>)}</section>}
+              {adminSection==="payments" && <section className="admin-panel"><h2>Historique des transactions</h2><p className="admin-note">Seules les notifications SasPay vérifiées font foi. Les montants ci-dessous correspondent aux paiements enregistrés ; ils ne représentent pas automatiquement des dépenses publicitaires consommées.</p>{adminData.payments.filter((p:any)=>JSON.stringify(p).toLowerCase().includes(adminSearch.toLowerCase())).map((p:any)=><article className="admin-row" key={p.id}><div><strong>{Number(p.amount).toLocaleString("fr-FR")} {p.currency} · {p.status==="succeeded"?"Paiement confirmé":p.status}</strong><small>Annonceur : {p.owner_profile?.display_name||p.owner_profile?.username||"Compte ZAVO"} · @{p.owner_profile?.username||"utilisateur"} · {p.owner_profile?.email||"E-mail non disponible"}</small><small>Campagne : {p.campaign_title} · {p.provider} · {new Date(p.created_at).toLocaleString("fr-FR")}</small><small>Référence : {p.provider_reference||"Non renseignée"} · Payé le : {p.paid_at?new Date(p.paid_at).toLocaleString("fr-FR"):"—"}</small></div><span>{String(p.campaign_id).slice(0,8)}</span></article>)}</section>}
             </section>
           )  : tab === "Téléchargements" ? (
             <section className="downloads-page">
