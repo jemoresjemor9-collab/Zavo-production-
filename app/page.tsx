@@ -133,37 +133,6 @@ async function trimVideoFile(file: File, start: number, end: number, duration: n
   }
 }
 
-async function trimVideoFile(file: File, start: number, end: number, duration: number): Promise<File> {
-  if (start <= 0 && end >= duration - 0.25) return file;
-  const video = document.createElement("video") as HTMLVideoElement & { captureStream?: () => MediaStream };
-  if (!video.captureStream || typeof MediaRecorder === "undefined") throw new Error("Le découpage n’est pas pris en charge par ce navigateur. Essaie avec Chrome ou Edge récent.");
-  const sourceUrl = URL.createObjectURL(file);
-  video.preload = "auto"; video.playsInline = true; video.src = sourceUrl;
-  try {
-    await new Promise<void>((resolve, reject) => { video.onloadedmetadata = () => resolve(); video.onerror = () => reject(new Error("Impossible de lire cette vidéo.")); });
-    video.currentTime = Math.max(0, start);
-    await new Promise<void>((resolve, reject) => { video.onseeked = () => resolve(); video.onerror = () => reject(new Error("Impossible de positionner le début de la coupe.")); });
-    const stream = video.captureStream();
-    const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find(type => MediaRecorder.isTypeSupported(type));
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    const chunks: BlobPart[] = [];
-    const finished = new Promise<Blob>((resolve, reject) => {
-      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
-      recorder.onerror = () => reject(new Error("Le découpage de la vidéo a échoué."));
-      recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || "video/webm" }));
-    });
-    video.ontimeupdate = () => { if (video.currentTime >= end && recorder.state !== "inactive") { video.pause(); recorder.stop(); } };
-    recorder.start(250);
-    await video.play();
-    const blob = await finished;
-    if (!blob.size) throw new Error("Le fichier découpé est vide.");
-    const base = file.name.replace(/\.[^.]+$/, "");
-    return new File([blob], base + "-zavo-cut.webm", { type: blob.type || "video/webm", lastModified: Date.now() });
-  } finally {
-    video.pause(); video.removeAttribute("src"); video.load(); URL.revokeObjectURL(sourceUrl);
-  }
-}
-
 async function createWatermarkedVideo(sourceUrl: string, username?: string | null): Promise<Blob> {
   const video = document.createElement("video") as HTMLVideoElement & { captureStream?: () => MediaStream };
   if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream || !video.captureStream) throw new Error("Le marquage vidéo n’est pas pris en charge par ce navigateur. Essaie avec Chrome ou Edge récent.");
