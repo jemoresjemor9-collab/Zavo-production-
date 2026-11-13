@@ -326,10 +326,21 @@ export default function HomePage() {
   const [bio, setBio] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
   const [currencyInfo, setCurrencyInfo] = useState(CURRENCY_BY_COUNTRY.BJ);
-  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [], payments: [], presence: [], activeUsers: 0, totalUsers: 0 });
+  const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [], payments: [], presence: [], feedbackCampaigns: [], feedbackResponses: [], activeUsers: 0, totalUsers: 0 });
   const [adminSection, setAdminSection] = useState("overview");
   const [adminSearch, setAdminSearch] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
+  const [feedbackTitle, setFeedbackTitle] = useState("Ton avis compte pour ZAVO");
+  const [feedbackDescription, setFeedbackDescription] = useState("Aide-nous à améliorer ZAVO. Note ton expérience, dis-nous ce que tu apprécies et ce que tu aimerais voir évoluer.");
+  const [feedbackStartsAt, setFeedbackStartsAt] = useState(() => new Date(Date.now() + 2 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16));
+  const [feedbackEndsAt, setFeedbackEndsAt] = useState(() => new Date(Date.now() + 24 * 60 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16));
+  const [feedbackCampaignBusy, setFeedbackCampaignBusy] = useState(false);
+  const [feedbackCampaign, setFeedbackCampaign] = useState<any>(null);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSuggestions, setFeedbackSuggestions] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [feedbackThankYou, setFeedbackThankYou] = useState(false);
   const [campaignApprovalMode, setCampaignApprovalMode] = useState<"manual" | "automatic">("manual");
   const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
   const [sponsoredPromos, setSponsoredPromos] = useState<any[]>([]);
@@ -1375,6 +1386,75 @@ export default function HomePage() {
     await loadAdmin();
   }
 
+  async function createFeedbackCampaign(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isAdmin || !db()) return;
+    const starts = new Date(feedbackStartsAt);
+    const ends = new Date(feedbackEndsAt);
+    if (!Number.isFinite(starts.getTime()) || !Number.isFinite(ends.getTime()) || ends <= starts) {
+      setNotice("Vérifie les dates : la fin de l'avis doit être après son lancement.");
+      return;
+    }
+    const now = new Date();
+    const { data: existing, error: existingError } = await db()!.from("app_feedback_campaigns")
+      .select("id,title,ends_at,status")
+      .in("status", ["active","scheduled"])
+      .gt("ends_at", now.toISOString())
+      .limit(1)
+      .maybeSingle();
+    if (existingError) { setNotice("Impossible de vérifier les avis déjà programmés : " + existingError.message); return; }
+    if (existing) { setNotice("Un avis est déjà en cours ou programmé (« " + existing.title + " »). Termine-le avant d'en créer un autre."); return; }
+    setFeedbackCampaignBusy(true);
+    const status = starts > now ? "scheduled" : "active";
+    const { error } = await db()!.from("app_feedback_campaigns").insert({
+      title: feedbackTitle.trim(),
+      description: feedbackDescription.trim(),
+      starts_at: starts.toISOString(),
+      ends_at: ends.toISOString(),
+      status,
+      created_by: session.user.id
+    });
+    setFeedbackCampaignBusy(false);
+    if (error) { setNotice("Création de l'avis impossible : " + error.message); return; }
+    setNotice(status === "scheduled" ? "Avis programmé. Il apparaîtra automatiquement à la date choisie." : "Avis lancé. Il est maintenant visible par les utilisateurs connectés.");
+    await loadAdmin();
+  }
+
+  async function closeFeedbackCampaign(campaign: any) {
+    if (!isAdmin || !db() || !campaign?.id) return;
+    if (!window.confirm("Terminer cet avis maintenant ? Les utilisateurs ne pourront plus envoyer de réponse.")) return;
+    const { error } = await db()!.from("app_feedback_campaigns")
+      .update({ status: "closed", updated_at: new Date().toISOString() })
+      .eq("id", campaign.id);
+    if (error) setNotice("Impossible de terminer l'avis : " + error.message);
+    else setNotice("Avis terminé. Tu peux consulter toutes les réponses dans ce dashboard.");
+    await loadAdmin();
+  }
+
+  async function submitAppFeedback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session?.user?.id || !feedbackCampaign || !db()) return;
+    if (feedbackRating < 1 || feedbackRating > 5) { setNotice("Choisis une note entre 1 et 5 étoiles."); return; }
+    setFeedbackBusy(true);
+    const { error } = await db()!.from("app_feedback_responses").insert({
+      campaign_id: feedbackCampaign.id,
+      user_id: session.user.id,
+      rating: feedbackRating,
+      feedback: feedbackText.trim(),
+      suggestions: feedbackSuggestions.trim()
+    });
+    setFeedbackBusy(false);
+    if (error) {
+      setNotice(error.code === "23505" ? "Tu as déjà répondu à cet avis. Merci !" : "Ton avis n'a pas pu être envoyé : " + error.message);
+      if (error.code === "23505") { setFeedbackCampaign(null); setFeedbackThankYou(false); }
+      return;
+    }
+    setFeedbackThankYou(true);
+    setFeedbackRating(0);
+    setFeedbackText("");
+    setFeedbackSuggestions("");
+  }
+
   async function loadAdmin() {
     if (!isAdmin || !db()) return;
     setAdminLoading(true);
@@ -1382,10 +1462,12 @@ export default function HomePage() {
       const results = await Promise.all([
         db()!.from("reports").select("*").order("created_at", { ascending: false }).limit(100),
         db()!.from("ad_campaigns").select("*").order("created_at", { ascending: false }).limit(100),
-        db()!.from("profiles").select("id,username,display_name,account_status,created_at").order("created_at", { ascending: false }).limit(1000),
+        db()!.from("profiles").select("id,username,display_name,avatar_url,country_code,account_status,created_at").order("created_at", { ascending: false }).limit(1000),
         db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles:profiles!videos_user_id_fkey(username,display_name)").order("created_at", { ascending: false }).limit(100),
         db()!.from("ad_payments").select("id,campaign_id,owner_id,amount,currency,status,provider,provider_reference,created_at,paid_at").order("created_at", { ascending: false }).limit(200),
-        db()!.functions.invoke("admin-user-analytics")
+        db()!.functions.invoke("admin-user-analytics"),
+        db()!.from("app_feedback_campaigns").select("*").order("created_at", { ascending: false }).limit(50),
+        db()!.from("app_feedback_responses").select("*").order("created_at", { ascending: false }).limit(1000)
       ]);
       const failed = results.slice(0,5).find((result:any) => result.error);
       if (failed?.error) throw failed.error;
@@ -1406,7 +1488,11 @@ export default function HomePage() {
       }));
       const presence = Array.isArray(analytics.presence) ? analytics.presence : [];
       const activeUsers = presence.filter((p:any) => p.is_online).length;
-      setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence, activeUsers, totalUsers: users.length });
+      const feedbackCampaigns = results[6].error ? [] : (results[6].data || []);
+      const feedbackRows = results[7].error ? [] : (results[7].data || []);
+      const feedbackResponses = feedbackRows.map((r:any) => ({ ...r, profile: profileById.get(r.user_id) || null }));
+      setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence, feedbackCampaigns, feedbackResponses, activeUsers, totalUsers: users.length });
+      if (results[6].error || results[7].error) setNotice("Les données des avis n'ont pas pu être chargées : " + (results[6].error?.message || results[7].error?.message));
       const { data: campaignSettings, error: campaignSettingsError } = await db()!.from("ad_campaign_settings")
         .select("approval_mode").eq("id", 1).maybeSingle();
       if (!campaignSettingsError) {
@@ -1444,6 +1530,39 @@ export default function HomePage() {
 
   useEffect(() => { if (isAdmin) setTab("Administration"); }, [isAdmin]);
   useEffect(() => { if (tab === "Administration") loadAdmin(); if (tab === "Promotions") loadMyCampaigns(); }, [tab, isAdmin, session?.user?.id]);
+  useEffect(() => {
+    if (!session?.user?.id || isAdmin || !db()) { setFeedbackCampaign(null); return; }
+    let active = true;
+    const checkFeedbackCampaign = async () => {
+      const now = new Date().toISOString();
+      const { data: campaign, error } = await db()!.from("app_feedback_campaigns")
+        .select("id,title,description,starts_at,ends_at")
+        .in("status", ["active","scheduled"])
+        .lte("starts_at", now)
+        .gt("ends_at", now)
+        .order("starts_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!active) return;
+      if (error || !campaign) { setFeedbackCampaign(null); setFeedbackThankYou(false); return; }
+      const { data: response, error: responseError } = await db()!.from("app_feedback_responses")
+        .select("id")
+        .eq("campaign_id", campaign.id)
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      if (!active) return;
+      if (!responseError && !response) {
+        setFeedbackCampaign((current:any) => current?.id === campaign.id ? current : campaign);
+        setFeedbackThankYou(false);
+      } else {
+        setFeedbackCampaign(null);
+        setFeedbackThankYou(false);
+      }
+    };
+    void checkFeedbackCampaign();
+    const timer = window.setInterval(() => { void checkFeedbackCampaign(); }, 60000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session?.user?.id, isAdmin]);
 
   const visibleVideos = useMemo(() => videos.filter((v) => {
     if (tab === "Découvrir" && discoverCategory !== "Tout") {
@@ -1510,7 +1629,7 @@ export default function HomePage() {
               </div>
               <div className="admin-toolbar">
                 <div className="admin-tabs">
-                  {([{id:"overview",label:"Vue générale"},{id:"users",label:"Utilisateurs"},{id:"videos",label:"Vidéos"},{id:"reports",label:"Signalements"},{id:"campaigns",label:"Campagnes"},{id:"payments",label:"Paiements"}] as const).map(item=><button key={item.id} className={adminSection===item.id?"active":""} onClick={()=>{setAdminSection(item.id);setAdminSearch("");}}>{item.label}</button>)}
+                  {([{id:"overview",label:"Vue générale"},{id:"users",label:"Utilisateurs"},{id:"videos",label:"Vidéos"},{id:"reports",label:"Signalements"},{id:"campaigns",label:"Campagnes"},{id:"payments",label:"Paiements"},{id:"feedback",label:"Avis utilisateurs"}] as const).map(item=><button key={item.id} className={adminSection===item.id?"active":""} onClick={()=>{setAdminSection(item.id);setAdminSearch("");}}>{item.label}</button>)}
                 </div>
                 <input className="admin-search" value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Rechercher dans cette section…"/>
               </div>
@@ -1523,6 +1642,50 @@ export default function HomePage() {
               {adminSection==="users" && <section className="admin-panel"><h2>Gestion des utilisateurs · {adminData.totalUsers} comptes</h2><p className="admin-note">Un compte est indiqué « actif » s’il a envoyé un signal de présence au cours des 5 dernières minutes. La dernière connexion correspond à la date fournie par le service d’authentification.</p>{adminData.users.filter((u:any)=>JSON.stringify(u).toLowerCase().includes(adminSearch.toLowerCase())).map((u:any)=>{const presence=adminData.presence.find((p:any)=>p.user_id===u.id);const online=!!presence?.is_online;return <article className="admin-row admin-user-row" key={u.id}><div className="admin-user-identity"><strong>@{u.username||"utilisateur"} · {u.display_name||u.user_metadata?.display_name||u.user_metadata?.full_name||"Sans nom"}</strong><small>{u.email||"Adresse e-mail non disponible"}</small><small>{u.account_status||"active"} · Inscrit le {u.created_at?new Date(u.created_at).toLocaleDateString("fr-FR"):"—"} · Dernière connexion : {u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString("fr-FR"):"Jamais enregistrée"}</small><small>Dernière activité ZAVO : {presence?.last_seen_at?new Date(presence.last_seen_at).toLocaleString("fr-FR"):"Aucune activité enregistrée"}</small></div><span className={online?"admin-presence online":"admin-presence"}><i/> {online?"En ligne":"Hors ligne"}</span><button onClick={async()=>{const suspended=u.account_status!=="suspended";const {error}=await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(suspended?"Compte suspendu.":"Compte réactivé."));await loadAdmin();}}>{u.account_status==="suspended"?"Réactiver":"Suspendre"}</button></article>})}{!adminData.users.length&&<p className="admin-empty">Aucun compte utilisateur trouvé.</p>}</section>}
               {adminSection==="videos" && <section className="admin-panel"><h2>Modération des vidéos</h2>{adminData.videos.filter((v:any)=>JSON.stringify(v).toLowerCase().includes(adminSearch.toLowerCase())).map((v:any)=><article className="admin-row" key={v.id}><div><strong>{(v.caption||"Vidéo sans légende").slice(0,100)}</strong><small>@{v.profiles?.username||"créateur"} · {v.moderation_status} · {v.visibility}</small></div><button onClick={async()=>{const action=v.moderation_status==="restricted"?"restore":"restrict";const {error}=await db()!.functions.invoke("admin-moderate-video",{body:{video_id:v.id,action,reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(action==="restrict"?"Vidéo retirée.":"Vidéo restaurée."));await loadAdmin();}}>{v.moderation_status==="restricted"?"Restaurer":"Retirer"}</button></article>)}</section>}
               {adminSection==="reports" && <section className="admin-panel"><h2>Traitement des signalements</h2><p className="admin-note">Les signalements sont confidentiels : seul l’équipe d’administration peut consulter les dossiers et prendre une décision.</p>{adminData.reports.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((r:any)=><article className="admin-row" key={r.id}><div><strong>{r.reason} · {r.target_type}</strong><small>Cible : {String(r.target_id).slice(0,8)}… · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")} · {r.details||"Aucun détail"}</small></div><div className="admin-campaign-actions">{(r.status==="open"||r.status==="reviewing")&&<><button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement pris en charge.");await loadAdmin();}}>En examen</button>{r.target_type==="video"&&<button onClick={async()=>{const {error}=await db()!.functions.invoke("admin-moderate-video",{body:{video_id:r.target_id,action:"restrict",reason:"Retrait après signalement communautaire"}});if(error)setNotice("Retrait impossible : "+error.message);else{await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice("Vidéo retirée après examen.");}await loadAdmin();}}>Retirer la vidéo</button>}{r.target_type==="profile"&&<button onClick={async()=>{const {error}=await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:r.target_id,action:"suspend",reason:"Suspension après signalement communautaire"}});if(error)setNotice("Suspension impossible : "+error.message);else{await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice("Compte suspendu après examen.");}await loadAdmin();}}>Suspendre le compte</button>}{r.target_type==="comment"&&<button onClick={async()=>{const {data,error}=await db()!.functions.invoke("admin-moderate-comment",{body:{comment_id:r.target_id,action:"hide"}});if(error||!data?.success)setNotice("Masquage impossible : "+(data?.error||error?.message||"erreur"));else{await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice("Commentaire masqué après examen.");}await loadAdmin();}}>Masquer le commentaire</button>}<button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement traité.");await loadAdmin();}}>Traité</button><button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"dismissed",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement classé sans suite.");await loadAdmin();}}>Classer</button></>}</div></article>)}</section>}
+              {adminSection==="feedback" && <div className="admin-feedback-layout">
+                <section className="admin-panel">
+                  <h2>Créer et programmer un avis utilisateur</h2>
+                  <p className="admin-note">Tu choisis le titre, le message, la date et l'heure de lancement ainsi que la date de fin. L'avis apparaît automatiquement chez les utilisateurs connectés qui n'ont pas encore répondu. Une seule campagne d'avis peut être ouverte à la fois.</p>
+                  <form className="feedback-admin-form" onSubmit={createFeedbackCampaign}>
+                    <label>Titre de l'avis<input value={feedbackTitle} onChange={e=>setFeedbackTitle(e.target.value)} maxLength={120} required/></label>
+                    <label>Message présenté aux utilisateurs<textarea value={feedbackDescription} onChange={e=>setFeedbackDescription(e.target.value)} maxLength={600} rows={3} required/></label>
+                    <div className="feedback-date-grid">
+                      <label>Date et heure de lancement<input type="datetime-local" value={feedbackStartsAt} onChange={e=>setFeedbackStartsAt(e.target.value)} required/></label>
+                      <label>Date et heure de fin<input type="datetime-local" value={feedbackEndsAt} onChange={e=>setFeedbackEndsAt(e.target.value)} min={feedbackStartsAt} required/></label>
+                    </div>
+                    <button className="primary-action" type="submit" disabled={feedbackCampaignBusy}>{feedbackCampaignBusy?"Enregistrement…":"Programmer / lancer l'avis"}</button>
+                  </form>
+                </section>
+                <section className="admin-panel">
+                  <h2>Campagnes d'avis</h2>
+                  {adminData.feedbackCampaigns.length===0 ? <p className="admin-empty">Aucun avis créé pour le moment.</p> : adminData.feedbackCampaigns.map((campaign:any)=>{
+                    const responses=adminData.feedbackResponses.filter((r:any)=>r.campaign_id===campaign.id);
+                    const average=responses.length?responses.reduce((sum:number,r:any)=>sum+Number(r.rating||0),0)/responses.length:0;
+                    const status=campaign.ends_at<=new Date().toISOString()&&campaign.status!=="closed"?"terminé automatiquement":campaign.status==="active"?"en cours":campaign.status==="scheduled"?"programmé":"terminé";
+                    return <article className="feedback-campaign-card" key={campaign.id}>
+                      <div><strong>{campaign.title}</strong><p>{campaign.description}</p><small>Début : {new Date(campaign.starts_at).toLocaleString("fr-FR")} · Fin : {new Date(campaign.ends_at).toLocaleString("fr-FR")}</small><small>Statut : {status} · {responses.length} réponse(s) · Note moyenne : {average?average.toFixed(1).replace(".",",")+"/5":"—"}</small></div>
+                      {(campaign.status==="active"||campaign.status==="scheduled")&&campaign.ends_at>new Date().toISOString()&&<button type="button" onClick={()=>closeFeedbackCampaign(campaign)}>Terminer l'avis</button>}
+                    </article>;
+                  })}
+                </section>
+                <section className="admin-panel feedback-responses-panel">
+                  <h2>Réponses reçues · {adminData.feedbackResponses.length}</h2>
+                  {adminData.feedbackResponses.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((response:any)=>{
+                    const person=response.profile;
+                    return <article className="feedback-response-card" key={response.id}>
+                      <div className="feedback-person">
+                        {person?.avatar_url?<img src={person.avatar_url} alt=""/>:<span>{(person?.display_name||person?.username||"Z").slice(0,1).toUpperCase()}</span>}
+                        <div><strong>{person?.display_name||"Utilisateur ZAVO"}</strong><small>@{person?.username||"profil indisponible"} · {person?.country_code||"Pays non renseigné"}</small><small>ID : {response.user_id}</small></div>
+                      </div>
+                      <div className="feedback-response-rating"><span>{"★".repeat(Number(response.rating))}{"☆".repeat(5-Number(response.rating))}</span><small>{response.rating}/5 · {new Date(response.created_at).toLocaleString("fr-FR")}</small></div>
+                      <p><b>Son avis :</b> {response.feedback||"Aucun commentaire écrit."}</p>
+                      <p><b>Ce qu'il souhaite voir évoluer :</b> {response.suggestions||"Aucune suggestion ajoutée."}</p>
+                      <small>Campagne : {adminData.feedbackCampaigns.find((c:any)=>c.id===response.campaign_id)?.title||"Avis archivé"}</small>
+                    </article>;
+                  })}
+                  {adminData.feedbackResponses.length===0&&<p className="admin-empty">Les avis envoyés par les utilisateurs apparaîtront ici avec leur note, leur nom et leur profil.</p>}
+                </section>
+              </div>}
               {adminSection==="campaigns" && <section className="admin-panel"><h2>Gestion et suivi des campagnes publicitaires</h2><p className="admin-note">Tu peux choisir une validation manuelle de chaque campagne ou l’activation automatique après confirmation du paiement. Les suspensions administratives conservent le temps restant.</p><div className="admin-campaign-mode"><label htmlFor="campaign-approval-mode">Mode de validation des campagnes</label><select id="campaign-approval-mode" value={campaignApprovalMode} disabled={adminLoading} onChange={e=>updateCampaignApprovalMode(e.target.value as "manual" | "automatic")}><option value="manual">Manuel — approbation depuis mon dashboard</option><option value="automatic">Automatique — lancement après paiement confirmé</option></select><small>{campaignApprovalMode==="manual"?"Chaque campagne payée attend ton approbation.":"Le système active automatiquement les campagnes dont le paiement SasPay est confirmé et conforme."}</small></div>{adminData.campaigns.filter((c:any)=>JSON.stringify(c).toLowerCase().includes(adminSearch.toLowerCase())).map((c:any)=><article className="admin-row admin-campaign-row" key={c.id}><div><strong>{c.title}</strong><small>Annonceur : {c.owner_profile?.display_name||c.owner_profile?.username||"Compte ZAVO"} · @{c.owner_profile?.username||"utilisateur"} · {c.owner_profile?.email||c.owner_profile?.email||"E-mail dans la liste des utilisateurs"}</small><small>Budget payé prévu : {Number(c.budget).toLocaleString("fr-FR")} {c.currency} · {Number(c.daily_budget||600).toLocaleString("fr-FR")} {c.currency}/jour × {c.duration_days||1} jour(s) · {c.objective}</small><small>{(c.country_codes||[]).join(", ")||"Aucun pays ciblé"} · {c.impressions||0} impressions · {c.clicks||0} clics · {c.objective_results||0} résultats de l’objectif · Statut : {c.status}</small>{c.status==="paused"&&<small>Temps restant conservé : {Math.floor(Number(c.remaining_seconds||0)/86400)} j {Math.floor((Number(c.remaining_seconds||0)%86400)/3600)} h</small>}</div><span>{c.status==="awaiting_payment"?"En attente de paiement":c.status==="pending"?"Payée — à valider":c.status==="active"?"En diffusion":c.status==="paused"?"Suspendue":c.status==="completed"?"Terminée":c.status}</span><div className="admin-campaign-actions">{c.status==="pending"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"approve")}>Approuver et lancer</button>}{c.status==="active"&&<button disabled={adminLoading} onClick={()=>manageCampaign(c,"pause")}>Suspendre</button>}{c.status==="paused"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"resume")}>Reprendre</button>}</div></article>)}</section>}
               {adminSection==="payments" && <section className="admin-panel"><h2>Historique des transactions</h2><p className="admin-note">Seules les notifications SasPay vérifiées font foi. Les montants ci-dessous correspondent aux paiements enregistrés ; ils ne représentent pas automatiquement des dépenses publicitaires consommées.</p>{adminData.payments.filter((p:any)=>JSON.stringify(p).toLowerCase().includes(adminSearch.toLowerCase())).map((p:any)=><article className="admin-row" key={p.id}><div><strong>{Number(p.amount).toLocaleString("fr-FR")} {p.currency} · {p.status==="succeeded"?"Paiement confirmé":p.status}</strong><small>Annonceur : {p.owner_profile?.display_name||p.owner_profile?.username||"Compte ZAVO"} · @{p.owner_profile?.username||"utilisateur"} · {p.owner_profile?.email||"E-mail non disponible"}</small><small>Campagne : {p.campaign_title} · {p.provider} · {new Date(p.created_at).toLocaleString("fr-FR")}</small><small>Référence : {p.provider_reference||"Non renseignée"} · Payé le : {p.paid_at?new Date(p.paid_at).toLocaleString("fr-FR"):"—"}</small></div><span>{String(p.campaign_id).slice(0,8)}</span></article>)}</section>}
             </section>
@@ -1645,6 +1808,26 @@ export default function HomePage() {
         </div>
       </section></div>}
       {logoutConfirm && <div className="modal-backdrop" onClick={()=>setLogoutConfirm(false)}><section className="modal confirm-logout" onClick={e=>e.stopPropagation()}><div className="section-kicker">SESSION ZAVO</div><h2>Es-tu sûr de vouloir te déconnecter ?</h2><p>Tu pourras te reconnecter à tout moment avec ton adresse e-mail et ton mot de passe.</p><div className="confirm-actions"><button className="secondary-action" onClick={()=>setLogoutConfirm(false)}>Annuler</button><button className="primary-action" onClick={performLogout} disabled={busy}>{busy?"Déconnexion…":"Oui, me déconnecter"}</button></div></section></div>}
+      {feedbackCampaign && !isAdmin && <div className="modal-backdrop feedback-modal-backdrop">
+        <section className="modal feedback-user-modal" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+          {!feedbackThankYou ? <>
+            <div className="feedback-modal-kicker">TON AVIS COMPTE</div>
+            <button type="button" className="feedback-modal-close" aria-label="Fermer" onClick={()=>setFeedbackCampaign(null)}><X size={18}/></button>
+            <h2 id="feedback-modal-title">{feedbackCampaign.title}</h2>
+            <p>{feedbackCampaign.description}</p>
+            <form onSubmit={submitAppFeedback}>
+              <fieldset className="feedback-stars"><legend>Quelle note donnes-tu à ZAVO ?</legend>
+                <div>{[1,2,3,4,5].map(star=><button type="button" key={star} aria-label={star+" étoile(s)"} aria-pressed={feedbackRating===star} className={feedbackRating>=star?"selected":""} onClick={()=>setFeedbackRating(star)}>★</button>)}</div>
+                <small>{feedbackRating?["","Très mauvais","Insuffisant","Moyen","Bien","Excellent"][feedbackRating]:"Choisis de 1 à 5 étoiles"}</small>
+              </fieldset>
+              <label>Qu'est-ce que tu penses de ZAVO ?<textarea value={feedbackText} onChange={e=>setFeedbackText(e.target.value)} maxLength={4000} rows={3} placeholder="Ce que tu aimes, ce qui fonctionne moins bien, ton expérience…"/></label>
+              <label>Qu'aimerais-tu voir ajouté ou amélioré ?<textarea value={feedbackSuggestions} onChange={e=>setFeedbackSuggestions(e.target.value)} maxLength={4000} rows={3} placeholder="Fonctionnalités, idées, corrections, attentes…"/></label>
+              <button className="primary-action modal-submit" type="submit" disabled={feedbackBusy||feedbackRating===0}>{feedbackBusy?"Envoi de ton avis…":"Envoyer mon avis"}</button>
+            </form>
+            <small className="feedback-privacy-note">Ton nom, ton nom d'utilisateur et ta photo de profil seront visibles uniquement dans le tableau d'administration pour permettre à l'équipe ZAVO de comprendre les retours.</small>
+          </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci d'avoir répondu !</h2><p>Ton avis a bien été transmis à l'équipe ZAVO. Tes retours nous aideront à améliorer l'application.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
+        </section>
+      </div>}
       <nav className="mobile-nav">{nav.slice(0,6).map(item=>{const Icon=item.icon;return <button key={item.label} className={tab===item.label?"active":""} onClick={()=>setTab(item.label)}><Icon size={18}/><span>{item.label}</span></button>;})}<button className={tab==="Studio"?"active":""} onClick={()=>session?setTab("Studio"):setAuthMode("signin")}><BarChart3 size={18}/><span>Studio</span></button></nav>
     </main>
   );
