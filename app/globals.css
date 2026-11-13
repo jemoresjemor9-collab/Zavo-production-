@@ -510,3 +510,14 @@ body{color:#d7eaff!important}
 .studio-section>.studio-hint{margin:-7px 0 13px;color:#8ab8f5;font-size:12px;line-height:1.6}
 .publish-format-grid .format-choice{min-height:118px}
 @media(max-width:620px){.creator-type-filters{width:100%}.creator-type-filters button{flex:1;justify-content:center;padding:9px 7px;font-size:11px}}
+
+
+/* Creator video editor: structured metadata and permissions */
+.creator-edit-modal{max-height:90vh;overflow-y:auto}
+.creator-edit-modal input:not([type="checkbox"]),.creator-edit-modal select{width:100%;min-width:0;padding:11px 12px;border:1px solid #2879d2;border-radius:9px;background:#092b6c;color:#d7eaff;font:inherit}
+.creator-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.creator-edit-permissions{display:grid;gap:9px;padding:12px;border:1px solid #2879d2;border-radius:10px;background:#092b6c}
+.creator-edit-permissions label{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#b9d9ff;font-size:12px;font-weight:750}
+.creator-edit-permissions input{accent-color:#13b96a;width:17px;height:17px;flex:0 0 auto}
+.creator-edit-modal input:focus,.creator-edit-modal select:focus,.creator-edit-modal textarea:focus{outline:2px solid #13b96a;outline-offset:2px}
+@media(max-width:560px){.creator-edit-grid{grid-template-columns:1fr}.creator-edit-modal{padding:16px;max-height:94vh}}
