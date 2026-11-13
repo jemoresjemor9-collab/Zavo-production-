@@ -5,7 +5,7 @@ import {
   Home, Compass, Plus, MessageCircle, UserRound, Search, Heart, MessageSquare,
   Share2, Bell, LogIn, LogOut, Clapperboard, Bookmark, Download, WifiOff,
   Flag, Megaphone, Play, Eye, Settings, X, UploadCloud, Send, Check, Trash2,
-  MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck
+  MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck, Repeat2
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
