@@ -800,7 +800,7 @@ export default function HomePage() {
     });
     setBusy(false);
     if (error || !data?.checkout_url) {
-      setNotice("Impossible de lancer le paiement : " + (data?.error || error?.message || "réponse invalide du service SasPay") + " Tu peux réessayer depuis Mes promotions.");
+      setNotice("Impossible de lancer le paiement : " + (data?.error || error?.message || "réponse invalide du service de paiement") + " Tu peux réessayer depuis Mes promotions.");
       return false;
     }
     window.location.assign(data.checkout_url);
@@ -921,7 +921,7 @@ export default function HomePage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") !== "return") return;
-    setNotice("Retour de SasPay reçu. ZAVO vérifie la confirmation du paiement ; le statut sera actualisé après réception du webhook.");
+    setNotice("Retour de paiement reçu. ZAVO vérifie la confirmation ; le statut de ta campagne sera actualisé automatiquement.");
     setTab("Promotions");
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
