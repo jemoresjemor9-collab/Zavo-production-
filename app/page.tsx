@@ -304,7 +304,11 @@ export default function HomePage() {
   const [campaignCountry, setCampaignCountry] = useState("BJ");
   const [campaignTargetUrl, setCampaignTargetUrl] = useState("");
   const [reportVideo, setReportVideo] = useState<Video | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ targetType: "video" | "profile" | "message" | "comment"; targetId: string; label: string } | null>(null);
   const [reportReason, setReportReason] = useState("spam");
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  const [myBlockedUserIds, setMyBlockedUserIds] = useState<string[]>([]);
+  const [blockedProfiles, setBlockedProfiles] = useState<Profile[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileBannerFile, setProfileBannerFile] = useState<File | null>(null);
   const [profileAvatarFile, setProfileAvatarFile] = useState<File | null>(null);
@@ -431,7 +435,7 @@ export default function HomePage() {
     }
     const { data, error } = await query;
     if (error) { console.error("ZAVO feed query failed", error); setNotice("Le fil n’a pas pu se connecter aux vidéos. Code : " + (error.code || "inconnu") + ". Réessaie dans un instant."); setVideos([]); return; }
-    let organic = (data || []) as Video[];
+    let organic = (data || []).filter((video: any) => !blockedUserIds.includes(video.user_id)) as Video[];
     if (tab === "Pour toi" || tab === "Découvrir") {
       // Build an interest profile from explicit preferences and the member's own positive actions.
       // If the member is signed out or has no history, use recent engagement + freshness instead.
@@ -514,7 +518,9 @@ export default function HomePage() {
         .order("created_at", { ascending: true }).limit(12);
       const sponsored = (campaigns || []).filter((campaign: any) => {
         const countries = campaign.country_codes || [];
-        return !countries.length || countries.includes("ALL") || countries.includes(profile?.country_code || "BJ");
+        const campaignVideo = Array.isArray(campaign.video) ? campaign.video[0] : campaign.video;
+        return (!countries.length || countries.includes("ALL") || countries.includes(profile?.country_code || "BJ"))
+          && (!campaignVideo || !blockedUserIds.includes(campaignVideo.user_id));
       }).map((campaign: any) => {
         const video = Array.isArray(campaign.video) ? campaign.video[0] : campaign.video;
         return video ? { ...video, caption: campaign.target_type === "video" ? video.caption : (campaign.description || video.caption), isSponsored: true, campaign_id: campaign.id, target_url: campaign.target_url, objective: campaign.objective } : null;
@@ -543,7 +549,7 @@ export default function HomePage() {
       setVideos(organic);
       setSponsoredPromos([]);
     }
-  }, [tab, session?.user?.id, profile?.country_code, profile?.interest_tags]);
+  }, [tab, session?.user?.id, profile?.country_code, profile?.interest_tags, blockedUserIds]);
 
   const loadFollowStats = useCallback(async (userId: string) => {
     if (!db()) return;
@@ -593,6 +599,7 @@ export default function HomePage() {
         Promise.resolve().then(async () => {
           if (!active) return;
           await loadUserData(value.user.id);
+          await loadBlockedUsers(value.user.id);
           // app_metadata changes are not reflected in an already-issued JWT.
           // Refresh once on initial session restoration so newly granted admin access is picked up.
           if (event === "INITIAL_SESSION") {
@@ -605,6 +612,7 @@ export default function HomePage() {
       } else {
         setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
         setNotifications([]); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
+        setBlockedUserIds([]); setMyBlockedUserIds([]); setBlockedProfiles([]);
         setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
         setProfileOpen(false); setUploadOpen(false); setCampaignOpen(false); setLogoutConfirm(false);
         setTab("Pour toi");
@@ -679,6 +687,43 @@ export default function HomePage() {
 
   useEffect(() => { if (tab === "Téléchargements") readOfflineVideos().then(setOfflineVideos).catch(() => setOfflineVideos([])); }, [tab]);
 
+  async function loadBlockedUsers(userId = session?.user?.id) {
+    if (!db() || !userId) { setBlockedUserIds([]); setMyBlockedUserIds([]); setBlockedProfiles([]); return; }
+    const { data, error } = await db()!.from("user_blocks").select("blocker_id,blocked_id");
+    if (error) { setNotice("Impossible de charger les paramètres de blocage : " + error.message); return; }
+    const all = new Set<string>();
+    const mine: string[] = [];
+    (data || []).forEach((row: any) => {
+      const otherId = row.blocker_id === userId ? row.blocked_id : row.blocker_id;
+      if (otherId) all.add(otherId);
+      if (row.blocker_id === userId) mine.push(row.blocked_id);
+    });
+    setBlockedUserIds([...all]);
+    setMyBlockedUserIds(mine);
+    if (mine.length) {
+      const { data: people } = await db()!.from("profiles").select("id,username,display_name,avatar_url").in("id", mine);
+      setBlockedProfiles((people || []) as Profile[]);
+    } else setBlockedProfiles([]);
+  }
+
+  async function toggleBlockUser(user: Profile) {
+    if (!session || !db() || !user?.id || user.id === session.user.id) return;
+    const alreadyBlocked = myBlockedUserIds.includes(user.id);
+    const confirmed = window.confirm(alreadyBlocked
+      ? "Débloquer @" + (user.username || "cet utilisateur") + " ?"
+      : "Bloquer @" + (user.username || "cet utilisateur") + " ? Cette personne ne pourra plus t’envoyer de messages et vos conversations seront masquées.");
+    if (!confirmed) return;
+    const result = alreadyBlocked
+      ? await db()!.from("user_blocks").delete().eq("blocker_id", session.user.id).eq("blocked_id", user.id)
+      : await db()!.from("user_blocks").insert({ blocker_id: session.user.id, blocked_id: user.id });
+    if (result.error) { setNotice("Action impossible : " + result.error.message); return; }
+    await loadBlockedUsers(session.user.id);
+    setDmUsers(current => current.filter(item => item.id !== user.id));
+    setActiveConversation(null); setActiveConversationUser(null); setDmMessages([]);
+    await loadConversations();
+    setNotice(alreadyBlocked ? "Utilisateur débloqué." : "Utilisateur bloqué. La messagerie entre vous est désactivée.");
+  }
+
   async function loadConversations() {
     if (!db() || !session?.user?.id) { setDmConversations([]); return; }
     setDmInboxLoading(true);
@@ -732,7 +777,7 @@ export default function HomePage() {
       .neq("id", session.user.id).eq("account_status", "active")
       .or(`username.ilike.%${term}%,display_name.ilike.%${term}%`).limit(12);
     if (error) setNotice(error.message);
-    setDmUsers((data || []) as Profile[]);
+    setDmUsers((data || []).filter((user: any) => !blockedUserIds.includes(user.id)) as Profile[]);
   }
 
   async function openConversation(recipientId: string) {
@@ -1169,9 +1214,15 @@ export default function HomePage() {
   }
 
   async function submitReport(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!session || !reportVideo) return;
-    const { error } = await db()!.from("reports").insert({ reporter_id: session.user.id, target_type: "video", target_id: reportVideo.id, reason: reportReason });
-    setNotice(error?.message || "Signalement transmis à l'équipe ZAVO."); setReportVideo(null);
+    event.preventDefault();
+    if (!session || !db()) return;
+    const target = reportTarget || (reportVideo ? { targetType: "video" as const, targetId: reportVideo.id, label: "Vidéo" } : null);
+    if (!target) return;
+    if (target.targetType === "profile" && target.targetId === session.user.id) { setNotice("Tu ne peux pas signaler ton propre profil."); return; }
+    const { error } = await db()!.from("reports").insert({ reporter_id: session.user.id, target_type: target.targetType, target_id: target.targetId, reason: reportReason });
+    if (error) setNotice("Le signalement n’a pas été envoyé : " + error.message);
+    else setNotice("Signalement transmis à l’équipe ZAVO. Merci de contribuer à la sécurité de la communauté.");
+    setReportVideo(null); setReportTarget(null); setReportReason("spam");
   }
 
   async function startCampaignCheckout(campaignId: string): Promise<boolean> {
@@ -1468,7 +1519,7 @@ export default function HomePage() {
               </div>}
               {adminSection==="users" && <section className="admin-panel"><h2>Gestion des utilisateurs · {adminData.totalUsers} comptes</h2><p className="admin-note">Un compte est indiqué « actif » s’il a envoyé un signal de présence au cours des 5 dernières minutes. La dernière connexion correspond à la date fournie par le service d’authentification.</p>{adminData.users.filter((u:any)=>JSON.stringify(u).toLowerCase().includes(adminSearch.toLowerCase())).map((u:any)=>{const presence=adminData.presence.find((p:any)=>p.user_id===u.id);const online=!!presence?.is_online;return <article className="admin-row admin-user-row" key={u.id}><div className="admin-user-identity"><strong>@{u.username||"utilisateur"} · {u.display_name||u.user_metadata?.display_name||u.user_metadata?.full_name||"Sans nom"}</strong><small>{u.email||"Adresse e-mail non disponible"}</small><small>{u.account_status||"active"} · Inscrit le {u.created_at?new Date(u.created_at).toLocaleDateString("fr-FR"):"—"} · Dernière connexion : {u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString("fr-FR"):"Jamais enregistrée"}</small><small>Dernière activité ZAVO : {presence?.last_seen_at?new Date(presence.last_seen_at).toLocaleString("fr-FR"):"Aucune activité enregistrée"}</small></div><span className={online?"admin-presence online":"admin-presence"}><i/> {online?"En ligne":"Hors ligne"}</span><button onClick={async()=>{const suspended=u.account_status!=="suspended";const {error}=await db()!.functions.invoke("admin-moderate-account",{body:{target_user_id:u.id,action:suspended?"suspend":"unsuspend",reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(suspended?"Compte suspendu.":"Compte réactivé."));await loadAdmin();}}>{u.account_status==="suspended"?"Réactiver":"Suspendre"}</button></article>})}{!adminData.users.length&&<p className="admin-empty">Aucun compte utilisateur trouvé.</p>}</section>}
               {adminSection==="videos" && <section className="admin-panel"><h2>Modération des vidéos</h2>{adminData.videos.filter((v:any)=>JSON.stringify(v).toLowerCase().includes(adminSearch.toLowerCase())).map((v:any)=><article className="admin-row" key={v.id}><div><strong>{(v.caption||"Vidéo sans légende").slice(0,100)}</strong><small>@{v.profiles?.username||"créateur"} · {v.moderation_status} · {v.visibility}</small></div><button onClick={async()=>{const action=v.moderation_status==="restricted"?"restore":"restrict";const {error}=await db()!.functions.invoke("admin-moderate-video",{body:{video_id:v.id,action,reason:"Décision depuis le dashboard administrateur"}});setNotice(error?.message||(action==="restrict"?"Vidéo retirée.":"Vidéo restaurée."));await loadAdmin();}}>{v.moderation_status==="restricted"?"Restaurer":"Retirer"}</button></article>)}</section>}
-              {adminSection==="reports" && <section className="admin-panel"><h2>Traitement des signalements</h2>{adminData.reports.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((r:any)=><article className="admin-row" key={r.id}><div><strong>{r.reason} · {r.target_type}</strong><small>{r.status} · {new Date(r.created_at).toLocaleString("fr-FR")} · {r.details||"Aucun détail"}</small></div>{r.status==="open"&&<button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement pris en charge.");await loadAdmin();}}>Prendre en charge</button>}</article>)}</section>}
+              {adminSection==="reports" && <section className="admin-panel"><h2>Traitement des signalements</h2><p className="admin-note">Les signalements sont confidentiels : seul l’équipe d’administration peut consulter les dossiers et prendre une décision.</p>{adminData.reports.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((r:any)=><article className="admin-row" key={r.id}><div><strong>{r.reason} · {r.target_type}</strong><small>Cible : {String(r.target_id).slice(0,8)}… · {r.status} · {new Date(r.created_at).toLocaleString("fr-FR")} · {r.details||"Aucun détail"}</small></div><div className="admin-campaign-actions">{(r.status==="open"||r.status==="reviewing")&&<><button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"reviewing",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement pris en charge.");await loadAdmin();}}>En examen</button><button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"actioned",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement traité.");await loadAdmin();}}>Traité</button><button onClick={async()=>{const {error}=await db()!.from("reports").update({status:"dismissed",reviewed_by:session.user.id,reviewed_at:new Date().toISOString()}).eq("id",r.id);setNotice(error?.message||"Signalement classé sans suite.");await loadAdmin();}}>Classer</button></>}</div></article>)}</section>}
               {adminSection==="campaigns" && <section className="admin-panel"><h2>Gestion et suivi des campagnes publicitaires</h2><p className="admin-note">Tu peux choisir une validation manuelle de chaque campagne ou l’activation automatique après confirmation du paiement. Les suspensions administratives conservent le temps restant.</p><div className="admin-campaign-mode"><label htmlFor="campaign-approval-mode">Mode de validation des campagnes</label><select id="campaign-approval-mode" value={campaignApprovalMode} disabled={adminLoading} onChange={e=>updateCampaignApprovalMode(e.target.value as "manual" | "automatic")}><option value="manual">Manuel — approbation depuis mon dashboard</option><option value="automatic">Automatique — lancement après paiement confirmé</option></select><small>{campaignApprovalMode==="manual"?"Chaque campagne payée attend ton approbation.":"Le système active automatiquement les campagnes dont le paiement SasPay est confirmé et conforme."}</small></div>{adminData.campaigns.filter((c:any)=>JSON.stringify(c).toLowerCase().includes(adminSearch.toLowerCase())).map((c:any)=><article className="admin-row admin-campaign-row" key={c.id}><div><strong>{c.title}</strong><small>Annonceur : {c.owner_profile?.display_name||c.owner_profile?.username||"Compte ZAVO"} · @{c.owner_profile?.username||"utilisateur"} · {c.owner_profile?.email||c.owner_profile?.email||"E-mail dans la liste des utilisateurs"}</small><small>Budget payé prévu : {Number(c.budget).toLocaleString("fr-FR")} {c.currency} · {Number(c.daily_budget||600).toLocaleString("fr-FR")} {c.currency}/jour × {c.duration_days||1} jour(s) · {c.objective}</small><small>{(c.country_codes||[]).join(", ")||"Aucun pays ciblé"} · {c.impressions||0} impressions · {c.clicks||0} clics · {c.objective_results||0} résultats de l’objectif · Statut : {c.status}</small>{c.status==="paused"&&<small>Temps restant conservé : {Math.floor(Number(c.remaining_seconds||0)/86400)} j {Math.floor((Number(c.remaining_seconds||0)%86400)/3600)} h</small>}</div><span>{c.status==="awaiting_payment"?"En attente de paiement":c.status==="pending"?"Payée — à valider":c.status==="active"?"En diffusion":c.status==="paused"?"Suspendue":c.status==="completed"?"Terminée":c.status}</span><div className="admin-campaign-actions">{c.status==="pending"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"approve")}>Approuver et lancer</button>}{c.status==="active"&&<button disabled={adminLoading} onClick={()=>manageCampaign(c,"pause")}>Suspendre</button>}{c.status==="paused"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"resume")}>Reprendre</button>}</div></article>)}</section>}
               {adminSection==="payments" && <section className="admin-panel"><h2>Historique des transactions</h2><p className="admin-note">Seules les notifications SasPay vérifiées font foi. Les montants ci-dessous correspondent aux paiements enregistrés ; ils ne représentent pas automatiquement des dépenses publicitaires consommées.</p>{adminData.payments.filter((p:any)=>JSON.stringify(p).toLowerCase().includes(adminSearch.toLowerCase())).map((p:any)=><article className="admin-row" key={p.id}><div><strong>{Number(p.amount).toLocaleString("fr-FR")} {p.currency} · {p.status==="succeeded"?"Paiement confirmé":p.status}</strong><small>Annonceur : {p.owner_profile?.display_name||p.owner_profile?.username||"Compte ZAVO"} · @{p.owner_profile?.username||"utilisateur"} · {p.owner_profile?.email||"E-mail non disponible"}</small><small>Campagne : {p.campaign_title} · {p.provider} · {new Date(p.created_at).toLocaleString("fr-FR")}</small><small>Référence : {p.provider_reference||"Non renseignée"} · Payé le : {p.paid_at?new Date(p.paid_at).toLocaleString("fr-FR"):"—"}</small></div><span>{String(p.campaign_id).slice(0,8)}</span></article>)}</section>}
             </section>
@@ -1483,6 +1534,7 @@ export default function HomePage() {
               <div className="feed-toolbar"><div><div className="section-kicker">ÉCHANGES PRIVÉS</div><h2>Messages</h2></div></div>
               {!session ? <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Connecte-toi pour écrire</h3><button className="primary-action" onClick={()=>setAuthMode("signin")}>Connexion</button></section> : <>
                 <div className="dm-search"><Search size={17}/><input value={dmSearch} onChange={e=>setDmSearch(e.target.value)} onKeyUp={e=>{if(e.key==="Enter")searchPeople();}} placeholder="Rechercher un créateur ou un utilisateur"/><button onClick={searchPeople}>Rechercher</button></div>
+                {!activeConversation && blockedProfiles.length>0 && <section className="dm-blocked-list"><strong>Utilisateurs bloqués</strong>{blockedProfiles.map(user=><div key={user.id}><span>@{user.username||"utilisateur"}</span><button type="button" onClick={()=>toggleBlockUser(user)}>Débloquer</button></div>)}</section>}
                 {!activeConversation && <section className="dm-inbox">
                   <div className="dm-inbox-heading"><strong>Conversations récentes</strong><button type="button" onClick={loadConversations} disabled={dmInboxLoading}>{dmInboxLoading ? "Actualisation…" : "Actualiser"}</button></div>
                   {dmInboxLoading && dmConversations.length===0 ? <p className="dm-loading">Chargement des conversations…</p> :
@@ -1499,7 +1551,7 @@ export default function HomePage() {
                   }
                 </section>}
                 {dmUsers.length>0 && <div className="dm-results">{dmUsers.map(u=><button key={u.id} onClick={()=>openConversation(u.id)}><span className="creator-avatar">{(u.display_name||"Z").slice(0,1).toUpperCase()}</span><span><strong>{u.display_name||"Utilisateur"}</strong><small>@{u.username||"zavo"} · {(u.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</small></span><MessageCircle size={17}/></button>)}</div>}
-                {activeConversation ? <div className="dm-chat"><div className="dm-chat-head"><div className="dm-chat-person"><span className="dm-inbox-avatar">{(activeConversationUser?.display_name || activeConversationUser?.username || "Z").slice(0,1).toUpperCase()}</span><span><strong>{activeConversationUser?.display_name || "Conversation privée"}</strong><small>@{activeConversationUser?.username || "zavo"}</small></span></div><button onClick={()=>{setActiveConversation(null);setActiveConversationUser(null);loadConversations();}}>Retour</button></div><div className="dm-chat-list">{dmMessages.map(m=><div key={m.id} className={m.sender_id===session.user.id?"dm-message mine":"dm-message"}>{m.message_type==="image"&&m.media_url&&<a href={m.media_url} target="_blank" rel="noopener noreferrer"><img className="dm-media-image" src={m.media_url} alt={m.media_name||"Image reçue"}/></a>}{m.message_type==="video"&&m.media_url&&<video className="dm-media-video" src={m.media_url} controls playsInline/>}{m.message_type==="audio"&&m.media_url&&<audio className="dm-media-audio" src={m.media_url} controls/>}{m.body&&<p>{m.body}</p>}<small>{new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}{m.sender_id===session.user.id&&m.read_at?" · Lu":""}</small></div>)}</div>{dmFile&&<div className="dm-attachment-preview"><span>{dmFile.name}</span><button type="button" onClick={()=>setDmFile(null)} aria-label="Retirer la pièce jointe"><X size={14}/></button></div>}<form className="dm-send" onSubmit={sendDirectMessage}><label className="dm-attach" title="Joindre une photo ou une vidéo"><Images size={18}/><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={e=>setDmFile(e.target.files?.[0]||null)}/></label><button type="button" className={isRecording?"recording-button":"dm-attach"} onClick={toggleVoiceRecording} title={isRecording?"Arrêter l’enregistrement":"Enregistrer un vocal"}>{isRecording?<Pause size={18}/>:<Mic size={18}/>}</button><input value={dmText} onChange={e=>setDmText(e.target.value)} maxLength={4000} placeholder={isRecording?"Enregistrement vocal…":"Écrire un message..."}/><button className="primary-action" disabled={dmBusy||(!dmText.trim()&&!dmFile)}><Send size={16}/></button></form></div> : <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Parle directement aux créateurs</h3><p>Recherche un utilisateur pour commencer une conversation privée. Les messages sont synchronisés en temps réel.</p></section>}
+                {activeConversation ? <div className="dm-chat"><div className="dm-chat-head"><div className="dm-chat-person"><span className="dm-inbox-avatar">{(activeConversationUser?.display_name || activeConversationUser?.username || "Z").slice(0,1).toUpperCase()}</span><span><strong>{activeConversationUser?.display_name || "Conversation privée"}</strong><small>@{activeConversationUser?.username || "zavo"}</small></span></div><div className="dm-safety-actions">{activeConversationUser && <><button type="button" onClick={()=>setReportTarget({targetType:"profile",targetId:activeConversationUser.id,label:"ce profil"})}>Signaler</button><button type="button" onClick={()=>toggleBlockUser(activeConversationUser)}>{myBlockedUserIds.includes(activeConversationUser.id)?"Débloquer":"Bloquer"}</button></>}<button onClick={()=>{setActiveConversation(null);setActiveConversationUser(null);loadConversations();}}>Retour</button></div></div><div className="dm-chat-list">{dmMessages.map(m=><div key={m.id} className={m.sender_id===session.user.id?"dm-message mine":"dm-message"}>{m.message_type==="image"&&m.media_url&&<a href={m.media_url} target="_blank" rel="noopener noreferrer"><img className="dm-media-image" src={m.media_url} alt={m.media_name||"Image reçue"}/></a>}{m.message_type==="video"&&m.media_url&&<video className="dm-media-video" src={m.media_url} controls playsInline/>}{m.message_type==="audio"&&m.media_url&&<audio className="dm-media-audio" src={m.media_url} controls/>}{m.body&&<p>{m.body}</p>}<small>{new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}{m.sender_id===session.user.id&&m.read_at?" · Lu":""}</small>{m.sender_id!==session.user.id&&<button type="button" className="dm-message-report" onClick={()=>setReportTarget({targetType:"message",targetId:m.id,label:"ce message"})}>Signaler</button>}</div>)}</div>{dmFile&&<div className="dm-attachment-preview"><span>{dmFile.name}</span><button type="button" onClick={()=>setDmFile(null)} aria-label="Retirer la pièce jointe"><X size={14}/></button></div>}<form className="dm-send" onSubmit={sendDirectMessage}><label className="dm-attach" title="Joindre une photo ou une vidéo"><Images size={18}/><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={e=>setDmFile(e.target.files?.[0]||null)}/></label><button type="button" className={isRecording?"recording-button":"dm-attach"} onClick={toggleVoiceRecording} title={isRecording?"Arrêter l’enregistrement":"Enregistrer un vocal"}>{isRecording?<Pause size={18}/>:<Mic size={18}/>}</button><input value={dmText} onChange={e=>setDmText(e.target.value)} maxLength={4000} placeholder={isRecording?"Enregistrement vocal…":"Écrire un message..."}/><button className="primary-action" disabled={dmBusy||(!dmText.trim()&&!dmFile)}><Send size={16}/></button></form></div> : <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Parle directement aux créateurs</h3><p>Recherche un utilisateur pour commencer une conversation privée. Les messages sont synchronisés en temps réel.</p></section>}
                 {dmBusy&&<p className="dm-loading">Ouverture de la conversation…</p>}
               </>}
             </section>
@@ -1581,7 +1633,7 @@ export default function HomePage() {
         </div>
       </section></div>}
 
-      {reportVideo && <div className="modal-backdrop" onClick={()=>setReportVideo(null)}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setReportVideo(null)}><X/></button><h2>Signaler cette vidéo</h2><p>Le signalement sera transmis à l'équipe de modération.</p><form onSubmit={submitReport}><label>Motif</label><select value={reportReason} onChange={e=>setReportReason(e.target.value)}><option value="spam">Spam ou publicité trompeuse</option><option value="harassment">Harcèlement</option><option value="hate">Discours haineux</option><option value="nudity">Nudité</option><option value="violence">Violence</option><option value="copyright">Droits d'auteur</option><option value="fraud">Fraude</option><option value="privacy">Atteinte à la vie privée</option><option value="other">Autre</option></select><button className="primary-action modal-submit">Envoyer le signalement</button></form></section></div>}
+      {(reportVideo || reportTarget) && <div className="modal-backdrop" onClick={()=>{setReportVideo(null);setReportTarget(null);}}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>{setReportVideo(null);setReportTarget(null);}}><X/></button><h2>Signaler {reportTarget?.label || "cette vidéo"}</h2><p>Le signalement sera transmis à l’équipe de modération.</p><form onSubmit={submitReport}><label>Motif</label><select value={reportReason} onChange={e=>setReportReason(e.target.value)}><option value="spam">Spam ou publicité trompeuse</option><option value="harassment">Harcèlement</option><option value="hate">Discours haineux</option><option value="nudity">Nudité</option><option value="violence">Violence</option><option value="copyright">Droits d’auteur</option><option value="fraud">Fraude</option><option value="privacy">Atteinte à la vie privée</option><option value="other">Autre</option></select><button className="primary-action modal-submit">Envoyer le signalement</button></form></section></div>}
 
       {profileOpen && <div className="creator-studio-overlay"><section className="creator-studio profile-edit-studio">
         <header className="studio-header"><button type="button" onClick={()=>setProfileOpen(false)}><ArrowLeft size={18}/> Retour</button><div className="studio-brand"><img src="/icons/zavo-192.png" alt=""/> <strong>Personnaliser mon profil</strong></div><span>PROFIL</span></header>
