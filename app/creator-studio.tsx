@@ -10,6 +10,7 @@ type CreatorVideo = {
   likes?:{count:number}[]; comments?:{count:number}[];
 };
 type ViewEvent = { video_id:string; watch_seconds:number; viewed_on:string };
+type VideoDraft = { id:string;caption:string;video_url:string;thumbnail_url:string|null;target_url:string|null;category:string|null;content_type:string;duration_seconds:number|null;aspect_ratio:string|null;interest_tags:string[];allow_offline_download:boolean;allow_gallery_download:boolean;show_stats:boolean;created_at:string };
 type DailyPoint = { date:string; views:number };
 const dateKey=(d:Date)=>d.toISOString().slice(0,10);
 const fmt=(n:number)=>Math.round(n||0).toLocaleString("fr-FR");
@@ -20,6 +21,8 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
   const [period,setPeriod]=useState(30);
   const [videos,setVideos]=useState<CreatorVideo[]>([]);
   const [views,setViews]=useState<ViewEvent[]>([]);
+  const [drafts,setDrafts]=useState<VideoDraft[]>([]);
+  const [draftBusy,setDraftBusy]=useState<string|null>(null);
   const [followers,setFollowers]=useState(0);
   const [newFollowers,setNewFollowers]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -35,7 +38,7 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
     if(showSpinner)setLoading(true);else setRefreshing(true);
     const since=new Date();since.setDate(since.getDate()-period+1);
     const start=dateKey(since);
-    const [videoResult,followersResult,newFollowersResult]=await Promise.all([
+    const [videoResult,followersResult,newFollowersResult,draftResult]=await Promise.all([
       supabase.from("videos").select("id,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
       supabase.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId),
       supabase.from("follows").select("created_at").eq("following_id",userId).gte("created_at",since.toISOString())
@@ -51,7 +54,7 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
         const batch=(data||[]) as ViewEvent[];allViews=allViews.concat(batch);if(batch.length<1000)break;
       }
     }
-    setVideos(ownVideos);setViews(allViews);setFollowers(followersResult.count||0);
+    setVideos(ownVideos);setDrafts((draftResult.data||[]) as VideoDraft[]);setViews(allViews);setFollowers(followersResult.count||0);
     setNewFollowers(newFollowersResult.data?.length||0);
     setLoading(false);setRefreshing(false);
   },[userId,period,onNotice]);
@@ -70,6 +73,36 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
   },[videos,views,period]);
 
   const maxDaily=Math.max(1,...metrics.days.map(d=>d.views));
+  const publishDraft=async(draft:VideoDraft)=>{
+    if(!supabase||!window.confirm("Publier ce brouillon maintenant ?"))return;
+    setDraftBusy(draft.id);
+    const {error}=await supabase.from("videos").insert({
+      user_id:userId,caption:draft.caption,video_url:draft.video_url,thumbnail_url:draft.thumbnail_url,
+      target_url:draft.target_url,category:draft.category,content_type:draft.content_type,
+      allow_download:draft.allow_offline_download||draft.allow_gallery_download,
+      allow_offline_download:draft.allow_offline_download,allow_gallery_download:draft.allow_gallery_download,
+      show_stats:draft.show_stats,visibility:"public",interest_tags:draft.interest_tags||[],
+      duration_seconds:draft.duration_seconds,aspect_ratio:draft.aspect_ratio
+    });
+    if(error){onNotice("Publication du brouillon impossible : "+error.message);setDraftBusy(null);return;}
+    const removed=await supabase.from("video_drafts").delete().eq("id",draft.id).eq("user_id",userId);
+    setDraftBusy(null);
+    if(removed.error)onNotice("Vidéo publiée, mais le brouillon n’a pas pu être retiré : "+removed.error.message);
+    else onNotice("Ton brouillon est maintenant publié sur ZAVO.");
+    await load(false);
+  };
+  const deleteDraft=async(draft:VideoDraft)=>{
+    if(!supabase||!window.confirm("Supprimer ce brouillon ?"))return;
+    setDraftBusy(draft.id);
+    const {error}=await supabase.from("video_drafts").delete().eq("id",draft.id).eq("user_id",userId);
+    if(error){onNotice("Suppression du brouillon impossible : "+error.message);setDraftBusy(null);return;}
+    const videoPath=storagePath(draft.video_url,"zavo-videos");
+    const thumbPath=storagePath(draft.thumbnail_url,"zavo-media");
+    if(videoPath)await supabase.storage.from("zavo-videos").remove([videoPath]);
+    if(thumbPath)await supabase.storage.from("zavo-media").remove([thumbPath]);
+    setDraftBusy(null);onNotice("Brouillon supprimé.");await load(false);
+  };
+
   const saveEdit=async()=>{
     if(!supabase||!editing)return;
     setSaving(true);
@@ -119,6 +152,10 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
       </section>
       <section className="creator-panel creator-audience-panel"><div className="creator-panel-heading"><div><span className="creator-kicker">COMMUNAUTÉ</span><h2>Ton audience</h2></div><Users size={20}/></div><div className="creator-audience-number">{fmt(followers)} <span>abonnés</span></div><div className="creator-growth"><ArrowUpRight size={17}/> +{fmt(newFollowers)} nouveaux abonnés sur {period} jours</div><p>Continue de publier régulièrement et d’échanger avec ta communauté pour développer ton audience.</p></section>
     </div>
+    <section className="creator-panel creator-video-manager creator-drafts-panel">
+      <div className="creator-panel-heading"><div><span className="creator-kicker">À TERMINER PLUS TARD</span><h2>Mes brouillons <span className="creator-count">{drafts.length}</span></h2></div></div>
+      {!drafts.length?<div className="creator-empty-videos"><Pencil size={30}/><strong>Aucun brouillon enregistré</strong><span>Depuis l’écran de publication, tu peux enregistrer une vidéo pour la reprendre plus tard.</span></div>:<div className="creator-video-list">{drafts.map(d=><article className="creator-video-row" key={d.id}><div className="creator-video-thumb">{d.thumbnail_url?<img src={d.thumbnail_url} alt=""/>:<div><Play/></div>}</div><div className="creator-video-info"><strong>{d.caption||"Brouillon sans description"}</strong><small><CalendarDays size={12}/> Enregistré le {new Date(d.created_at).toLocaleDateString("fr-FR")} · {d.content_type==="short"?"Short":"Vidéo"}</small></div><div className="creator-video-actions"><button onClick={()=>void publishDraft(d)} disabled={draftBusy===d.id}><Play size={14}/> {draftBusy===d.id?"Traitement…":"Publier"}</button><button className="creator-delete" onClick={()=>void deleteDraft(d)} disabled={draftBusy===d.id}><Trash2 size={14}/> Supprimer</button></div></article>)}</div>}
+    </section>
     <section className="creator-panel creator-video-manager">
       <div className="creator-panel-heading"><div><span className="creator-kicker">GESTION DU CONTENU</span><h2>Mes vidéos <span className="creator-count">{videos.length}</span></h2></div><span className="creator-manage-hint">Modifie ou supprime tes publications</span></div>
       {!videos.length?<div className="creator-empty-videos"><VideoIcon size={34}/><strong>Tu n’as pas encore publié de vidéo</strong><span>Ta première publication apparaîtra ici avec ses statistiques.</span></div>:<div className="creator-video-list">{metrics.videoStats.map(v=><article className="creator-video-row" key={v.id}>
