@@ -543,7 +543,10 @@ export default function HomePage() {
         .order("created_at", { ascending: true }).limit(12);
       setSponsoredPromos((promoRows || []).filter((campaign: any) => {
         const countries = campaign.country_codes || [];
-        return !countries.length || countries.includes("ALL") || countries.includes(profile?.country_code || "BJ");
+        const countryMatches = !countries.length || countries.includes("ALL") || countries.includes(profile?.country_code || "BJ");
+        const ownerIsBlocked = blockedUserIds.includes(campaign.owner_id);
+        const targetIsBlocked = campaign.target_profile_id && blockedUserIds.includes(campaign.target_profile_id);
+        return countryMatches && !ownerIsBlocked && !targetIsBlocked;
       }));
     } else {
       setVideos(organic);
