@@ -962,7 +962,7 @@ export default function HomePage() {
       const users = profiles.map((p:any) => ({ ...p, ...(authById.get(p.id) || {}) }));
       const profileById = new Map(users.map((u:any) => [u.id, u]));
       const campaigns = campaignRows.map((c:any) => ({ ...c, owner_profile: profileById.get(c.owner_id) || null }));
-      const campaignById = new Map(campaigns.map((c:any) => [c.id, c]));
+      const campaignById = new Map<string, any>(campaigns.map((c:any) => [c.id, c] as [string, any]));
       const payments = paymentRows.map((p:any) => ({
         ...p,
         owner_profile: profileById.get(p.owner_id) || null,
