@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 type CreatorVideo = {
   id:string; caption:string; video_url:string; thumbnail_url:string|null; views_count:number;
   created_at:string; content_type:string; duration_seconds:number|null; visibility:string;
+  target_url?:string|null; category?:string|null; hashtags?:string[]; interest_tags?:string[];
+  show_stats?:boolean; allow_offline_download?:boolean; allow_gallery_download?:boolean; allow_download?:boolean;
   likes?:{count:number}[]; comments?:{count:number}[];
 };
 type ViewEvent = { video_id:string; watch_seconds:number; viewed_on:string };
@@ -32,6 +34,14 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
   const [refreshing,setRefreshing]=useState(false);
   const [editing,setEditing]=useState<CreatorVideo|null>(null);
   const [editCaption,setEditCaption]=useState("");
+  const [editType,setEditType]=useState<"short"|"video">("video");
+  const [editTargetUrl,setEditTargetUrl]=useState("");
+  const [editCategory,setEditCategory]=useState("");
+  const [editHashtags,setEditHashtags]=useState("");
+  const [editInterestTags,setEditInterestTags]=useState("");
+  const [editShowStats,setEditShowStats]=useState(true);
+  const [editOfflineDownload,setEditOfflineDownload]=useState(false);
+  const [editGalleryDownload,setEditGalleryDownload]=useState(false);
   const [thumbnailFile,setThumbnailFile]=useState<File|null>(null);
   const [saving,setSaving]=useState(false);
   const [deleting,setDeleting]=useState<string|null>(null);
@@ -42,7 +52,7 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
     const since=new Date();since.setDate(since.getDate()-period+1);
     const start=dateKey(since);
     const [videoResult,followersResult,newFollowersResult,draftResult]=await Promise.all([
-      supabase.from("videos").select("id,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
+      supabase.from("videos").select("id,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,target_url,category,hashtags,interest_tags,show_stats,allow_offline_download,allow_gallery_download,allow_download,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
       supabase.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId),
       supabase.from("follows").select("created_at").eq("following_id",userId).gte("created_at",since.toISOString()),
       supabase.from("video_drafts").select("*").eq("user_id",userId).order("updated_at",{ascending:false}).limit(100)
@@ -129,9 +139,23 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
       if(upload.error){onNotice("La miniature n’a pas pu être importée : "+upload.error.message);setSaving(false);return;}
       thumbnailUrl=supabase.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
     }
-    const {error}=await supabase.from("videos").update({caption:editCaption.trim(),thumbnail_url:thumbnailUrl}).eq("id",editing.id).eq("user_id",userId);
+    const normalizedTarget=editTargetUrl.trim();
+    if(normalizedTarget){
+      try{const parsed=new URL(normalizedTarget);if(parsed.protocol!=="https:"){onNotice("Le lien doit commencer par https://");setSaving(false);return;}}
+      catch{onNotice("Le lien externe n’est pas valide.");setSaving(false);return;}
+    }
+    const hashtags=editHashtags.split(/[\\s,]+/).map(x=>x.trim().replace(/^#+/,"").toLowerCase()).filter(Boolean).slice(0,30);
+    const interestTags=editInterestTags.split(",").map(x=>x.trim()).filter(Boolean).slice(0,20);
+    const {error}=await supabase.from("videos").update({
+      caption:editCaption.trim(),thumbnail_url:thumbnailUrl,content_type:editType,
+      target_url:normalizedTarget||null,category:editCategory.trim()||null,hashtags,interest_tags:interestTags,
+      show_stats:editShowStats,allow_offline_download:editOfflineDownload,allow_gallery_download:editGalleryDownload,
+      allow_download:editOfflineDownload||editGalleryDownload
+    }).eq("id",editing.id).eq("user_id",userId);
     setSaving(false);
     if(error){onNotice("Modification impossible : "+error.message);return;}
+    const oldThumbnailPath=thumbnailFile?storagePath(editing.thumbnail_url,"zavo-media"):null;
+    if(oldThumbnailPath)await supabase.storage.from("zavo-media").remove([oldThumbnailPath]);
     setEditing(null);setThumbnailFile(null);onNotice("Ta vidéo a été mise à jour.");await load(false);
   };
   const removeVideo=async(video:CreatorVideo)=>{
@@ -182,9 +206,19 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
       {!videos.length?<div className="creator-empty-videos"><VideoIcon size={34}/><strong>Tu n’as pas encore publié de vidéo</strong><span>Ta première publication apparaîtra ici avec ses statistiques.</span></div>:<div className="creator-video-list">{metrics.videoStats.map(v=><article className="creator-video-row" key={v.id}>
         <div className="creator-video-thumb">{v.thumbnail_url?<img src={v.thumbnail_url} alt=""/>:<div><Play/></div>}</div>
         <div className="creator-video-info"><strong>{v.caption||"Sans description"}</strong><small><CalendarDays size={12}/> {new Date(v.created_at).toLocaleDateString("fr-FR")} · {v.content_type==="short"?"Short":"Vidéo"} · {v.visibility==="public"?"Publique":"Privée"}</small><div className="creator-video-metrics"><span><Eye size={13}/> {fmt(v.views_count)}</span><span><Heart size={13}/> {fmt(v.likes?.[0]?.count||0)}</span><span><MessageCircle size={13}/> {fmt(v.comments?.[0]?.count||0)}</span><span><Clock3 size={13}/> {Math.round(v.averageWatch)} s moy.</span></div></div>
-        <div className="creator-video-actions"><button onClick={()=>{setEditing(v);setEditCaption(v.caption||"");setThumbnailFile(null);}}><Pencil size={15}/> Modifier</button><button className="creator-delete" onClick={()=>void removeVideo(v)} disabled={deleting===v.id}><Trash2 size={15}/> {deleting===v.id?"Suppression…":"Supprimer"}</button></div>
+        <div className="creator-video-actions"><button onClick={()=>{setEditing(v);setEditCaption(v.caption||"");setEditType(v.content_type==="short"?"short":"video");setEditTargetUrl(v.target_url||"");setEditCategory(v.category||"");setEditHashtags((v.hashtags||[]).join(" "));setEditInterestTags((v.interest_tags||[]).join(", "));setEditShowStats(v.show_stats!==false);setEditOfflineDownload(!!(v.allow_offline_download??v.allow_download));setEditGalleryDownload(!!(v.allow_gallery_download??v.allow_download));setThumbnailFile(null);}}><Pencil size={15}/> Modifier</button><button className="creator-delete" onClick={()=>void removeVideo(v)} disabled={deleting===v.id}><Trash2 size={15}/> {deleting===v.id?"Suppression…":"Supprimer"}</button></div>
       </article>)}</div>}
     </section>
-    {editing&&<div className="creator-edit-backdrop" onClick={()=>setEditing(null)}><section className="creator-edit-modal" onClick={e=>e.stopPropagation()}><header><div><span className="creator-kicker">MODIFICATION</span><h2>Modifier la vidéo</h2></div><button onClick={()=>setEditing(null)} aria-label="Fermer"><X/></button></header><label>Description de la vidéo<textarea value={editCaption} onChange={e=>setEditCaption(e.target.value)} maxLength={2200} rows={5}/><small>{editCaption.length}/2200 caractères</small></label><label className="creator-thumbnail-upload"><ImagePlus/><span>{thumbnailFile?thumbnailFile.name:"Changer la miniature (image)"}</span><input type="file" accept="image/*" onChange={e=>setThumbnailFile(e.target.files?.[0]||null)}/></label><footer><button className="creator-cancel" onClick={()=>setEditing(null)}>Annuler</button><button className="creator-save" onClick={()=>void saveEdit()} disabled={saving||!editCaption.trim()}><Save size={15}/> {saving?"Enregistrement…":"Enregistrer"}</button></footer></section></div>}
+    {editing&&<div className="creator-edit-backdrop" onClick={()=>setEditing(null)}><section className="creator-edit-modal" onClick={e=>e.stopPropagation()}><header><div><span className="creator-kicker">MODIFICATION</span><h2>Modifier la vidéo</h2></div><button onClick={()=>setEditing(null)} aria-label="Fermer"><X/></button></header><label>Description de la vidéo<textarea value={editCaption} onChange={e=>setEditCaption(e.target.value)} maxLength={2200} rows={5}/><small>{editCaption.length}/2200 caractères</small></label>
+      <div className="creator-edit-grid"><label>Type de publication<select value={editType} onChange={e=>setEditType(e.target.value as "short"|"video")}><option value="short">Short</option><option value="video">Vidéo longue</option></select></label><label>Catégorie<input value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={60} placeholder="Ex. Éducation, musique…"/></label></div>
+      <label>Lien externe (HTTPS)<input type="url" value={editTargetUrl} onChange={e=>setEditTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></label>
+      <label>Hashtags<input value={editHashtags} onChange={e=>setEditHashtags(e.target.value)} placeholder="#musique #zavo #création"/></label>
+      <label>Centres d’intérêt (séparés par des virgules)<input value={editInterestTags} onChange={e=>setEditInterestTags(e.target.value)} placeholder="Musique, Éducation, Technologie"/></label>
+      <div className="creator-edit-permissions">
+        <label><span>Afficher les statistiques</span><input type="checkbox" checked={editShowStats} onChange={e=>setEditShowStats(e.target.checked)}/></label>
+        <label><span>Autoriser l’enregistrement dans ZAVO</span><input type="checkbox" checked={editOfflineDownload} onChange={e=>setEditOfflineDownload(e.target.checked)}/></label>
+        <label><span>Autoriser le téléchargement dans la galerie</span><input type="checkbox" checked={editGalleryDownload} onChange={e=>setEditGalleryDownload(e.target.checked)}/></label>
+      </div>
+      <label className="creator-thumbnail-upload"><ImagePlus/><span>{thumbnailFile?thumbnailFile.name:"Changer la miniature (image)"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setThumbnailFile(e.target.files?.[0]||null)}/></label><footer><button className="creator-cancel" onClick={()=>setEditing(null)}>Annuler</button><button className="creator-save" onClick={()=>void saveEdit()} disabled={saving||!editCaption.trim()}><Save size={15}/> {saving?"Enregistrement…":"Enregistrer"}</button></footer></section></div>}
   </section>;
 }
