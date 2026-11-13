@@ -413,8 +413,19 @@ export default function HomePage() {
       if (!active) return;
       setSession(value);
       if (value?.user?.id) {
-        // Keep the auth callback synchronous; load profile data after the auth lock is released.
-        Promise.resolve().then(() => { if (active) loadUserData(value.user.id); });
+        // Load user data after the auth callback releases the Supabase auth lock.
+        Promise.resolve().then(async () => {
+          if (!active) return;
+          await loadUserData(value.user.id);
+          // app_metadata changes are not reflected in an already-issued JWT.
+          // Refresh once on initial session restoration so newly granted admin access is picked up.
+          if (event === "INITIAL_SESSION") {
+            const { data, error } = await db()!.auth.refreshSession();
+            if (!active) return;
+            if (data.session) setSession(data.session);
+            else if (error) setNotice("Actualisation des autorisations impossible : " + error.message);
+          }
+        });
       } else {
         setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
         setNotifications([]); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
@@ -890,6 +901,7 @@ export default function HomePage() {
       setAdminLoading(false);
     }
   }
+  useEffect(() => { if (isAdmin) setTab("Administration"); }, [isAdmin]);
   useEffect(() => { if (tab === "Administration") loadAdmin(); if (tab === "Promotions") loadMyCampaigns(); }, [tab, isAdmin, session?.user?.id]);
 
   const visibleVideos = useMemo(() => videos.filter((v) => {
