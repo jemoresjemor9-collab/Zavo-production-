@@ -203,6 +203,8 @@ export default function HomePage() {
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
 
+  useEffect(() => { const info = CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US; setCampaignBudget(String(Math.ceil(info.perUsd))); }, [countryCode]);
+
   const loadVideos = useCallback(async () => {
     if (!db()) return;
     let query = db()!.from("videos")
