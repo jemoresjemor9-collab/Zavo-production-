@@ -792,6 +792,21 @@ export default function HomePage() {
     setNotice(error?.message || "Signalement transmis à l'équipe ZAVO."); setReportVideo(null);
   }
 
+  async function startCampaignCheckout(campaignId: string): Promise<boolean> {
+    if (!session || !db()) { setAuthMode("signin"); return false; }
+    setBusy(true);
+    const { data, error } = await db()!.functions.invoke("saspay-create-checkout", {
+      body: { campaign_id: campaignId }
+    });
+    setBusy(false);
+    if (error || !data?.checkout_url) {
+      setNotice("Impossible de lancer le paiement : " + (data?.error || error?.message || "réponse invalide du service SasPay") + " Tu peux réessayer depuis Mes promotions.");
+      return false;
+    }
+    window.location.assign(data.checkout_url);
+    return true;
+  }
+
   async function createCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session || !db()) { setAuthMode("signin"); return; }
@@ -803,7 +818,7 @@ export default function HomePage() {
     const targetUrl = safeUrl(campaignTargetUrl) || (campaignType === "video" && campaignVideo ? window.location.origin + "/?video=" + campaignVideo.id : campaignType === "profile" ? window.location.origin + "/?profile=" + session.user.id : null);
     if (campaignType === "product" && !targetUrl) { setNotice("Ajoute un lien valide vers le produit ou la page à présenter."); return; }
     setBusy(true);
-    const { error } = await db()!.from("ad_campaigns").insert({
+    const { data, error } = await db()!.from("ad_campaigns").insert({
       owner_id: session.user.id,
       target_type: campaignType,
       target_profile_id: campaignType === "profile" ? session.user.id : null,
@@ -814,15 +829,17 @@ export default function HomePage() {
       target_url: targetUrl,
       budget: amount, currency: selectedCurrency.code, objective: campaignObjective,
       country_codes: campaignCountries, status: "awaiting_payment"
-    });
+    }).select("id").single();
     setBusy(false);
-    if (error) setNotice("La campagne n’a pas pu être enregistrée : " + error.message);
-    else {
-      setNotice("Campagne enregistrée. Elle restera en attente : le paiement et la diffusion ne sont pas encore activés.");
-      setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl(""); setCampaignTitle(""); setCampaignDescription("");
-      setCampaignType("video");
-      await loadMyCampaigns();
+    if (error || !data?.id) {
+      setNotice("La campagne n’a pas pu être enregistrée : " + (error?.message || "identifiant de campagne manquant"));
+      return;
     }
+    setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl(""); setCampaignTitle(""); setCampaignDescription("");
+    setCampaignType("video"); setTab("Promotions");
+    await loadMyCampaigns();
+    const started = await startCampaignCheckout(data.id);
+    if (!started) await loadMyCampaigns();
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -901,6 +918,14 @@ export default function HomePage() {
       setAdminLoading(false);
     }
   }
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") !== "return") return;
+    setNotice("Retour de SasPay reçu. ZAVO vérifie la confirmation du paiement ; le statut sera actualisé après réception du webhook.");
+    setTab("Promotions");
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
   useEffect(() => { if (isAdmin) setTab("Administration"); }, [isAdmin]);
   useEffect(() => { if (tab === "Administration") loadAdmin(); if (tab === "Promotions") loadMyCampaigns(); }, [tab, isAdmin, session?.user?.id]);
 
@@ -996,7 +1021,7 @@ export default function HomePage() {
           ) : tab === "Promotions" ? (
             <section className="campaigns-page">
               <div className="feed-toolbar"><div><div className="section-kicker">VISIBILITÉ DE TON CONTENU</div><h2>Mes promotions</h2></div><button className="primary-action" onClick={()=>session?setCampaignOpen(true):setAuthMode("signin")}><Megaphone size={15}/> Nouvelle campagne</button></div>
-              {myCampaigns.length ? myCampaigns.map((campaign:any)=><article className="campaign-card" key={campaign.id}><div className="campaign-card-top"><strong>{campaign.title}</strong><span className="campaign-status">{campaign.status}</span></div><div className="campaign-card-meta">{campaign.target_type==="profile"?"Promotion du compte":campaign.target_type==="product"?"Promotion d’un produit ou service":"Promotion d’une vidéo"} · {campaign.country_codes?.length||0} pays · {campaign.budget.toLocaleString("fr-FR")} {campaign.currency} · {campaign.objective}</div><div className="campaign-metrics"><span><Eye size={14}/> {campaign.impressions||0} impressions</span><span><ExternalLink size={14}/> {campaign.clicks||0} clics</span></div>{campaign.status==="awaiting_payment"&&<p className="campaign-note">En attente de paiement. La diffusion commencera après validation et activation par ZAVO.</p>}</article>) : <section className="empty-state"><div className="empty-icon"><Megaphone/></div><h3>Aucune campagne pour le moment</h3><p>Booste une de tes vidéos pour attirer une nouvelle audience.</p><button className="primary-action" onClick={()=>session?setCampaignOpen(true):setAuthMode("signin")}>Créer une campagne</button></section>}
+              {myCampaigns.length ? myCampaigns.map((campaign:any)=><article className="campaign-card" key={campaign.id}><div className="campaign-card-top"><strong>{campaign.title}</strong><span className="campaign-status">{campaign.status}</span></div><div className="campaign-card-meta">{campaign.target_type==="profile"?"Promotion du compte":campaign.target_type==="product"?"Promotion d’un produit ou service":"Promotion d’une vidéo"} · {campaign.country_codes?.length||0} pays · {campaign.budget.toLocaleString("fr-FR")} {campaign.currency} · {campaign.objective}</div><div className="campaign-metrics"><span><Eye size={14}/> {campaign.impressions||0} impressions</span><span><ExternalLink size={14}/> {campaign.clicks||0} clics</span></div>{campaign.status==="awaiting_payment"&&<><p className="campaign-note">En attente du règlement. La diffusion commencera uniquement après confirmation du paiement et validation par ZAVO.</p><button className="primary-action" disabled={busy} onClick={()=>startCampaignCheckout(campaign.id)}>{busy?"Préparation…":"Payer avec SasPay"}</button></>}</article>) : <section className="empty-state"><div className="empty-icon"><Megaphone/></div><h3>Aucune campagne pour le moment</h3><p>Booste une de tes vidéos pour attirer une nouvelle audience.</p><button className="primary-action" onClick={()=>session?setCampaignOpen(true):setAuthMode("signin")}>Créer une campagne</button></section>}
             </section>
           ) : tab === "Notifications" ? (
             <section><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div></div>{notifications.map((n) => <article className="notification-row" key={n.id}><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></article>)}</section>
@@ -1058,7 +1083,7 @@ export default function HomePage() {
             <section className="studio-section"><h2>Objectif de la promotion</h2><div className="objective-grid"><label><input type="radio" checked={campaignObjective==="views"} onChange={()=>setCampaignObjective("views")}/> Plus de vues</label><label><input type="radio" checked={campaignObjective==="profile_visits"} onChange={()=>setCampaignObjective("profile_visits")}/> Visites du profil</label><label><input type="radio" checked={campaignObjective==="website_clicks"} onChange={()=>setCampaignObjective("website_clicks")}/> Clics vers mon site</label><label><input type="radio" checked={campaignObjective==="messages"} onChange={()=>setCampaignObjective("messages")}/> Recevoir des messages</label></div></section>
             <section className="studio-section"><h2>Pays ciblés (1 à 8)</h2><p>Recherche un pays par son nom ou son code, puis ajoute-le à ta campagne.</p><div className="country-picker"><input type="search" value={campaignCountrySearch} onFocus={()=>setCampaignCountryListOpen(true)} onChange={e=>{setCampaignCountrySearch(e.target.value);setCampaignCountryListOpen(true);}} onKeyDown={e=>{if(e.key==="Escape")setCampaignCountryListOpen(false);}} placeholder="Rechercher un pays (ex. Bénin, France, Canada)…" autoComplete="off" aria-label="Rechercher un pays à cibler"/><div className="country-picker-toolbar"><span>{campaignCountries.length}/8 pays sélectionnés</span><button type="button" onClick={()=>setCampaignCountryListOpen(v=>!v)}>{campaignCountryListOpen?"Masquer la liste":"Afficher les pays"}</button></div>{campaignCountries.length>0&&<div className="country-selected-list">{campaignCountries.map(code=>{const country=COUNTRIES.find(([item])=>item===code);return <span className="country-selected-chip" key={code}>{country?.[1]||code}<button type="button" aria-label={"Retirer "+(country?.[1]||code)} onClick={()=>setCampaignCountries(items=>items.filter(item=>item!==code))}>×</button></span>;})}</div>}{campaignCountryListOpen&&<div className="country-picker-results">{COUNTRIES.filter(([code,name])=>code!=="OTHER"&&!campaignCountries.includes(code)&&(name.toLocaleLowerCase("fr").includes(campaignCountrySearch.trim().toLocaleLowerCase("fr"))||code.toLowerCase().includes(campaignCountrySearch.trim().toLowerCase()))).map(([code,name])=><button type="button" key={code} disabled={campaignCountries.length>=8} onClick={()=>{if(campaignCountries.length<8){setCampaignCountries(items=>[...items,code]);setCampaignCountrySearch("");}}}>{name}<span>{code}</span></button>)}{COUNTRIES.filter(([code,name])=>code!=="OTHER"&&!campaignCountries.includes(code)&&(name.toLocaleLowerCase("fr").includes(campaignCountrySearch.trim().toLocaleLowerCase("fr"))||code.toLowerCase().includes(campaignCountrySearch.trim().toLowerCase()))).length===0&&<p>Aucun pays trouvé. Essaie une autre orthographe.</p>}</div>}</div></section>
             <section className="studio-section budget-section"><h2>Budget de la campagne</h2><label>Montant ({currencyInfo.code})<input type="number" min={currencyInfo.perUsd} step="1" value={campaignBudget} onChange={e=>setCampaignBudget(e.target.value)} required/></label><small className="studio-hint">Minimum : environ 1 USD, soit {currencyInfo.perUsd} {currencyInfo.symbol}. La devise dépend du pays de ton compte.</small></section>
-            <div className="boost-submit-panel"><div><strong>Récapitulatif</strong><p>{campaignCountries.length} pays · {Number(campaignBudget||0).toLocaleString("fr-FR")} {currencyInfo.code} · {campaignObjective==="views"?"Plus de vues":campaignObjective==="profile_visits"?"Visites du profil":campaignObjective==="website_clicks"?"Clics vers le site":"Messages"}</p><small>Le paiement n’est pas encore connecté. La campagne sera enregistrée en attente.</small></div><button className="primary-action modal-submit" disabled={busy||(campaignType==="video"&&!campaignVideo)}>{busy?"Enregistrement…":"Enregistrer ma campagne"}</button></div>
+            <div className="boost-submit-panel"><div><strong>Récapitulatif</strong><p>{campaignCountries.length} pays · {Number(campaignBudget||0).toLocaleString("fr-FR")} {currencyInfo.code} · {campaignObjective==="views"?"Plus de vues":campaignObjective==="profile_visits"?"Visites du profil":campaignObjective==="website_clicks"?"Clics vers le site":"Messages"}</p><small>Tu seras redirigé vers la page sécurisée SasPay pour régler ta campagne.</small></div><button className="primary-action modal-submit" disabled={busy||(campaignType==="video"&&!campaignVideo)}>{busy?"Préparation…":"Continuer vers le paiement"}</button></div>
           </form>
         </div>
       </section></div>}
