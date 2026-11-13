@@ -1154,12 +1154,14 @@ function OfflineVideoPlayer({ item }: { item: any }) {
 
 function SponsoredPromoCard({ campaign, currentUserId, following, onFollow, onCampaignEvent }: any) {
   const ref = useRef<HTMLElement | null>(null);
+  const impressionTracked = useRef(false);
   const person = campaign.target_type === "profile" ? campaign.target_profile : campaign.owner;
   useEffect(() => {
     const node = ref.current;
     if (!node || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) {
+      if (!impressionTracked.current && entries.some(entry => entry.isIntersecting)) {
+        impressionTracked.current = true;
         onCampaignEvent?.(campaign.id, "impression");
         observer.disconnect();
       }
