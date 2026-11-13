@@ -567,3 +567,13 @@ body{color:#d7eaff!important}
 .discover-category-strip button:hover{border-color:#13b96a;color:#13b96a}
 .discover-category-strip button.active{border-color:#13b96a;background:#0b5c65;color:#13b96a;box-shadow:0 0 0 1px rgba(19,185,106,.16)}
 .discover-category-strip button:focus-visible{outline:2px solid #13b96a;outline-offset:2px}
+
+
+.dm-safety-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.dm-safety-actions button,.dm-blocked-list button,.dm-message-report{border:1px solid var(--line);background:var(--surface-2);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-weight:700}
+.dm-safety-actions button:hover,.dm-blocked-list button:hover,.dm-message-report:hover{border-color:var(--blue);color:var(--blue)}
+.dm-blocked-list{display:grid;gap:9px;padding:14px 16px;margin:12px 0;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.dm-blocked-list>strong{font-size:13px}
+.dm-blocked-list>div{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+.dm-message-report{margin-top:5px;padding:4px 8px;font-size:11px}
+@media(max-width:600px){.dm-safety-actions{justify-content:flex-end}.dm-safety-actions button{padding:6px 8px;font-size:11px}}
