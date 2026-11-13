@@ -202,6 +202,7 @@ export default function HomePage() {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
+  const [currencyInfo, setCurrencyInfo] = useState(CURRENCY_BY_COUNTRY.BJ);
   const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [], payments: [] });
   const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
   const [myReposts, setMyReposts] = useState<Video[]>([]);
@@ -227,7 +228,46 @@ export default function HomePage() {
     return () => { active = false; };
   }, [languageManuallySelected]);
 
-  useEffect(() => { const info = CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US; setCampaignBudget(String(Math.ceil(info.perUsd))); }, [countryCode]);
+  useEffect(() => {
+    let active = true;
+    const fallback = CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US;
+    async function resolveCurrency() {
+      try {
+        let code = fallback.code;
+        let symbol = fallback.symbol;
+        if (countryCode !== "OTHER") {
+          const countryResponse = await fetch(`https://restcountries.com/v3.1/alpha/${encodeURIComponent(countryCode)}?fields=currencies`);
+          if (countryResponse.ok) {
+            const countryData = await countryResponse.json();
+            const record = Array.isArray(countryData) ? countryData[0] : countryData;
+            const currencies = record?.currencies || {};
+            const firstCode = Object.keys(currencies)[0];
+            if (firstCode) {
+              code = firstCode;
+              symbol = currencies[firstCode]?.symbol || firstCode;
+            }
+          }
+        }
+        let perUsd = fallback.perUsd;
+        const ratesResponse = await fetch("https://open.er-api.com/v6/latest/USD");
+        if (ratesResponse.ok) {
+          const ratesData = await ratesResponse.json();
+          const liveRate = Number(ratesData?.rates?.[code]);
+          if (ratesData?.result === "success" && Number.isFinite(liveRate) && liveRate > 0) perUsd = liveRate;
+        }
+        if (!active) return;
+        const resolved = { code, symbol, perUsd };
+        setCurrencyInfo(resolved);
+        setCampaignBudget(String(Math.ceil(perUsd)));
+      } catch {
+        if (!active) return;
+        setCurrencyInfo(fallback);
+        setCampaignBudget(String(Math.ceil(fallback.perUsd)));
+      }
+    }
+    resolveCurrency();
+    return () => { active = false; };
+  }, [countryCode]);
 
   const loadVideos = useCallback(async () => {
     if (!db()) return;
@@ -562,13 +602,13 @@ export default function HomePage() {
 
   async function createCampaign(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!session || !campaignVideo) return;
-    const currencyInfo = CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US;
+    const selectedCurrency = currencyInfo;
     const amount = Number(campaignBudget);
-    if (!Number.isFinite(amount) || amount < currencyInfo.perUsd) { setNotice("Le budget minimum est équivalent à 1 USD dans ta devise."); return; }
+    if (!Number.isFinite(amount) || amount < selectedCurrency.perUsd) { setNotice("Le budget minimum est équivalent à 1 USD dans ta devise."); return; }
     const { error } = await db()!.from("ad_campaigns").insert({
       owner_id: session.user.id, video_id: campaignVideo.id, title: "Promotion de ma vidéo",
       target_url: safeUrl(campaignTargetUrl) || (window.location.origin + "/?video=" + campaignVideo.id),
-      budget: amount, currency: currencyInfo.code, objective: campaignObjective, country_codes: campaignCountries, status: "awaiting_payment"
+      budget: amount, currency: selectedCurrency.code, objective: campaignObjective, country_codes: campaignCountries, status: "awaiting_payment"
     });
     setNotice(error?.message || "Campagne enregistrée en attente de paiement. Aucun débit n'a été effectué.");
     setCampaignOpen(false); setCampaignVideo(null); setCampaignTargetUrl("");
@@ -726,7 +766,7 @@ export default function HomePage() {
 
       {commentsVideo && <div className="modal-backdrop" onClick={()=>setCommentsVideo(null)}><section className="modal comments-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCommentsVideo(null)}><X/></button><h2>Commentaires</h2><div className="comment-list">{comments.map(c=>{const p=Array.isArray(c.profiles)?c.profiles[0]:c.profiles;return <article key={c.id}><strong>{p?.display_name || "Utilisateur"}</strong><p><Caption value={c.body}/></p></article>;})}{comments.length===0 && <p>Aucun commentaire. Lance la conversation.</p>}</div><form onSubmit={sendComment} className="comment-form"><input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Écrire un commentaire..." maxLength={1000}/><button className="primary-action" disabled={!commentText.trim()}><Send size={16}/></button></form></section></div>}
 
-      {campaignOpen && <div className="modal-backdrop" onClick={()=>setCampaignOpen(false)}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCampaignOpen(false)}><X/></button><div className="section-kicker">ZAVO PROMOTION</div><h2>Booster une publication</h2><p>Choisis un objectif et un budget. La campagne sera enregistrée en attente de paiement ; aucun paiement n'est encore connecté.</p><form onSubmit={createCampaign}><label>Vidéo à promouvoir</label><select value={campaignVideo?.id || ""} onChange={e=>setCampaignVideo(videos.find(v=>v.id===e.target.value) || null)} required><option value="">Choisir une vidéo</option>{videos.filter(v=>v.user_id===session?.user?.id).map(v=><option key={v.id} value={v.id}>{v.caption.slice(0,70) || "Ma vidéo"} · {v.content_type}</option>)}</select><label>Objectif</label><select value={campaignObjective} onChange={e=>setCampaignObjective(e.target.value)}><option value="views">Obtenir plus de vues</option><option value="profile_visits">Visites du profil</option><option value="website_clicks">Clics vers mon site</option><option value="messages">Recevoir des messages</option></select><label>Budget ({(CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US).code})</label><input type="number" min={(CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US).perUsd} step="1" value={campaignBudget} onChange={e=>setCampaignBudget(e.target.value)} required/><small className="field-hint">Minimum : équivalent de 1 USD, soit environ {(CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US).perUsd} {(CURRENCY_BY_COUNTRY[countryCode] || CURRENCY_BY_COUNTRY.US).symbol}. Devise selon ton pays de résidence.</small><label>Lien à promouvoir (facultatif)</label><input type="url" value={campaignTargetUrl} onChange={e=>setCampaignTargetUrl(e.target.value)} placeholder="https://ton-site.com"/><label>Pays ciblés (1 à 6)</label><select multiple size={6} value={campaignCountries} onChange={e=>{const values=Array.from(e.target.selectedOptions,o=>o.value);if(values.length<=6)setCampaignCountries(values);}} required>{COUNTRIES.filter(([code])=>code!=="OTHER").map(([code,name])=><option key={code} value={code}>{name}</option>)}</select><small className="field-hint">Sélectionne jusqu’à six pays pour ta campagne.</small><button className="primary-action modal-submit" disabled={!campaignVideo}>Enregistrer ma campagne</button></form></section></div>}
+      {campaignOpen && <div className="modal-backdrop" onClick={()=>setCampaignOpen(false)}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setCampaignOpen(false)}><X/></button><div className="section-kicker">ZAVO PROMOTION</div><h2>Booster une publication</h2><p>Choisis un objectif et un budget. La campagne sera enregistrée en attente de paiement ; aucun paiement n'est encore connecté.</p><form onSubmit={createCampaign}><label>Vidéo à promouvoir</label><select value={campaignVideo?.id || ""} onChange={e=>setCampaignVideo(videos.find(v=>v.id===e.target.value) || null)} required><option value="">Choisir une vidéo</option>{videos.filter(v=>v.user_id===session?.user?.id).map(v=><option key={v.id} value={v.id}>{v.caption.slice(0,70) || "Ma vidéo"} · {v.content_type}</option>)}</select><label>Objectif</label><select value={campaignObjective} onChange={e=>setCampaignObjective(e.target.value)}><option value="views">Obtenir plus de vues</option><option value="profile_visits">Visites du profil</option><option value="website_clicks">Clics vers mon site</option><option value="messages">Recevoir des messages</option></select><label>Budget ({currencyInfo.code})</label><input type="number" min={currencyInfo.perUsd} step="1" value={campaignBudget} onChange={e=>setCampaignBudget(e.target.value)} required/><small className="field-hint">Minimum : équivalent de 1 USD, soit environ {currencyInfo.perUsd} {currencyInfo.symbol}. Devise selon ton pays de résidence.</small><label>Lien à promouvoir (facultatif)</label><input type="url" value={campaignTargetUrl} onChange={e=>setCampaignTargetUrl(e.target.value)} placeholder="https://ton-site.com"/><label>Pays ciblés (1 à 6)</label><select multiple size={6} value={campaignCountries} onChange={e=>{const values=Array.from(e.target.selectedOptions,o=>o.value);if(values.length<=6)setCampaignCountries(values);}} required>{COUNTRIES.filter(([code])=>code!=="OTHER").map(([code,name])=><option key={code} value={code}>{name}</option>)}</select><small className="field-hint">Sélectionne jusqu’à six pays pour ta campagne.</small><button className="primary-action modal-submit" disabled={!campaignVideo}>Enregistrer ma campagne</button></form></section></div>}
 
       {reportVideo && <div className="modal-backdrop" onClick={()=>setReportVideo(null)}><section className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setReportVideo(null)}><X/></button><h2>Signaler cette vidéo</h2><p>Le signalement sera transmis à l'équipe de modération.</p><form onSubmit={submitReport}><label>Motif</label><select value={reportReason} onChange={e=>setReportReason(e.target.value)}><option value="spam">Spam ou publicité trompeuse</option><option value="harassment">Harcèlement</option><option value="hate">Discours haineux</option><option value="nudity">Nudité</option><option value="violence">Violence</option><option value="copyright">Droits d'auteur</option><option value="fraud">Fraude</option><option value="privacy">Atteinte à la vie privée</option><option value="other">Autre</option></select><button className="primary-action modal-submit">Envoyer le signalement</button></form></section></div>}
 
