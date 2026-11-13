@@ -28,6 +28,16 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
   const [selectedType,setSelectedType]=useState<"all"|"short"|"video">("all");
   const [drafts,setDrafts]=useState<VideoDraft[]>([]);
   const [draftBusy,setDraftBusy]=useState<string|null>(null);
+  const [editingDraft,setEditingDraft]=useState<VideoDraft|null>(null);
+  const [draftEditCaption,setDraftEditCaption]=useState("");
+  const [draftEditType,setDraftEditType]=useState<"short"|"video">("video");
+  const [draftEditTarget,setDraftEditTarget]=useState("");
+  const [draftEditCategory,setDraftEditCategory]=useState("");
+  const [draftEditTags,setDraftEditTags]=useState("");
+  const [draftEditShowStats,setDraftEditShowStats]=useState(true);
+  const [draftEditOffline,setDraftEditOffline]=useState(false);
+  const [draftEditGallery,setDraftEditGallery]=useState(false);
+  const [draftThumbnailFile,setDraftThumbnailFile]=useState<File|null>(null);
   const [followers,setFollowers]=useState(0);
   const [newFollowers,setNewFollowers]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -117,6 +127,29 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
     else onNotice("Ton brouillon est maintenant publié sur ZAVO.");
     await load(false);
   };
+  const saveDraftEdit=async()=>{
+    if(!supabase||!editingDraft)return;
+    const target=draftEditTarget.trim();
+    if(target){try{const parsed=new URL(target);if(parsed.protocol!=="https:")throw new Error();}catch{onNotice("Le lien doit être une adresse HTTPS valide.");return;}}
+    setDraftBusy(editingDraft.id);
+    let thumbnailUrl=editingDraft.thumbnail_url;
+    if(draftThumbnailFile){
+      const path=userId+"/"+crypto.randomUUID()+"-"+draftThumbnailFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      const upload=await supabase.storage.from("zavo-media").upload(path,draftThumbnailFile,{contentType:draftThumbnailFile.type||"image/jpeg",upsert:false});
+      if(upload.error){onNotice("La miniature du brouillon n’a pas pu être importée : "+upload.error.message);setDraftBusy(null);return;}
+      thumbnailUrl=supabase.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
+    }
+    const {error}=await supabase.from("video_drafts").update({
+      caption:draftEditCaption.trim(),content_type:draftEditType,target_url:target||null,
+      category:draftEditCategory.trim()||null,interest_tags:draftEditTags.split(",").map(x=>x.trim()).filter(Boolean).slice(0,20),
+      show_stats:draftEditShowStats,allow_offline_download:draftEditOffline,allow_gallery_download:draftEditGallery,
+      thumbnail_url:thumbnailUrl,updated_at:new Date().toISOString()
+    }).eq("id",editingDraft.id).eq("user_id",userId);
+    if(error){onNotice("Modification du brouillon impossible : "+error.message);setDraftBusy(null);return;}
+    const oldPath=draftThumbnailFile?storagePath(editingDraft.thumbnail_url,"zavo-media"):null;
+    if(oldPath)await supabase.storage.from("zavo-media").remove([oldPath]);
+    setDraftBusy(null);setEditingDraft(null);setDraftThumbnailFile(null);onNotice("Brouillon mis à jour.");await load(false);
+  };
   const deleteDraft=async(draft:VideoDraft)=>{
     if(!supabase||!window.confirm("Supprimer ce brouillon ?"))return;
     setDraftBusy(draft.id);
@@ -144,7 +177,7 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
       try{const parsed=new URL(normalizedTarget);if(parsed.protocol!=="https:"){onNotice("Le lien doit commencer par https://");setSaving(false);return;}}
       catch{onNotice("Le lien externe n’est pas valide.");setSaving(false);return;}
     }
-    const hashtags=editHashtags.split(/[\\s,]+/).map(x=>x.trim().replace(/^#+/,"").toLowerCase()).filter(Boolean).slice(0,30);
+    const hashtags=editHashtags.split(/[\s,]+/).map(x=>x.trim().replace(/^#+/,"").toLowerCase()).filter(Boolean).slice(0,30);
     const interestTags=editInterestTags.split(",").map(x=>x.trim()).filter(Boolean).slice(0,20);
     const {error}=await supabase.from("videos").update({
       caption:editCaption.trim(),thumbnail_url:thumbnailUrl,content_type:editType,
@@ -199,7 +232,7 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
     </div>
     <section className="creator-panel creator-video-manager creator-drafts-panel">
       <div className="creator-panel-heading"><div><span className="creator-kicker">À TERMINER PLUS TARD</span><h2>Mes brouillons <span className="creator-count">{drafts.length}</span></h2></div></div>
-      {!drafts.length?<div className="creator-empty-videos"><Pencil size={30}/><strong>Aucun brouillon enregistré</strong><span>Depuis l’écran de publication, tu peux enregistrer une vidéo pour la reprendre plus tard.</span></div>:<div className="creator-video-list">{drafts.map(d=><article className="creator-video-row" key={d.id}><div className="creator-video-thumb">{d.thumbnail_url?<img src={d.thumbnail_url} alt=""/>:<div><Play/></div>}</div><div className="creator-video-info"><strong>{d.caption||"Brouillon sans description"}</strong><small><CalendarDays size={12}/> Enregistré le {new Date(d.created_at).toLocaleDateString("fr-FR")} · {d.content_type==="short"?"Short":"Vidéo"}</small></div><div className="creator-video-actions"><button onClick={()=>void publishDraft(d)} disabled={draftBusy===d.id}><Play size={14}/> {draftBusy===d.id?"Traitement…":"Publier"}</button><button className="creator-delete" onClick={()=>void deleteDraft(d)} disabled={draftBusy===d.id}><Trash2 size={14}/> Supprimer</button></div></article>)}</div>}
+      {!drafts.length?<div className="creator-empty-videos"><Pencil size={30}/><strong>Aucun brouillon enregistré</strong><span>Depuis l’écran de publication, tu peux enregistrer une vidéo pour la reprendre plus tard.</span></div>:<div className="creator-video-list">{drafts.map(d=><article className="creator-video-row" key={d.id}><div className="creator-video-thumb">{d.thumbnail_url?<img src={d.thumbnail_url} alt=""/>:<div><Play/></div>}</div><div className="creator-video-info"><strong>{d.caption||"Brouillon sans description"}</strong><small><CalendarDays size={12}/> Enregistré le {new Date(d.created_at).toLocaleDateString("fr-FR")} · {d.content_type==="short"?"Short":"Vidéo"}</small></div><div className="creator-video-actions"><button onClick={()=>{setEditingDraft(d);setDraftEditCaption(d.caption||"");setDraftEditType(d.content_type==="short"?"short":"video");setDraftEditTarget(d.target_url||"");setDraftEditCategory(d.category||"");setDraftEditTags((d.interest_tags||[]).join(", "));setDraftEditShowStats(d.show_stats!==false);setDraftEditOffline(!!d.allow_offline_download);setDraftEditGallery(!!d.allow_gallery_download);setDraftThumbnailFile(null);}} disabled={draftBusy===d.id}><Pencil size={14}/> Modifier</button><button onClick={()=>void publishDraft(d)} disabled={draftBusy===d.id}><Play size={14}/> {draftBusy===d.id?"Traitement…":"Publier"}</button><button className="creator-delete" onClick={()=>void deleteDraft(d)} disabled={draftBusy===d.id}><Trash2 size={14}/> Supprimer</button></div></article>)}</div>}
     </section>
     <section className="creator-panel creator-video-manager">
       <div className="creator-panel-heading"><div><span className="creator-kicker">GESTION DU CONTENU</span><h2>{selectedType==="short"?"Mes Shorts":selectedType==="video"?"Mes vidéos longues":"Mes vidéos"} <span className="creator-count">{metrics.publicationCount}</span></h2></div><span className="creator-manage-hint">Modifie ou supprime tes publications</span></div>
@@ -209,6 +242,14 @@ export default function CreatorStudio({userId,onNotice}:{userId:string;onNotice:
         <div className="creator-video-actions"><button onClick={()=>{setEditing(v);setEditCaption(v.caption||"");setEditType(v.content_type==="short"?"short":"video");setEditTargetUrl(v.target_url||"");setEditCategory(v.category||"");setEditHashtags((v.hashtags||[]).join(" "));setEditInterestTags((v.interest_tags||[]).join(", "));setEditShowStats(v.show_stats!==false);setEditOfflineDownload(!!(v.allow_offline_download??v.allow_download));setEditGalleryDownload(!!(v.allow_gallery_download??v.allow_download));setThumbnailFile(null);}}><Pencil size={15}/> Modifier</button><button className="creator-delete" onClick={()=>void removeVideo(v)} disabled={deleting===v.id}><Trash2 size={15}/> {deleting===v.id?"Suppression…":"Supprimer"}</button></div>
       </article>)}</div>}
     </section>
+    {editingDraft&&<div className="creator-edit-backdrop" onClick={()=>setEditingDraft(null)}><section className="creator-edit-modal" onClick={e=>e.stopPropagation()}><header><div><span className="creator-kicker">BROUILLON</span><h2>Reprendre la préparation</h2></div><button onClick={()=>setEditingDraft(null)} aria-label="Fermer"><X/></button></header>
+      <label>Description<textarea value={draftEditCaption} onChange={e=>setDraftEditCaption(e.target.value)} maxLength={2200} rows={4}/></label>
+      <div className="creator-edit-grid"><label>Type<select value={draftEditType} onChange={e=>setDraftEditType(e.target.value as "short"|"video")}><option value="short">Short</option><option value="video">Vidéo longue</option></select></label><label>Catégorie<input value={draftEditCategory} onChange={e=>setDraftEditCategory(e.target.value)} maxLength={60}/></label></div>
+      <label>Lien externe HTTPS<input type="url" value={draftEditTarget} onChange={e=>setDraftEditTarget(e.target.value)} placeholder="https://ton-site.com"/></label>
+      <label>Centres d’intérêt (séparés par des virgules)<input value={draftEditTags} onChange={e=>setDraftEditTags(e.target.value)} placeholder="Musique, Éducation, Technologie"/></label>
+      <div className="creator-edit-permissions"><label><span>Afficher les statistiques</span><input type="checkbox" checked={draftEditShowStats} onChange={e=>setDraftEditShowStats(e.target.checked)}/></label><label><span>Enregistrement dans ZAVO</span><input type="checkbox" checked={draftEditOffline} onChange={e=>setDraftEditOffline(e.target.checked)}/></label><label><span>Téléchargement dans la galerie</span><input type="checkbox" checked={draftEditGallery} onChange={e=>setDraftEditGallery(e.target.checked)}/></label></div>
+      <label className="creator-thumbnail-upload"><ImagePlus/><span>{draftThumbnailFile?draftThumbnailFile.name:"Changer la miniature"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setDraftThumbnailFile(e.target.files?.[0]||null)}/></label>
+      <footer><button className="creator-cancel" onClick={()=>setEditingDraft(null)}>Annuler</button><button className="creator-save" onClick={()=>void saveDraftEdit()} disabled={draftBusy===editingDraft.id}><Save size={15}/> {draftBusy===editingDraft.id?"Enregistrement…":"Enregistrer le brouillon"}</button></footer></section></div>}
     {editing&&<div className="creator-edit-backdrop" onClick={()=>setEditing(null)}><section className="creator-edit-modal" onClick={e=>e.stopPropagation()}><header><div><span className="creator-kicker">MODIFICATION</span><h2>Modifier la vidéo</h2></div><button onClick={()=>setEditing(null)} aria-label="Fermer"><X/></button></header><label>Description de la vidéo<textarea value={editCaption} onChange={e=>setEditCaption(e.target.value)} maxLength={2200} rows={5}/><small>{editCaption.length}/2200 caractères</small></label>
       <div className="creator-edit-grid"><label>Type de publication<select value={editType} onChange={e=>setEditType(e.target.value as "short"|"video")}><option value="short">Short</option><option value="video">Vidéo longue</option></select></label><label>Catégorie<input value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={60} placeholder="Ex. Éducation, musique…"/></label></div>
       <label>Lien externe (HTTPS)<input type="url" value={editTargetUrl} onChange={e=>setEditTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></label>
