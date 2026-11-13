@@ -183,6 +183,7 @@ export default function HomePage() {
   const [countryCode, setCountryCode] = useState("BJ");
   const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [] });
   const [myCampaigns, setMyCampaigns] = useState<any[]>([]);
+  const [myReposts, setMyReposts] = useState<Video[]>([]);
 
   const isAdmin = session?.user?.app_metadata?.role === "admin";
 
@@ -232,11 +233,12 @@ export default function HomePage() {
 
   const loadUserData = useCallback(async (userId: string) => {
     if (!db()) return;
-    const [{ data: p }, { data: l }, { data: s }, { data: f }] = await Promise.all([
+    const [{ data: p }, { data: l }, { data: s }, { data: f }, { data: rp }] = await Promise.all([
       db()!.from("profiles").select("*").eq("id", userId).maybeSingle(),
       db()!.from("likes").select("video_id").eq("user_id", userId),
       db()!.from("saved_videos").select("video_id").eq("user_id", userId),
-      db()!.from("follows").select("following_id").eq("follower_id", userId)
+      db()!.from("follows").select("following_id").eq("follower_id", userId),
+      db()!.from("reposts").select("video:videos(id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,show_stats,moderation_status,profiles(id,username,display_name,avatar_url,stats_visible),likes(count),comments(count))").eq("user_id", userId).order("created_at", { ascending: false }).limit(30)
     ]);
     setProfile(p as Profile | null);
     setDisplayName(p?.display_name || "");
@@ -245,6 +247,7 @@ export default function HomePage() {
     setLiked((l || []).map((x: any) => x.video_id));
     setSaved((s || []).map((x: any) => x.video_id));
     setFollowing((f || []).map((x: any) => x.following_id));
+    setMyReposts((rp || []).map((row: any) => Array.isArray(row.video) ? row.video[0] : row.video).filter(Boolean));
   }, []);
 
   useEffect(() => {
@@ -406,6 +409,7 @@ export default function HomePage() {
     if (!session) { setAuthMode("signin"); return; }
     const { error } = await db()!.from("reposts").insert({ user_id: session.user.id, video_id: video.id });
     setNotice(error?.code === "23505" ? "Tu as déjà partagé cette vidéo sur ton profil." : error ? error.message : "Vidéo partagée sur ton profil.");
+    if (!error) await loadUserData(session.user.id);
   }
 
   async function toggleSave(video: Video) {
@@ -592,7 +596,7 @@ export default function HomePage() {
           ) : tab === "Notifications" ? (
             <section><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2></div></div>{notifications.map((n) => <article className="notification-row" key={n.id}><strong>{n.title}</strong><p>{n.body}</p><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></article>)}</section>
           ) : tab === "Profil" ? (
-            <section className="profile-page"><div className="profile-hero"><div className="profile-avatar">{(profile?.display_name || "Z").slice(0,1).toUpperCase()}</div><div><h1>{profile?.display_name || "Ton profil"}</h1><p>@{profile?.username || "nouveau_createur"}</p><span>{profile?.bio || "Présente-toi à la communauté ZAVO."}</span></div><button onClick={() => setProfileOpen(true)}><Settings size={16}/> Modifier</button></div><div className="profile-actions"><button onClick={() => setTab("Enregistrés")}>Vidéos enregistrées</button><button onClick={() => setTab("Promotions")}>Mes promotions</button></div><h2>Mes vidéos</h2><div className="video-grid">{videos.filter(v => v.user_id === session?.user?.id).map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x: Video) => {setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onRepost={repostVideo} onCampaignEvent={trackCampaignEvent}/>)}</div></section>
+            <section className="profile-page"><div className="profile-hero"><div className="profile-avatar">{(profile?.display_name || "Z").slice(0,1).toUpperCase()}</div><div><h1>{profile?.display_name || "Ton profil"}</h1><p>@{profile?.username || "nouveau_createur"}</p><span>{profile?.bio || "Présente-toi à la communauté ZAVO."}</span></div><button onClick={() => setProfileOpen(true)}><Settings size={16}/> Modifier</button></div><div className="profile-actions"><button onClick={() => setTab("Enregistrés")}>Vidéos enregistrées</button><button onClick={() => setTab("Promotions")}>Mes promotions</button></div><h2>Mes vidéos</h2><div className="video-grid">{videos.filter(v => v.user_id === session?.user?.id).map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x: Video) => {setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onRepost={repostVideo} onCampaignEvent={trackCampaignEvent}/>)}</div><h2>Partagés sur mon profil</h2><div className="video-grid">{myReposts.map(v => <VideoCard key={"repost-"+v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x: Video)=>{setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onRepost={repostVideo} onCampaignEvent={trackCampaignEvent}/>)}</div></section>
           ) : (
             <>
               <section className="welcome-panel compact-welcome"><div className="welcome-copy"><div className="eyebrow"><span className="eyebrow-mark"/> LA SCÈNE EST À TOI</div><h1>Regarde. Crée.<br/><span>Fais-toi découvrir.</span></h1><p>Des vidéos de tous les horizons. Publie ton contenu, rassemble ta communauté et développe ton activité.</p><div className="welcome-actions"><button className="primary-action" onClick={() => session ? setUploadOpen(true) : setAuthMode("signup")}><Clapperboard size={17}/> Publier une vidéo</button><button className="secondary-action" onClick={() => setCampaignOpen(true)}><Megaphone size={16}/> Booster mon contenu</button></div></div><div className="welcome-art"><img src="/icons/zavo-512.png" alt="ZAVO"/></div></section>
