@@ -99,6 +99,12 @@ export default function HomePage() {
   const [offline, setOffline] = useState(false);
   const [offlineVideos, setOfflineVideos] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [dmSearch, setDmSearch] = useState("");
+  const [dmUsers, setDmUsers] = useState<Profile[]>([]);
+  const [activeConversation, setActiveConversation] = useState<string | null>(null);
+  const [dmMessages, setDmMessages] = useState<any[]>([]);
+  const [dmText, setDmText] = useState("");
+  const [dmBusy, setDmBusy] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [campaignVideo, setCampaignVideo] = useState<Video | null>(null);
   const [campaignBudget, setCampaignBudget] = useState("5000");
@@ -175,6 +181,64 @@ export default function HomePage() {
 
   useEffect(() => { loadVideos(); }, [loadVideos]);
   useEffect(() => { if (tab === "Notifications" && session?.user?.id) loadNotifications(); }, [tab, session?.user?.id]);
+
+  async function searchPeople() {
+    if (!db() || !session || dmSearch.trim().length < 2) { setDmUsers([]); return; }
+    const term = dmSearch.trim().replace(/[,%]/g, "");
+    const { data, error } = await db()!.from("profiles")
+      .select("id,username,display_name,avatar_url,bio,account_status")
+      .neq("id", session.user.id).eq("account_status", "active")
+      .or(`username.ilike.%${term}%,display_name.ilike.%${term}%`).limit(12);
+    if (error) setNotice(error.message);
+    setDmUsers((data || []) as Profile[]);
+  }
+
+  async function openConversation(recipientId: string) {
+    if (!session || !db()) { setAuthMode("signin"); return; }
+    setDmBusy(true);
+    const { data, error } = await db()!.functions.invoke("create-conversation", { body: { recipient_id: recipientId } });
+    if (error || !data?.conversation_id) {
+      setNotice(error?.message || data?.error || "Impossible d'ouvrir cette conversation.");
+      setDmBusy(false);
+      return;
+    }
+    setActiveConversation(data.conversation_id);
+    setDmUsers([]);
+    setDmSearch("");
+    await loadMessages(data.conversation_id);
+    setDmBusy(false);
+  }
+
+  async function loadMessages(conversationId: string) {
+    if (!db()) return;
+    const { data, error } = await db()!.from("messages")
+      .select("id,conversation_id,sender_id,body,created_at,read_at")
+      .eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(200);
+    if (error) { setNotice(error.message); return; }
+    setDmMessages(data || []);
+    await db()!.from("messages").update({ read_at: new Date().toISOString() })
+      .eq("conversation_id", conversationId).neq("sender_id", session?.user?.id || "").is("read_at", null);
+  }
+
+  async function sendDirectMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !activeConversation || !dmText.trim()) return;
+    const body = dmText.trim();
+    setDmText("");
+    const { error } = await db()!.from("messages").insert({
+      conversation_id: activeConversation, sender_id: session.user.id, body
+    });
+    if (error) { setNotice(error.message); setDmText(body); }
+    else await loadMessages(activeConversation);
+  }
+
+  useEffect(() => {
+    if (!activeConversation || !db()) return;
+    const channel = db()!.channel("zavo-chat-" + activeConversation)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: "conversation_id=eq." + activeConversation }, () => loadMessages(activeConversation))
+      .subscribe();
+    return () => { db()?.removeChannel(channel); };
+  }, [activeConversation, session?.user?.id]);
 
   async function loadNotifications() {
     if (!db() || !session) return;
