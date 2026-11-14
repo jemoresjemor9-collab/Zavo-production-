@@ -42,7 +42,10 @@ export default function PwaInstall() {
     }
     await installPrompt.prompt();
     const choice = await installPrompt.userChoice;
-    if (choice.outcome === "accepted") setStandalone(true);
+    if (choice.outcome === "accepted") {
+      // The appinstalled event is the reliable confirmation that installation completed.
+      setHelpOpen(false);
+    }
     setInstallPrompt(null);
   }
 
@@ -53,10 +56,10 @@ export default function PwaInstall() {
       <section className="install-banner" aria-label="Installer ZAVO">
         <div className="install-copy">
           <span className="install-icon"><Download size={18} /></span>
-          <div><strong>Emporte ZAVO avec toi.</strong><p>Installe l’application sur ton téléphone ou ton ordinateur.</p></div>
+          <div><strong>Installe la vraie application ZAVO.</strong><p>Une installation autonome, pas un simple raccourci.</p></div>
         </div>
         <div className="install-actions">
-          <button className="install-now" onClick={install}><Download size={15} /> Installer</button>
+          <button className="install-now" onClick={install}><Download size={15} /> {installPrompt ? "Installer l’application" : "Vérifier l’installation"}</button>
           <button className="install-dismiss" onClick={() => setDismissed(true)}>Plus tard</button>
         </div>
         <button className="install-close" aria-label="Fermer" onClick={() => setDismissed(true)}><X size={16} /></button>
@@ -67,13 +70,13 @@ export default function PwaInstall() {
             <button className="modal-close" onClick={() => setHelpOpen(false)} aria-label="Fermer"><X /></button>
             <span className="install-help-icon">{ios ? <Smartphone /> : <Monitor />}</span>
             <div className="section-kicker">INSTALLATION DE L’APPLICATION</div>
-            <h2>Ajouter ZAVO à ton appareil</h2>
+            <h2>{ios ? "Installer ZAVO sur iPhone" : "Installation native de ZAVO"}</h2>
             {ios ? (
-              <ol><li>Ouvre cette page dans Safari.</li><li>Appuie sur le bouton <Share size={14} /> Partager.</li><li>Choisis « Sur l’écran d’accueil » puis « Ajouter ».</li></ol>
+              <><p>Sur iPhone, Safari ne propose pas le même bouton d’installation native que Chrome. La méthode Apple est :</p><ol><li>Ouvre cette page dans Safari.</li><li>Appuie sur <Share size={14} /> Partager.</li><li>Choisis « Sur l’écran d’accueil » puis « Ajouter » : iOS crée une web app qui s’ouvre en fenêtre autonome.</li></ol></>
             ) : (
-              <ol><li>Ouvre le menu de ton navigateur (⋮ ou ⋯).</li><li>Choisis « Installer ZAVO » ou « Installer cette page comme application ».</li><li>Confirme l’installation dans la fenêtre du navigateur.</li></ol>
+              <><p>Le navigateur n’a pas encore transmis à ZAVO son bouton d’installation native. Pour éviter un simple raccourci :</p><ol><li>Ouvre ZAVO dans Google Chrome, dans un onglet normal (pas en navigation privée).</li><li>Actualise la page après quelques instants, puis ouvre le menu ⋮.</li><li>Attends l’option « Installer l’application » ou « Installer ZAVO » et utilise uniquement cette option.</li></ol><p><strong>Important :</strong> si tu ne vois que « Ajouter à l’écran d’accueil » ou « Créer un raccourci », ne sélectionne pas cette option : elle peut créer un simple raccourci.</p></>
             )}
-            <p className="install-help-note">L’installation PWA crée une fenêtre d’application autonome lorsque ton navigateur et ton appareil la prennent en charge.</p>
+            <p className="install-help-note">ZAVO doit être proposée par le navigateur comme une application installable. Si l’option native n’apparaît pas, le navigateur n’a pas encore validé les critères d’installation sur cet appareil.</p>
             <button className="primary-action modal-submit" onClick={() => setHelpOpen(false)}>J’ai compris</button>
           </section>
         </div>
