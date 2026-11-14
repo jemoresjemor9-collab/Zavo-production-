@@ -1519,22 +1519,28 @@ export default function HomePage() {
       // privileged email/last-login endpoint must never blank the entire admin dashboard.
       const analytics = results[5].error ? {} : (results[5].data || {});
       const authUsers = Array.isArray(analytics.users) ? analytics.users : [];
-      const authById = new Map(authUsers.map((u:any) => [u.id, u]));
-      const users = profiles.map((p:any) => ({ ...p, ...(authById.get(p.id) || {}) }));
-      const profileById = new Map(users.map((u:any) => [u.id, u]));
-      const campaigns = campaignRows.map((c:any) => ({ ...c, owner_profile: profileById.get(c.owner_id) || null }));
+      const profileById = new Map(profiles.map((p:any) => [p.id, p]));
+      const authIds = new Set(authUsers.map((u:any) => u.id));
+      const users = authUsers.length
+        ? [
+            ...authUsers.map((u:any) => ({ ...(profileById.get(u.id) || {}), ...u })),
+            ...profiles.filter((p:any) => !authIds.has(p.id))
+          ]
+        : profiles;
+      const mergedProfileById = new Map(users.map((u:any) => [u.id, u]));
+      const campaigns = campaignRows.map((c:any) => ({ ...c, owner_profile: mergedProfileById.get(c.owner_id) || null }));
       const campaignById = new Map<string, any>(campaigns.map((c:any) => [c.id, c] as [string, any]));
       const payments = paymentRows.map((p:any) => ({
         ...p,
-        owner_profile: profileById.get(p.owner_id) || null,
+        owner_profile: mergedProfileById.get(p.owner_id) || null,
         campaign_title: campaignById.get(p.campaign_id)?.title || "Campagne introuvable"
       }));
       const presence = Array.isArray(analytics.presence) ? analytics.presence : [];
       const activeUsers = presence.filter((p:any) => p.is_online).length;
       const feedbackCampaigns = results[6].error ? [] : (results[6].data || []);
       const feedbackRows = results[7].error ? [] : (results[7].data || []);
-      const feedbackResponses = feedbackRows.map((r:any) => ({ ...r, profile: profileById.get(r.user_id) || null }));
-      setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence, feedbackCampaigns, feedbackResponses, activeUsers, totalUsers: users.length });
+      const feedbackResponses = feedbackRows.map((r:any) => ({ ...r, profile: mergedProfileById.get(r.user_id) || null }));
+      setAdminData({ reports, campaigns, users, videos: adminVideos, payments, presence, feedbackCampaigns, feedbackResponses, activeUsers, totalUsers: authUsers.length || users.length });
       if (results[6].error || results[7].error) setNotice("Les données des avis n'ont pas pu être chargées : " + (results[6].error?.message || results[7].error?.message));
       const { data: campaignSettings, error: campaignSettingsError } = await db()!.from("ad_campaign_settings")
         .select("approval_mode").eq("id", 1).maybeSingle();
