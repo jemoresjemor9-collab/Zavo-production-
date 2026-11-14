@@ -231,6 +231,7 @@ function Caption({ value }: { value: string }) {
 
 export default function HomePage() {
   const [tab, setTab] = useState("Pour toi");
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [discoverCategory, setDiscoverCategory] = useState("Tout");
   const [videos, setVideos] = useState<Video[]>([]);
   const [session, setSession] = useState<any>(null);
@@ -1707,6 +1708,18 @@ export default function HomePage() {
     { label: "Studio", icon: BarChart3 }, { label: "Notifications", icon: Bell }, { label: "Profil", icon: UserRound }
   ];
 
+  const overflowNav = [
+    { label: "Découvrir", icon: Compass },
+    { label: "Abonnements", icon: Users },
+    { label: "Bibliothèque", icon: Bookmark },
+    { label: "Favoris", value: "Enregistrés", icon: Heart },
+    { label: "Téléchargements", icon: Download },
+    { label: "Studio créateur", value: "Studio", icon: BarChart3 },
+    { label: "Notifications", icon: Bell },
+    { label: "Promotions", icon: Megaphone },
+    ...(isAdmin ? [{ label: "Administration", icon: ShieldCheck }] : [])
+  ];
+
   if (offline) {
     return <main className="offline-screen"><div className="offline-header"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><strong>ZAVO</strong><span><WifiOff size={16}/> Hors connexion</span></div><h1>Tes vidéos téléchargées</h1><p>Sans Internet, tu peux regarder uniquement les vidéos enregistrées sur cet appareil.</p><div className="offline-grid">{offlineVideos.map((v) => <OfflineVideoPlayer key={v.id} item={v}/>)}</div>{offlineVideos.length === 0 && <div className="empty-state">Aucune vidéo téléchargée pour le moment.</div>}</main>;
   }
@@ -1729,6 +1742,18 @@ export default function HomePage() {
           <div className="top-actions">
             <button className="create-top-button" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={17}/><span>Créer</span></button>
             <button className="top-icon notification-top-button" aria-label={`Notifications${notifications.some((n:any)=>!n.read_at)?", non lues":""}`} onClick={() => setTab("Notifications")}><Bell size={19}/>{notifications.some((n:any)=>!n.read_at)&&<span className="notification-badge">{notifications.filter((n:any)=>!n.read_at).length>99?"99+":notifications.filter((n:any)=>!n.read_at).length}</span>}</button>
+            <div className="top-overflow-wrap">
+              <button type="button" className="top-icon overflow-trigger" aria-label="Ouvrir les onglets supplémentaires" aria-expanded={moreMenuOpen} onClick={()=>setMoreMenuOpen(value=>!value)}><MoreHorizontal size={20}/></button>
+              {moreMenuOpen && <nav className="top-overflow-menu" aria-label="Onglets supplémentaires">
+                <div className="top-overflow-heading">PLUS SUR ZAVO</div>
+                {overflowNav.map((item:any)=>{const Icon=item.icon;return <button type="button" key={item.label} className={tab===(item.value||item.label)?"active":""} onClick={()=>{
+                  setMoreMenuOpen(false);
+                  const destination=item.value||item.label;
+                  if((destination==="Studio"||destination==="Promotions")&&!session){setAuthMode("signin");return;}
+                  setTab(destination);
+                }}><Icon size={17}/><span>{item.label}</span></button>;})}
+              </nav>}
+            </div>
             {session ? <><button className="profile-chip" onClick={() => setTab("Profil")}>{(profile?.display_name || session.user.email || "Z").slice(0,1).toUpperCase()}</button><button className="login-button" onClick={() => setLogoutConfirm(true)}><LogOut size={16}/><span>Quitter</span></button></> : <button className="login-button" onClick={() => setAuthMode("signin")}><LogIn size={16}/><span>Connexion</span></button>}
           </div>
         </header>
@@ -1972,7 +1997,7 @@ export default function HomePage() {
           </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci pour ta réponse !</h2><p>Ta réponse a bien été envoyée en privé à l’équipe ZAVO. Tu as terminé pour cette campagne.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
         </section>
       </div>}
-      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Messages"?"active":""} onClick={()=>session?setTab("Messages"):setAuthMode("signin")}><MessageCircle size={19}/><span>Messages</span></button><button className={tab==="Bibliothèque"||tab==="Enregistrés"||tab==="Téléchargements"?"active":""} onClick={()=>setTab("Bibliothèque")}><Bookmark size={19}/><span>Bibliothèque</span></button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
+      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Messages"?"active":""} onClick={()=>session?setTab("Messages"):setAuthMode("signin")}><MessageCircle size={19}/><span>Messages</span></button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
     </main>
   );
 }
