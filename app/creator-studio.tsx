@@ -9,7 +9,7 @@ type CreatorVideo = {
   created_at:string; content_type:string; duration_seconds:number|null; visibility:string;
   target_url?:string|null; category?:string|null; hashtags?:string[]; interest_tags?:string[];
   show_stats?:boolean; allow_offline_download?:boolean; allow_gallery_download?:boolean; allow_download?:boolean;
-  likes?:{count:number}[]; comments?:{count:number}[];
+  likes?:{count:number}[]; comments?:{count:number}[]; reposts?:{count:number}[];
 };
 type ViewEvent = { video_id:string; watch_seconds:number; viewed_on:string };
 type WatchSession = { video_id:string; watch_seconds:number; created_at:string };
@@ -62,7 +62,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     const since=new Date();since.setDate(since.getDate()-period+1);
     const start=dateKey(since);
     const [videoResult,followersResult,newFollowersResult,draftResult]=await Promise.all([
-      supabase.from("videos").select("id,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,target_url,category,hashtags,interest_tags,show_stats,allow_offline_download,allow_gallery_download,allow_download,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
+      supabase.from("videos").select("id,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,target_url,category,hashtags,interest_tags,show_stats,allow_offline_download,allow_gallery_download,allow_download,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
       supabase.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId),
       supabase.from("follows").select("created_at").eq("following_id",userId).gte("created_at",since.toISOString()),
       supabase.from("video_drafts").select("*").eq("user_id",userId).order("updated_at",{ascending:false}).limit(100)
@@ -101,11 +101,12 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     const watch=filteredWatch.reduce((sum,v)=>sum+Number(v.watch_seconds||0),0);
     const likes=filteredVideos.reduce((sum,v)=>sum+(v.likes?.[0]?.count||0),0);
     const comments=filteredVideos.reduce((sum,v)=>sum+(v.comments?.[0]?.count||0),0);
+    const reposts=filteredVideos.reduce((sum,v)=>sum+(v.reposts?.[0]?.count||0),0);
     const lifetimeViews=filteredVideos.reduce((sum,v)=>sum+Number(v.views_count||0),0);
     const days:DailyPoint[]=[];
     for(let i=period-1;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const key=dateKey(d);days.push({date:key,views:filteredViews.filter(v=>v.viewed_on===key).length});}
     const videoStats=filteredVideos.map(v=>{const rows=filteredViews.filter(x=>x.video_id===v.id);const watchRows=filteredWatch.filter(x=>x.video_id===v.id);const seconds=watchRows.reduce((sum,x)=>sum+Number(x.watch_seconds||0),0);return {...v,periodViews:rows.length,watchSeconds:seconds,averageWatch:rows.length?seconds/rows.length:0};}).sort((a,b)=>b.periodViews-a.periodViews);
-    return {watch,likes,comments,lifetimeViews,periodViews:filteredViews.length,days,videoStats,publicationCount:filteredVideos.length,shortCount:videos.filter(v=>v.content_type==="short").length,longCount:videos.filter(v=>v.content_type==="video").length,photoCount:videos.filter(v=>v.content_type==="photo").length};
+    return {watch,likes,comments,reposts,lifetimeViews,periodViews:filteredViews.length,days,videoStats,publicationCount:filteredVideos.length,shortCount:videos.filter(v=>v.content_type==="short").length,longCount:videos.filter(v=>v.content_type==="video").length,photoCount:videos.filter(v=>v.content_type==="photo").length};
   },[videos,views,watchSessions,period,selectedType]);
 
   const maxDaily=Math.max(1,...metrics.days.map(d=>d.views));
@@ -221,6 +222,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       <article className="creator-metric creator-metric-green"><span><Clock3/> Temps de visionnage</span><strong>{(metrics.watch/3600).toLocaleString("fr-FR",{maximumFractionDigits:1})} h</strong><small>Temps mesuré sur la période</small></article>
       <article className="creator-metric creator-metric-red"><span><Heart/> Mentions J’aime</span><strong>{fmt(metrics.likes)}</strong><small>Sur l’ensemble de tes vidéos</small></article>
       <article className="creator-metric creator-metric-blue"><span><MessageCircle/> Commentaires</span><strong>{fmt(metrics.comments)}</strong><small>Sur l’ensemble de tes vidéos</small></article>
+      <article className="creator-metric creator-metric-red"><span><ArrowUpRight/> Republications</span><strong>{fmt(metrics.reposts)}</strong><small>Partages sur les profils ZAVO</small></article>
       <article className="creator-metric creator-metric-green"><span><Users/> Abonnés</span><strong>{fmt(followers)}</strong><small>+{fmt(newFollowers)} sur {period} jours</small></article>
       <article className="creator-metric creator-metric-red"><span><VideoIcon/> Publications</span><strong>{fmt(videos.length)}</strong><small>{selectedType==="short"?"Shorts":selectedType==="video"?"Vidéos longues":"Publications de ton compte"}</small></article>
     </div>
