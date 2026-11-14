@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "ZAVO — Regarde. Crée. Partage.",
   description: "Découvre des créateurs, partage tes vidéos et fais connaître ton activité sur ZAVO.",
   applicationName: "ZAVO",
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "ZAVO" },
   icons: {
     icon: [
