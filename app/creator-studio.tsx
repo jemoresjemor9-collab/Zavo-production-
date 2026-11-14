@@ -25,7 +25,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
   const [videos,setVideos]=useState<CreatorVideo[]>([]);
   const [views,setViews]=useState<ViewEvent[]>([]);
   const [watchSessions,setWatchSessions]=useState<WatchSession[]>([]);
-  const [selectedType,setSelectedType]=useState<"all"|"short"|"video">("all");
+  const [selectedType,setSelectedType]=useState<"all"|"short"|"video"|"photo">("all");
   const [drafts,setDrafts]=useState<VideoDraft[]>([]);
   const [draftBusy,setDraftBusy]=useState<string|null>(null);
   const [editingDraft,setEditingDraft]=useState<VideoDraft|null>(null);
@@ -105,7 +105,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     const days:DailyPoint[]=[];
     for(let i=period-1;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const key=dateKey(d);days.push({date:key,views:filteredViews.filter(v=>v.viewed_on===key).length});}
     const videoStats=filteredVideos.map(v=>{const rows=filteredViews.filter(x=>x.video_id===v.id);const watchRows=filteredWatch.filter(x=>x.video_id===v.id);const seconds=watchRows.reduce((sum,x)=>sum+Number(x.watch_seconds||0),0);return {...v,periodViews:rows.length,watchSeconds:seconds,averageWatch:rows.length?seconds/rows.length:0};}).sort((a,b)=>b.periodViews-a.periodViews);
-    return {watch,likes,comments,lifetimeViews,periodViews:filteredViews.length,days,videoStats,publicationCount:filteredVideos.length,shortCount:videos.filter(v=>v.content_type==="short").length,longCount:videos.filter(v=>v.content_type==="video").length};
+    return {watch,likes,comments,lifetimeViews,periodViews:filteredViews.length,days,videoStats,publicationCount:filteredVideos.length,shortCount:videos.filter(v=>v.content_type==="short").length,longCount:videos.filter(v=>v.content_type==="video").length,photoCount:videos.filter(v=>v.content_type==="photo").length};
   },[videos,views,watchSessions,period,selectedType]);
 
   const maxDaily=Math.max(1,...metrics.days.map(d=>d.views));
@@ -214,7 +214,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     <div className="creator-type-filters" aria-label="Filtrer par type de publication">
       <button className={selectedType==="all"?"active":""} onClick={()=>setSelectedType("all")}>Tout <span>{videos.length}</span></button>
       <button className={selectedType==="short"?"active":""} onClick={()=>setSelectedType("short")}><Play size={14}/> Shorts <span>{metrics.shortCount}</span></button>
-      <button className={selectedType==="video"?"active":""} onClick={()=>setSelectedType("video")}><VideoIcon size={14}/> Vidéos <span>{metrics.longCount}</span></button>
+      <button className={selectedType==="video"?"active":""} onClick={()=>setSelectedType("video")}><VideoIcon size={14}/> Vidéos <span>{metrics.longCount}</span></button><button className={selectedType==="photo"?"active":""} onClick={()=>setSelectedType("photo")}><ImagePlus size={14}/> Photos <span>{metrics.photoCount}</span></button>
     </div>
     <div className="creator-metric-grid">
       <article className="creator-metric creator-metric-blue"><span><Eye/> Vues totales</span><strong>{fmt(metrics.lifetimeViews)}</strong><small>{fmt(metrics.periodViews)} vues suivies sur {period} jours</small></article>
