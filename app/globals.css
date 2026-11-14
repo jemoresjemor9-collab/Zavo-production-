@@ -692,3 +692,20 @@ body{color:#d7eaff!important}
   .dm-message-actions button { min-height:30px; padding:6px 9px; }
   .dm-audio-preview { width:100%; }
 }
+
+
+/* Video feed: preserve the source aspect ratio instead of cutting the frame */
+.video-frame { background:#071d3d; overflow:hidden; }
+.video-frame video { display:block; width:100%; height:100%; object-fit:contain !important; }
+.video-frame.short-frame { background:#071d3d; }
+.video-frame.long-frame video { object-fit:contain !important; }
+
+@media (min-width:761px) and (max-width:1020px) {
+  .sidebar { width:205px; padding-left:13px; padding-right:13px; }
+  .main-column { margin-left:205px; margin-right:0; }
+  .right-rail { display:none; }
+  .topbar { padding-left:16px; padding-right:16px; gap:12px; }
+  .search-box { width:min(360px,45%); min-width:120px; }
+  .top-actions { gap:6px; }
+  .page-content { padding-left:20px; padding-right:20px; }
+}
