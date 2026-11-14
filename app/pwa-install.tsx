@@ -8,6 +8,13 @@ type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
+declare global {
+  interface Window {
+    __zavoDeferredInstallPrompt?: InstallPromptEvent | null;
+    __zavoAppInstalled?: boolean;
+  }
+}
+
 export default function PwaInstall() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [standalone, setStandalone] = useState(false);
@@ -16,37 +23,55 @@ export default function PwaInstall() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+      window.__zavoAppInstalled === true;
     setStandalone(isStandalone);
     setIos(/iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as Window & { MSStream?: unknown }).MSStream);
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as InstallPromptEvent);
+
+    const syncPrompt = () => {
+      if (window.__zavoDeferredInstallPrompt) {
+        setInstallPrompt(window.__zavoDeferredInstallPrompt);
+      }
     };
     const onInstalled = () => {
+      window.__zavoAppInstalled = true;
+      window.__zavoDeferredInstallPrompt = null;
       setStandalone(true);
       setInstallPrompt(null);
+      setHelpOpen(false);
     };
-    window.addEventListener("beforeinstallprompt", onPrompt);
+
+    // The prompt is captured in the document head before React hydrates.
+    // Read the stored event immediately, then listen for future browser events.
+    syncPrompt();
+    window.addEventListener("zavo:install-prompt-ready", syncPrompt);
+    window.addEventListener("zavo:app-installed", onInstalled);
     window.addEventListener("appinstalled", onInstalled);
+
     return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("zavo:install-prompt-ready", syncPrompt);
+      window.removeEventListener("zavo:app-installed", onInstalled);
       window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
 
   async function install() {
-    if (!installPrompt) {
+    const promptEvent = installPrompt || window.__zavoDeferredInstallPrompt || null;
+    if (!promptEvent) {
       setHelpOpen(true);
       return;
     }
-    await installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
+
+    await promptEvent.prompt();
+    const choice = await promptEvent.userChoice;
+    window.__zavoDeferredInstallPrompt = null;
+    setInstallPrompt(null);
     if (choice.outcome === "accepted") {
-      // The appinstalled event is the reliable confirmation that installation completed.
+      // appinstalled is the confirmation that the browser completed installation.
       setHelpOpen(false);
     }
-    setInstallPrompt(null);
   }
 
   if (standalone || dismissed) return null;
