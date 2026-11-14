@@ -1335,7 +1335,7 @@ export default function HomePage() {
   async function sendVideoInZavo(video: Video) {
     if (!session) { setAuthMode("signin"); return; }
     const url = window.location.origin + "/?video=" + video.id;
-    setDmText((video.caption ? video.caption + "\\n" : "") + "Regarde cette vidéo sur ZAVO : " + url);
+    setDmText((video.caption ? video.caption + "\n" : "") + "Regarde cette vidéo sur ZAVO : " + url);
     setActiveConversation(null);
     setActiveConversationUser(null);
     setDmUsers([]);
