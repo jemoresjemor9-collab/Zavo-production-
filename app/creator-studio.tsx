@@ -13,7 +13,7 @@ type CreatorVideo = {
 };
 type ViewEvent = { video_id:string; watch_seconds:number; viewed_on:string };
 type WatchSession = { video_id:string; watch_seconds:number; created_at:string };
-type VideoDraft = { id:string;caption:string;video_url:string;thumbnail_url:string|null;target_url:string|null;category:string|null;content_type:string;duration_seconds:number|null;aspect_ratio:string|null;interest_tags:string[];allow_offline_download:boolean;allow_gallery_download:boolean;show_stats:boolean;created_at:string };
+type VideoDraft = { display_mode?:"contain"|"cover"|"custom";display_scale?:number;display_x?:number;display_y?:number;id:string;caption:string;video_url:string;thumbnail_url:string|null;target_url:string|null;category:string|null;content_type:string;duration_seconds:number|null;aspect_ratio:string|null;interest_tags:string[];allow_offline_download:boolean;allow_gallery_download:boolean;show_stats:boolean;created_at:string };
 type DailyPoint = { date:string; views:number };
 const dateKey=(d:Date)=>d.toISOString().slice(0,10);
 const fmt=(n:number)=>Math.round(n||0).toLocaleString("fr-FR");
@@ -118,7 +118,8 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       allow_download:draft.allow_offline_download||draft.allow_gallery_download,
       allow_offline_download:draft.allow_offline_download,allow_gallery_download:draft.allow_gallery_download,
       show_stats:draft.show_stats,visibility:"public",interest_tags:draft.interest_tags||[],
-      duration_seconds:draft.duration_seconds,aspect_ratio:draft.aspect_ratio
+      duration_seconds:draft.duration_seconds,aspect_ratio:draft.aspect_ratio,
+      display_mode:draft.display_mode||"contain",display_scale:draft.display_scale||1,display_x:draft.display_x||0,display_y:draft.display_y||0
     });
     if(error){onNotice("Publication du brouillon impossible : "+error.message);setDraftBusy(null);return;}
     const removed=await supabase.from("video_drafts").delete().eq("id",draft.id).eq("user_id",userId);
