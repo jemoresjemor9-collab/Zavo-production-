@@ -2021,7 +2021,8 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
   const viewRecorded = useRef(false);
   const owner = session?.user?.id === video.user_id;
   const likesCount = video.likes?.[0]?.count || 0;
-  const commentsCount = video.comments?.[0]?.count || 0;\n  const repostsCount = video.reposts?.[0]?.count || 0;
+  const commentsCount = video.comments?.[0]?.count || 0;
+  const repostsCount = video.reposts?.[0]?.count || 0;
   useEffect(() => {
     const player = playerRef.current;
     if (!player || typeof IntersectionObserver === "undefined") return;
