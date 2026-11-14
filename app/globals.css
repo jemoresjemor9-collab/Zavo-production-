@@ -673,3 +673,22 @@ body{color:#d7eaff!important}
 @media (min-width: 761px) {
   .mobile-nav { display: none !important; }
 }
+
+
+/* ZAVO direct messages: voice preview and sender controls */
+.dm-attachment-preview { display:flex; align-items:center; flex-wrap:wrap; gap:10px; min-width:0; }
+.dm-audio-preview { width:min(100%, 300px); min-width:180px; height:38px; }
+.dm-message-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:6px; margin-top:7px; }
+.dm-message-actions button,.dm-message-editor button {
+  display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  border:1px solid rgba(76,157,255,.35); border-radius:7px; padding:5px 8px;
+  background:rgba(22,117,232,.12); color:inherit; font-size:10px; font-weight:700;
+}
+.dm-message-actions button:last-child { border-color:rgba(229,45,63,.35); }
+.dm-message-editor { display:grid; gap:7px; margin:6px 0; }
+.dm-message-editor textarea { width:100%; min-height:64px; resize:vertical; border:1px solid #2879d2; border-radius:8px; padding:8px; background:#092b6c; color:#d7eaff; font:inherit; font-size:12px; }
+.dm-message-editor button { justify-self:end; }
+@media(max-width:600px) {
+  .dm-message-actions button { min-height:30px; padding:6px 9px; }
+  .dm-audio-preview { width:100%; }
+}
