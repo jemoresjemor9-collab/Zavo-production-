@@ -768,3 +768,43 @@ body{color:#d7eaff!important}
   .mobile-nav button { min-width:0; padding-left:1px!important; padding-right:1px!important; gap:3px!important; }
   .mobile-nav button span { font-size:8px!important; white-space:nowrap; letter-spacing:-.2px; }
 }
+
+
+/* ZAVO engagement bar: visible labels and live database counts on every post */
+.social-video-card .video-controls {
+  display:flex; align-items:center; flex-wrap:wrap; gap:9px;
+  padding:12px 0 2px; border-top:1px solid rgba(123,170,225,.22);
+}
+.social-video-card .video-controls .engagement,
+.social-video-card .video-controls .save-button {
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  min-height:36px; padding:7px 10px; margin:0;
+  border:1px solid rgba(117,165,220,.24); border-radius:10px;
+  background:rgba(10,44,91,.42); color:#d5e7ff;
+  font-size:11px; font-weight:650; white-space:nowrap;
+}
+.social-video-card .video-controls .engagement strong {
+  display:inline-grid; min-width:17px; place-items:center;
+  color:#fff; font-size:11px; font-weight:800; font-variant-numeric:tabular-nums;
+}
+.social-video-card .video-controls .like-action { border-color:rgba(239,65,82,.38); color:#ff8b96; }
+.social-video-card .video-controls .like-action.liked { background:rgba(174,31,52,.2); color:#ff5369; }
+.social-video-card .video-controls .comment-action { border-color:rgba(44,135,238,.42); color:#8fc4ff; }
+.social-video-card .video-controls .repost-action { border-color:rgba(24,183,112,.4); color:#73e2ad; }
+.social-video-card .video-controls .external-share-action { border-color:rgba(44,135,238,.32); color:#b7d7ff; }
+.social-video-card .video-controls .save-button { color:#d5e7ff; }
+.social-video-card .creator-row .follow-button {
+  min-height:34px; padding:7px 13px; border-radius:999px;
+  border:1px solid rgba(24,183,112,.7); background:rgba(24,183,112,.14);
+  color:#72e4ad; font-size:11px; font-weight:800; white-space:nowrap;
+}
+.social-video-card .creator-row .follow-button:hover { background:rgba(24,183,112,.25); }
+.social-video-card .creator-row .follow-button:focus-visible,
+.social-video-card .video-controls button:focus-visible { outline:2px solid #f04457; outline-offset:2px; }
+@media(max-width:560px) {
+  .social-video-card .video-controls { gap:6px; }
+  .social-video-card .video-controls .engagement,
+  .social-video-card .video-controls .save-button { min-height:34px; padding:6px 8px; gap:5px; font-size:10px; }
+  .social-video-card .video-controls .engagement svg,
+  .social-video-card .video-controls .save-button svg { width:15px; height:15px; }
+}
