@@ -84,7 +84,7 @@ export default function PwaInstall() {
           <div><strong>Installe la vraie application ZAVO.</strong><p>Une installation autonome, pas un simple raccourci.</p></div>
         </div>
         <div className="install-actions">
-          <button className="install-now" onClick={install}><Download size={15} /> {installPrompt ? "Installer l’application" : "Vérifier l’installation"}</button>
+          <button className="install-now" onClick={install}><Download size={15} /> Installer l’application</button>
           <button className="install-dismiss" onClick={() => setDismissed(true)}>Plus tard</button>
         </div>
         <button className="install-close" aria-label="Fermer" onClick={() => setDismissed(true)}><X size={16} /></button>
