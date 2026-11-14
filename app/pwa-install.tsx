@@ -81,10 +81,10 @@ export default function PwaInstall() {
       <section className="install-banner" aria-label="Installer ZAVO">
         <div className="install-copy">
           <span className="install-icon"><Download size={18} /></span>
-          <div><strong>Installe la vraie application ZAVO.</strong><p>Une installation autonome, pas un simple raccourci.</p></div>
+          <div><strong>Installe ZAVO sur ton appareil.</strong><p>Ouvre ZAVO comme une application, sans barre d’adresse.</p></div>
         </div>
         <div className="install-actions">
-          <button className="install-now" onClick={install}><Download size={15} /> Installer l’application</button>
+          <button className="install-now" onClick={install}><Download size={15} /> Installer ZAVO</button>
           <button className="install-dismiss" onClick={() => setDismissed(true)}>Plus tard</button>
         </div>
         <button className="install-close" aria-label="Fermer" onClick={() => setDismissed(true)}><X size={16} /></button>
@@ -99,9 +99,9 @@ export default function PwaInstall() {
             {ios ? (
               <><p>Sur iPhone, Safari ne propose pas le même bouton d’installation native que Chrome. La méthode Apple est :</p><ol><li>Ouvre cette page dans Safari.</li><li>Appuie sur <Share size={14} /> Partager.</li><li>Choisis « Sur l’écran d’accueil » puis « Ajouter » : iOS crée une web app qui s’ouvre en fenêtre autonome.</li></ol></>
             ) : (
-              <><p>Le navigateur n’a pas encore transmis à ZAVO son bouton d’installation native. Pour éviter un simple raccourci :</p><ol><li>Ouvre ZAVO dans Google Chrome, dans un onglet normal (pas en navigation privée).</li><li>Actualise la page après quelques instants, puis ouvre le menu ⋮.</li><li>Attends l’option « Installer l’application » ou « Installer ZAVO » et utilise uniquement cette option.</li></ol><p><strong>Important :</strong> si tu ne vois que « Ajouter à l’écran d’accueil » ou « Créer un raccourci », ne sélectionne pas cette option : elle peut créer un simple raccourci.</p></>
+              <><p>Chrome ne propose pas encore le bouton d’installation directe à ZAVO. Vérifie les étapes suivantes :</p><ol><li>Ouvre ZAVO dans Google Chrome, dans un onglet normal (pas en navigation privée).</li><li>Actualise la page après quelques instants, puis ouvre le menu ⋮.</li><li>Choisis « Installer l’application » si Chrome le propose. La confirmation affichée par Android/Chrome est obligatoire.</li></ol><p><strong>Important :</strong> « Ajouter à l’écran d’accueil » peut, selon le navigateur, créer un raccourci plutôt qu’une application autonome.</p></>
             )}
-            <p className="install-help-note">ZAVO doit être proposée par le navigateur comme une application installable. Si l’option native n’apparaît pas, le navigateur n’a pas encore validé les critères d’installation sur cet appareil.</p>
+            <p className="install-help-note">Le site ne peut pas supprimer la confirmation système de Chrome ni forcer l’installation en silence. Une fois installée via l’option native, ZAVO doit s’ouvrir en mode autonome grâce à son manifeste.</p>
             <button className="primary-action modal-submit" onClick={() => setHelpOpen(false)}>J’ai compris</button>
           </section>
         </div>
