@@ -744,3 +744,27 @@ body{color:#d7eaff!important}
   .feed-tabs button:nth-child(n+5) { display:none; }
   .feed-tabs button:nth-child(4) { display:block; }
 }
+
+
+/* ZAVO library: explicit access to favorites and offline downloads */
+.library-page { max-width:920px; margin:0 auto; padding:24px 0 50px; }
+.library-page h1 { margin:8px 0; font-size:clamp(24px,4vw,34px); color:#e8f3ff; }
+.library-page .section-description { max-width:620px; margin:0 0 22px; }
+.library-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.library-action-card { min-width:0; display:flex; align-items:center; gap:14px; padding:18px; border:1px solid rgba(111,178,255,.48); border-radius:15px; background:linear-gradient(135deg,rgba(20,77,157,.94),rgba(8,48,111,.96)); color:#e8f3ff; text-align:left; cursor:pointer; }
+.library-action-card:hover { border-color:#13b96a; transform:translateY(-1px); }
+.library-action-icon { flex:0 0 48px; width:48px; height:48px; display:grid; place-items:center; border-radius:12px; background:rgba(22,117,232,.24); color:#9dccff; }
+.library-action-card>span:nth-child(2) { min-width:0; display:grid; gap:5px; }
+.library-action-card strong { font-size:15px; }
+.library-action-card small { color:#b9d9ff; font-size:12px; line-height:1.45; }
+.library-action-arrow { margin-left:auto; font-size:25px; color:#9dccff; }
+@media(max-width:760px) {
+  .feed-tabs { display:flex!important; width:100%; max-width:100%; min-width:0; overflow-x:auto!important; overflow-y:hidden; grid-template-columns:none!important; flex-wrap:nowrap; scrollbar-width:thin; }
+  .feed-tabs button,.feed-tabs button:nth-child(n) { display:inline-flex!important; flex:0 0 auto; min-width:max-content; white-space:nowrap; }
+  .library-page { padding:12px 0 30px; }
+  .library-actions { grid-template-columns:minmax(0,1fr); gap:10px; }
+  .library-action-card { padding:14px; }
+  .mobile-nav { display:grid!important; grid-template-columns:repeat(7,minmax(0,1fr))!important; gap:1px!important; overflow-x:hidden; }
+  .mobile-nav button { min-width:0; padding-left:1px!important; padding-right:1px!important; gap:3px!important; }
+  .mobile-nav button span { font-size:8px!important; white-space:nowrap; letter-spacing:-.2px; }
+}
