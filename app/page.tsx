@@ -1688,7 +1688,7 @@ export default function HomePage() {
   const nav = [
     { label: "Pour toi", icon: Home }, { label: "Shorts", icon: Play }, { label: "Vidéos", icon: Clapperboard }, { label: "Découvrir", icon: Compass },
     { label: "Abonnements", icon: Users }, { label: "Messages", icon: MessageCircle },
-    { label: "Enregistrés", icon: Bookmark }, { label: "Téléchargements", icon: Download },
+    { label: "Favoris", value: "Enregistrés", icon: Bookmark }, { label: "Téléchargements", icon: Download },
     { label: "Studio", icon: BarChart3 }, { label: "Notifications", icon: Bell }, { label: "Profil", icon: UserRound }
   ];
 
@@ -1702,7 +1702,7 @@ export default function HomePage() {
       <aside className="sidebar">
         <a className="brand-lockup" href="/"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><span>ZAVO</span></a>
         <div className="brand-caption">REGARDE · CRÉE · PARTAGE</div>
-        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === item.label ? "nav-link active" : "nav-link"} onClick={() => { if(item.label === "Studio" && !session){setAuthMode("signin");return;} setTab(item.label); }}><Icon size={19}/><span>{item.label}</span></button>; })}</nav>
+        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === (item as any).value || tab === item.label ? "nav-link active" : "nav-link"} onClick={() => { if(item.label === "Studio" && !session){setAuthMode("signin");return;} if(item.label === "Téléchargements"){setTab("Téléchargements");return;} setTab((item as any).value || item.label); }}><Icon size={19}/><span>{item.label}</span></button>; })}</nav>
         {isAdmin && <button className="nav-link" onClick={() => setTab("Administration")}><ShieldCheck size={18}/> Administration</button>}
         <div className="sidebar-bottom"><div className="live-indicator"><span/> ZAVO est ouvert à tous</div><p>Une plateforme. Toutes les voix.</p></div>
       </aside>
@@ -1799,6 +1799,24 @@ export default function HomePage() {
               </div>}
               {adminSection==="campaigns" && <section className="admin-panel"><h2>Gestion et suivi des campagnes publicitaires</h2><p className="admin-note">Tu peux choisir une validation manuelle de chaque campagne ou l’activation automatique après confirmation du paiement. Les suspensions administratives conservent le temps restant.</p><div className="admin-campaign-mode"><label htmlFor="campaign-approval-mode">Mode de validation des campagnes</label><select id="campaign-approval-mode" value={campaignApprovalMode} disabled={adminLoading} onChange={e=>updateCampaignApprovalMode(e.target.value as "manual" | "automatic")}><option value="manual">Manuel — approbation depuis mon dashboard</option><option value="automatic">Automatique — lancement après paiement confirmé</option></select><small>{campaignApprovalMode==="manual"?"Chaque campagne payée attend ton approbation.":"Le système active automatiquement les campagnes dont le paiement SasPay est confirmé et conforme."}</small></div>{adminData.campaigns.filter((c:any)=>JSON.stringify(c).toLowerCase().includes(adminSearch.toLowerCase())).map((c:any)=><article className="admin-row admin-campaign-row" key={c.id}><div><strong>{c.title}</strong><small>Annonceur : {c.owner_profile?.display_name||c.owner_profile?.username||"Compte ZAVO"} · @{c.owner_profile?.username||"utilisateur"} · {c.owner_profile?.email||c.owner_profile?.email||"E-mail dans la liste des utilisateurs"}</small><small>Budget payé prévu : {Number(c.budget).toLocaleString("fr-FR")} {c.currency} · {Number(c.daily_budget||600).toLocaleString("fr-FR")} {c.currency}/jour × {c.duration_days||1} jour(s) · {c.objective}</small><small>{(c.country_codes||[]).join(", ")||"Aucun pays ciblé"} · {c.impressions||0} impressions · {c.clicks||0} clics · {c.objective_results||0} résultats de l’objectif · Statut : {c.status}</small>{c.status==="paused"&&<small>Temps restant conservé : {Math.floor(Number(c.remaining_seconds||0)/86400)} j {Math.floor((Number(c.remaining_seconds||0)%86400)/3600)} h</small>}</div><span>{c.status==="awaiting_payment"?"En attente de paiement":c.status==="pending"?"Payée — à valider":c.status==="active"?"En diffusion":c.status==="paused"?"Suspendue":c.status==="completed"?"Terminée":c.status}</span><div className="admin-campaign-actions">{c.status==="pending"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"approve")}>Approuver et lancer</button>}{c.status==="active"&&<button disabled={adminLoading} onClick={()=>manageCampaign(c,"pause")}>Suspendre</button>}{c.status==="paused"&&<button className="primary-action" disabled={adminLoading} onClick={()=>manageCampaign(c,"resume")}>Reprendre</button>}</div></article>)}</section>}
               {adminSection==="payments" && <section className="admin-panel"><h2>Historique des transactions</h2><p className="admin-note">Seules les notifications SasPay vérifiées font foi. Les montants ci-dessous correspondent aux paiements enregistrés ; ils ne représentent pas automatiquement des dépenses publicitaires consommées.</p>{adminData.payments.filter((p:any)=>JSON.stringify(p).toLowerCase().includes(adminSearch.toLowerCase())).map((p:any)=><article className="admin-row" key={p.id}><div><strong>{Number(p.amount).toLocaleString("fr-FR")} {p.currency} · {p.status==="succeeded"?"Paiement confirmé":p.status}</strong><small>Annonceur : {p.owner_profile?.display_name||p.owner_profile?.username||"Compte ZAVO"} · @{p.owner_profile?.username||"utilisateur"} · {p.owner_profile?.email||"E-mail non disponible"}</small><small>Campagne : {p.campaign_title} · {p.provider} · {new Date(p.created_at).toLocaleString("fr-FR")}</small><small>Référence : {p.provider_reference||"Non renseignée"} · Payé le : {p.paid_at?new Date(p.paid_at).toLocaleString("fr-FR"):"—"}</small></div><span>{String(p.campaign_id).slice(0,8)}</span></article>)}</section>}
+            </section>
+          ) : tab === "Bibliothèque" ? (
+            <section className="library-page">
+              <div className="section-kicker">TA BIBLIOTHÈQUE PERSONNELLE</div>
+              <h1>Ma bibliothèque</h1>
+              <p className="section-description">Retrouve facilement tes publications favorites et les vidéos téléchargées sur cet appareil.</p>
+              <div className="library-actions">
+                <button type="button" className="library-action-card" onClick={()=>session?setTab("Enregistrés"):setAuthMode("signin")}>
+                  <span className="library-action-icon"><Bookmark size={25}/></span>
+                  <span><strong>Mes favoris</strong><small>Les vidéos et publications que tu as enregistrées</small></span>
+                  <span className="library-action-arrow">›</span>
+                </button>
+                <button type="button" className="library-action-card" onClick={()=>setTab("Téléchargements")}>
+                  <span className="library-action-icon"><Download size={25}/></span>
+                  <span><strong>Téléchargements</strong><small>Les vidéos disponibles hors connexion sur cet appareil</small></span>
+                  <span className="library-action-arrow">›</span>
+                </button>
+              </div>
             </section>
           )  : tab === "Téléchargements" ? (
             <section className="downloads-page">
@@ -1939,7 +1957,7 @@ export default function HomePage() {
           </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci pour ta réponse !</h2><p>Ta réponse a bien été envoyée en privé à l’équipe ZAVO. Tu as terminé pour cette campagne.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
         </section>
       </div>}
-      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Messages"?"active":""} onClick={()=>session?setTab("Messages"):setAuthMode("signin")}><MessageCircle size={19}/><span>Messages</span></button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
+      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Messages"?"active":""} onClick={()=>session?setTab("Messages"):setAuthMode("signin")}><MessageCircle size={19}/><span>Messages</span></button><button className={tab==="Bibliothèque"||tab==="Enregistrés"||tab==="Téléchargements"?"active":""} onClick={()=>setTab("Bibliothèque")}><Bookmark size={19}/><span>Bibliothèque</span></button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
     </main>
   );
 }
