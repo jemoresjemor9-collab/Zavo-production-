@@ -430,7 +430,7 @@ body{color:#d7eaff!important}
 .creator-periods{display:flex;gap:7px;align-self:flex-end;padding:5px;border:1px solid #2879d2;border-radius:12px;background:#0b347a}
 .creator-periods button{padding:8px 14px;border:1px solid transparent;border-radius:8px;background:transparent;color:#b9d9ff;font-size:12px;font-weight:800;cursor:pointer}
 .creator-periods button.active{border-color:#13b96a;background:#0b5c65;color:#13b96a}
-.creator-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.creator-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .creator-metric{display:flex;flex-direction:column;gap:9px;min-width:0;padding:17px;border:1px solid #2879d2;border-radius:14px;background:#0c367f}
 .creator-metric>span{display:flex;align-items:center;gap:8px;color:#b9d9ff;font-size:12px;font-weight:750}
 .creator-metric>span svg{width:17px;height:17px}
