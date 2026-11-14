@@ -764,9 +764,9 @@ body{color:#d7eaff!important}
   .library-page { padding:12px 0 30px; }
   .library-actions { grid-template-columns:minmax(0,1fr); gap:10px; }
   .library-action-card { padding:14px; }
-  .mobile-nav { display:grid!important; grid-template-columns:repeat(7,minmax(0,1fr))!important; gap:1px!important; overflow-x:hidden; }
+  .mobile-nav { display:grid!important; grid-template-columns:repeat(6,minmax(0,1fr))!important; gap:1px!important; overflow-x:hidden; }
   .mobile-nav button { min-width:0; padding-left:1px!important; padding-right:1px!important; gap:3px!important; }
-  .mobile-nav button span { font-size:8px!important; white-space:nowrap; letter-spacing:-.2px; }
+  .mobile-nav button span { font-size:9px!important; white-space:nowrap; letter-spacing:-.2px; }
 }
 
 
@@ -808,3 +808,14 @@ body{color:#d7eaff!important}
   .social-video-card .video-controls .engagement svg,
   .social-video-card .video-controls .save-button svg { width:15px; height:15px; }
 }
+
+
+/* Secondary navigation menu: keeps mobile bottom navigation focused on core destinations. */
+.top-overflow-wrap{position:relative;display:flex;align-items:center}
+.overflow-trigger{display:grid;place-items:center}
+.top-overflow-menu{position:absolute;top:calc(100% + 10px);right:0;z-index:100;width:min(280px,calc(100vw - 24px));max-height:min(72vh,560px);overflow:auto;padding:9px;border:1px solid var(--line);border-radius:13px;background:var(--surface);color:var(--text);box-shadow:0 18px 48px rgba(3,20,45,.22)}
+.top-overflow-heading{padding:8px 10px 9px;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:1.4px}
+.top-overflow-menu button{display:flex;width:100%;align-items:center;gap:11px;padding:11px 10px;border:0;border-radius:8px;background:transparent;color:var(--text);text-align:left;font-size:12px;font-weight:700}
+.top-overflow-menu button:hover,.top-overflow-menu button.active{background:var(--blue-soft);color:var(--blue)}
+.top-overflow-menu button svg{flex:0 0 auto}
+@media(max-width:760px){.top-overflow-menu{position:fixed;top:58px;right:9px;width:min(290px,calc(100vw - 18px));max-height:calc(100dvh - 145px)}}
