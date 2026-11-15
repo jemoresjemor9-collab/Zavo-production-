@@ -248,12 +248,12 @@ function composeHomeFeed(items: Video[]): Video[] {
   const take = (type: "short" | "video" | "photo", count: number) => {
     for (let i = 0; i < count && pools[type].length; i++) result.push(pools[type].shift()!);
   };
-  // Editorial rhythm: 4 Shorts, 1 post, then 2 classic videos. Every item is consumed once.
+  // Editorial rhythm requested for ZAVO: 4 Shorts, 2 classic videos, then 1 photo post. Every item is consumed once.
   while (pools.short.length || pools.photo.length || pools.video.length) {
     const before = result.length;
     take("short", 4);
-    take("photo", 1);
     take("video", 2);
+    take("photo", 1);
     if (result.length === before) break;
   }
   return result;
