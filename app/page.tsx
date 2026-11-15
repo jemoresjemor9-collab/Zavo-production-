@@ -421,6 +421,8 @@ export default function HomePage() {
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [profileInterests, setProfileInterests] = useState("");
   const [countryCode, setCountryCode] = useState("BJ");
   const [currencyInfo, setCurrencyInfo] = useState(CURRENCY_BY_COUNTRY.BJ);
   const [adminData, setAdminData] = useState<any>({ reports: [], campaigns: [], users: [], videos: [], payments: [], presence: [], feedbackCampaigns: [], feedbackResponses: [], activeUsers: 0, totalUsers: 0 });
@@ -708,6 +710,8 @@ export default function HomePage() {
     setDisplayName(p?.display_name || "");
     setUsername(p?.username || "");
     setBio(p?.bio || "");
+    setWebsiteUrl(p?.website_url || "");
+    setProfileInterests((p?.interest_tags || []).join(", "));
     setCountryCode(p?.country_code || "BJ");
     setLiked((l || []).map((x: any) => x.video_id));
     setSaved((s || []).map((x: any) => x.video_id));
@@ -738,7 +742,7 @@ export default function HomePage() {
           }
         });
       } else {
-        setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
+        setProfile(null); setDisplayName(""); setBio(""); setWebsiteUrl(""); setProfileInterests(""); setLiked([]); setSaved([]); setFollowing([]);
         setNotifications([]); setUnreadNotificationCount(0); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
         setBlockedUserIds([]); setMyBlockedUserIds([]); setBlockedProfiles([]);
         setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
@@ -1193,7 +1197,7 @@ export default function HomePage() {
     setBusy(false);
     if (error) { setNotice("La déconnexion a échoué : " + error.message); return; }
     setSession(null);
-    setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
+    setProfile(null); setDisplayName(""); setBio(""); setWebsiteUrl(""); setProfileInterests(""); setLiked([]); setSaved([]); setFollowing([]);
     setNotifications([]); setUnreadNotificationCount(0); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
     setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
     setProfileOpen(false); setUploadOpen(false); setCampaignOpen(false); setLogoutConfirm(false);
@@ -1644,6 +1648,10 @@ export default function HomePage() {
     const cleanUsername = username.toLowerCase().trim().replace(/^@+/, "").replace(/[^a-z0-9_]/g, "");
     if (!/^[a-z0-9_]{3,24}$/.test(cleanUsername)) { setNotice("Identifiant invalide : 3 à 24 caractères, lettres, chiffres et _."); return; }
     const identityChanged = cleanUsername !== (profile?.username || "") || displayName.trim() !== (profile?.display_name || "");
+    const rawWebsite = websiteUrl.trim();
+    const normalizedWebsite = rawWebsite ? safeUrl(/^https?:\\/\\//i.test(rawWebsite) ? rawWebsite : "https://" + rawWebsite) : null;
+    if (rawWebsite && !normalizedWebsite) { setNotice("Adresse du site invalide. Utilise un lien de type https://exemple.com."); return; }
+    const cleanInterests = [...new Set(profileInterests.split(",").map(tag=>tag.trim().replace(/^#/,"").slice(0,32)).filter(Boolean))].slice(0,10);
     if (identityChanged && profile?.identity_changed_at && Date.now() - new Date(profile.identity_changed_at).getTime() < 14 * 24 * 60 * 60 * 1000) {
       const nextDate = new Date(new Date(profile.identity_changed_at).getTime() + 14 * 24 * 60 * 60 * 1000);
       setNotice("Tu pourras modifier ton nom et ton identifiant à partir du " + nextDate.toLocaleDateString("fr-FR") + ".");
@@ -1673,6 +1681,7 @@ export default function HomePage() {
     }
     const { error } = await db()!.from("profiles").update({
       username: cleanUsername, display_name: displayName.trim(), bio: bio.trim(), country_code: countryCode,
+      website_url: normalizedWebsite, interest_tags: cleanInterests,
       avatar_url: avatarUrl, banner_url: bannerUrl, profile_photos: photoUrls.slice(-12)
     }).eq("id", session.user.id);
     setBusy(false);
@@ -2214,7 +2223,7 @@ export default function HomePage() {
       {profileOpen && <div className="creator-studio-overlay"><section className="creator-studio profile-edit-studio">
         <header className="studio-header"><button type="button" onClick={()=>setProfileOpen(false)}><ArrowLeft size={18}/> Retour</button><div className="studio-brand"><img src="/icons/zavo-192.png" alt=""/> <strong>Personnaliser mon profil</strong></div><span>PROFIL</span></header>
         <div className="studio-content profile-edit-content"><div className="studio-intro"><div className="section-kicker">TON ESPACE, TON IDENTITÉ</div><h1>Fais bonne impression</h1><p>Ajoute une bannière et plusieurs photos pour présenter ton univers à la communauté.</p></div>
-          <form onSubmit={saveProfile} className="profile-edit-form"><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)} maxLength={60} disabled={!identityCanChange}/></label><label>Identifiant unique</label><div className="username-input-wrap"><span>@</span><input value={username} onChange={e=>setUsername(e.target.value.toLowerCase().replace(/^@+/,"").replace(/[^a-z0-9_]/g,""))} minLength={3} maxLength={24} disabled={!identityCanChange} autoComplete="off" spellCheck={false}/></div><small className="field-hint">{identityCanChange ? "3 à 24 caractères : lettres, chiffres et _. Cet identifiant doit être unique." : "Modification disponible à partir du "+(identityNextChange?.toLocaleDateString("fr-FR")||"bientôt")+"."}</small><label>Biographie<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={240} placeholder="Présente-toi en quelques mots…"/></label><label>Pays<select value={countryCode} onChange={e=>setCountryCode(e.target.value)}>{COUNTRIES.filter(([code])=>code!=="OTHER").map(([code,name])=><option key={code} value={code}>{name}</option>)}</select></label><div className="profile-upload-grid"><label className="profile-file-card"><Camera/><strong>Photo de profil</strong><span>{profileAvatarFile?.name||"Choisir une photo"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setProfileAvatarFile(e.target.files?.[0]||null)}/></label><label className="profile-file-card"><Camera/><strong>Photo de couverture</strong><span>{profileBannerFile?.name||"Choisir une bannière"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setProfileBannerFile(e.target.files?.[0]||null)}/></label><label className="profile-file-card"><Images/><strong>Galerie de photos</strong><span>{profilePhotoFiles.length?profilePhotoFiles.length+" photo(s) sélectionnée(s)":"Ajouter plusieurs photos"}</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>setProfilePhotoFiles(Array.from(e.target.files||[]))}/></label></div><button className="primary-action modal-submit" disabled={busy}>{busy?"Enregistrement…":"Enregistrer mon profil"}</button></form><form onSubmit={changePassword} className="profile-password-form"><h2>Modifier mon mot de passe</h2><label>Mot de passe actuel<input type="password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} autoComplete="current-password" required/></label><label>Nouveau mot de passe<input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} autoComplete="new-password" minLength={8} required/></label><small className="field-hint">8 caractères minimum et au moins un chiffre.</small><label>Confirmer le nouveau mot de passe<input type="password" value={confirmNewPassword} onChange={e=>setConfirmNewPassword(e.target.value)} autoComplete="new-password" minLength={8} required/></label><button className="primary-action modal-submit" disabled={passwordBusy}>{passwordBusy?"Modification…":"Mettre à jour le mot de passe"}</button></form>
+          <form onSubmit={saveProfile} className="profile-edit-form"><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)} maxLength={60} disabled={!identityCanChange}/></label><label>Identifiant unique</label><div className="username-input-wrap"><span>@</span><input value={username} onChange={e=>setUsername(e.target.value.toLowerCase().replace(/^@+/,"").replace(/[^a-z0-9_]/g,""))} minLength={3} maxLength={24} disabled={!identityCanChange} autoComplete="off" spellCheck={false}/></div><small className="field-hint">{identityCanChange ? "3 à 24 caractères : lettres, chiffres et _. Cet identifiant doit être unique." : "Modification disponible à partir du "+(identityNextChange?.toLocaleDateString("fr-FR")||"bientôt")+"."}</small><label>Biographie<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={240} placeholder="Présente-toi en quelques mots…"/></label><label>Site web<input type="url" value={websiteUrl} onChange={e=>setWebsiteUrl(e.target.value)} maxLength={240} placeholder="https://tonsite.com"/></label><small className="field-hint">Ton lien sera affiché sur ton profil public.</small><label>Centres d’intérêt<input value={profileInterests} onChange={e=>setProfileInterests(e.target.value)} maxLength={320} placeholder="Musique, technologie, sport…"/></label><small className="field-hint">Sépare les thèmes par des virgules. 10 maximum.</small><label>Pays<select value={countryCode} onChange={e=>setCountryCode(e.target.value)}>{COUNTRIES.filter(([code])=>code!=="OTHER").map(([code,name])=><option key={code} value={code}>{name}</option>)}</select></label><div className="profile-upload-grid"><label className="profile-file-card"><Camera/><strong>Photo de profil</strong><span>{profileAvatarFile?.name||"Choisir une photo"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setProfileAvatarFile(e.target.files?.[0]||null)}/></label><label className="profile-file-card"><Camera/><strong>Photo de couverture</strong><span>{profileBannerFile?.name||"Choisir une bannière"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setProfileBannerFile(e.target.files?.[0]||null)}/></label><label className="profile-file-card"><Images/><strong>Galerie de photos</strong><span>{profilePhotoFiles.length?profilePhotoFiles.length+" photo(s) sélectionnée(s)":"Ajouter plusieurs photos"}</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>setProfilePhotoFiles(Array.from(e.target.files||[]))}/></label></div><button className="primary-action modal-submit" disabled={busy}>{busy?"Enregistrement…":"Enregistrer mon profil"}</button></form><form onSubmit={changePassword} className="profile-password-form"><h2>Modifier mon mot de passe</h2><label>Mot de passe actuel<input type="password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} autoComplete="current-password" required/></label><label>Nouveau mot de passe<input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} autoComplete="new-password" minLength={8} required/></label><small className="field-hint">8 caractères minimum et au moins un chiffre.</small><label>Confirmer le nouveau mot de passe<input type="password" value={confirmNewPassword} onChange={e=>setConfirmNewPassword(e.target.value)} autoComplete="new-password" minLength={8} required/></label><button className="primary-action modal-submit" disabled={passwordBusy}>{passwordBusy?"Modification…":"Mettre à jour le mot de passe"}</button></form>
         </div>
       </section></div>}
       {logoutConfirm && <div className="modal-backdrop" onClick={()=>setLogoutConfirm(false)}><section className="modal confirm-logout" onClick={e=>e.stopPropagation()}><div className="section-kicker">SESSION ZAVO</div><h2>Es-tu sûr de vouloir te déconnecter ?</h2><p>Tu pourras te reconnecter à tout moment avec ton adresse e-mail et ton mot de passe.</p><div className="confirm-actions"><button className="secondary-action" onClick={()=>setLogoutConfirm(false)}>Annuler</button><button className="primary-action" onClick={performLogout} disabled={busy}>{busy?"Déconnexion…":"Oui, me déconnecter"}</button></div></section></div>}
