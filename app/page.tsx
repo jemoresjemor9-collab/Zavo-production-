@@ -1170,7 +1170,7 @@ export default function HomePage() {
       setWatchVideo(data as Video);
       return;
     }
-    if (["like", "comment", "comment_like"].includes(item.kind) && item.entity_id) {
+    if (["like", "comment", "comment_like", "mention"].includes(item.kind) && item.entity_id) {
       const { data, error } = await db()!.from("videos").select("*").eq("id", item.entity_id).maybeSingle();
       if (error || !data) { setNotice("Cette vidéo n’est plus disponible."); return; }
       setTab("Pour toi");
