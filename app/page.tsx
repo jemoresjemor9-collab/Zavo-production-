@@ -309,7 +309,7 @@ export default function HomePage() {
     }
     if (trackedOpenVideoId.current === watchVideo.id || !db()) return;
     trackedOpenVideoId.current = watchVideo.id;
-    const payload = session?.user?.id
+    const payload: any = session?.user?.id
       ? { video_id: watchVideo.id, viewer_id: session.user.id, visitor_key: null }
       : { video_id: watchVideo.id, viewer_id: null, visitor_key: visitorKey() };
     void db()!.from("video_open_events").insert(payload).then(({ error }) => {
