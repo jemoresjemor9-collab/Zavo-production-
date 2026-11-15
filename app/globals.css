@@ -941,3 +941,61 @@ body{color:#d7eaff!important}
 .short-desktop-nav button:hover:not(:disabled){background:rgba(24,112,215,.9);transform:scale(1.06)}
 .short-desktop-nav button:disabled{opacity:.28;cursor:not-allowed}
 @media(max-width:760px){.short-desktop-nav{display:none!important}}
+
+
+/* ZAVO feed refresh: compact mobile discovery grid, clean Short previews and creator profiles. */
+.top-search-wrap{position:relative;display:flex;align-items:center;flex:0 0 auto}
+.search-trigger{width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text)}
+.search-popover{position:absolute;z-index:180;top:calc(100% + 10px);right:0;width:min(420px,calc(100vw - 24px));padding:10px;border:1px solid var(--line);border-radius:15px;background:var(--surface);box-shadow:0 20px 55px rgba(0,0,0,.28)}
+.search-input-row{display:flex;align-items:center;gap:9px;padding:5px 9px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2,var(--surface))}
+.search-input-row input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--text);padding:9px 0;font:inherit}
+.search-input-row button{display:grid;place-items:center;border:0;background:transparent;color:var(--muted);padding:5px}
+.search-suggestions{display:grid;gap:4px;max-height:360px;overflow:auto;padding-top:8px}
+.search-suggestions>button{display:flex;align-items:center;gap:10px;width:100%;padding:8px;border:0;border-radius:9px;background:transparent;color:var(--text);text-align:left}
+.search-suggestions>button:hover{background:var(--blue-soft)}
+.search-suggestions>button>span:nth-child(2){display:grid;gap:3px;min-width:0}
+.search-suggestions strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-suggestions small,.search-suggestions p{font-size:10px;color:var(--muted)}
+.search-suggestion-thumb{width:48px;height:48px;flex:0 0 48px;display:grid;place-items:center;overflow:hidden;border-radius:7px;background:#142b48}
+.search-suggestion-thumb img{width:100%;height:100%;object-fit:cover}
+.social-video-card.is-short .video-details{display:none!important}
+.short-preview-title{position:absolute;z-index:4;left:10px;right:10px;bottom:42px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding:8px 10px;border:0;border-radius:8px;background:rgba(3,10,20,.72);color:#fff;text-align:left;font-size:12px;font-weight:800;line-height:1.35;backdrop-filter:blur(8px)}
+.creator-profile-trigger{display:flex;align-items:center;gap:10px;min-width:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.creator-profile-trigger .creator-meta{display:grid;gap:3px}
+.creator-profile-trigger:hover strong{text-decoration:underline}
+.home-feed-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:18px}
+.home-feed-grid .is-photo{grid-column:1/-1}
+.home-feed-grid .is-short .video-frame.short-frame{max-height:360px}
+.home-feed-grid .is-long-video .video-frame.long-frame{aspect-ratio:16/9;max-height:none}
+.home-feed-grid .is-photo .video-frame.photo-frame{max-height:560px}
+.public-profile-backdrop{position:fixed;inset:0;z-index:245;display:grid;place-items:center;padding:18px;background:rgba(2,8,18,.78);backdrop-filter:blur(8px)}
+.public-profile-modal{position:relative;width:min(760px,100%);max-height:min(90dvh,900px);overflow:auto;padding:0 20px 24px;border:1px solid rgba(130,177,230,.3);border-radius:18px;background:#0b1727;color:#edf5ff;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.public-profile-close{position:sticky;top:12px;z-index:3;float:right;width:38px;height:38px;display:grid;place-items:center;margin:12px -8px -50px 0;border:1px solid #ffffff44;border-radius:50%;background:#071322dd;color:#fff}
+.public-profile-banner{height:140px;margin:0 -20px 0;background:linear-gradient(120deg,#123a75,#0a8c70);background-position:center;background-size:cover}
+.public-profile-heading{display:flex;align-items:center;gap:14px;margin-top:-34px}
+.public-profile-avatar{width:76px;height:76px;flex:0 0 76px;display:grid;place-items:center;overflow:hidden;border:4px solid #0b1727;border-radius:50%;background:#174b82;color:white;font-size:27px;font-weight:900}
+.public-profile-avatar img{width:100%;height:100%;object-fit:cover}
+.public-profile-heading>div{min-width:0;flex:1;padding-top:28px}
+.public-profile-heading h2{margin:0;font-size:20px}
+.public-profile-heading p,.public-profile-bio{margin:4px 0;color:#b6c8dc;font-size:12px}
+.public-profile-heading .follow-button{margin:24px 0 0;padding:9px 16px;border:1px solid #13b96a;border-radius:999px;background:#13b96a1c;color:#83e7b7;font-weight:800}
+.public-profile-bio{margin:14px 0}
+.public-profile-stats{display:flex;gap:20px;padding:12px 0;border-block:1px solid #ffffff20;color:#dceaff;font-size:12px}
+.public-profile-modal h3{margin:18px 0 10px;font-size:15px}
+.public-profile-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.public-profile-grid button{position:relative;aspect-ratio:1/1;overflow:hidden;border:0;border-radius:8px;background:#14243a;color:#fff}
+.public-profile-grid img{width:100%;height:100%;object-fit:cover}
+.public-profile-grid button>span{height:100%;display:grid;place-items:center}
+.public-profile-grid small{position:absolute;right:6px;bottom:6px;padding:4px 6px;border-radius:5px;background:#06111dcc;font-size:9px;font-weight:900}
+@media(max-width:760px){
+ .home-feed-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .home-feed-grid .is-short .video-frame.short-frame{max-height:330px;aspect-ratio:9/16}
+ .home-feed-grid .is-long-video .video-frame.long-frame{aspect-ratio:16/9;max-height:none}
+ .home-feed-grid .video-card{min-width:0}
+ .home-feed-grid .video-label{font-size:8px}
+ .short-preview-title{font-size:10px;left:6px;right:6px;bottom:35px;padding:6px 7px}
+ .public-profile-backdrop{padding:0;align-items:end}
+ .public-profile-modal{width:100%;max-height:92dvh;border-radius:18px 18px 0 0;padding:0 14px 24px}
+ .public-profile-banner{margin:0 -14px}
+ .public-profile-heading h2{font-size:17px}
+}
