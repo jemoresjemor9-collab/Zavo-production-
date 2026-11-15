@@ -1910,16 +1910,16 @@ export default function HomePage() {
             <section className="library-page">
               <div className="section-kicker">TA BIBLIOTHÈQUE PERSONNELLE</div>
               <h1>Ma bibliothèque</h1>
-              <p className="section-description">Retrouve facilement tes publications favorites et les vidéos téléchargées sur cet appareil.</p>
+              <p className="section-description">Les favoris sont synchronisés avec ton compte ZAVO. Les téléchargements hors connexion restent enregistrés sur cet appareil.</p>
               <div className="library-actions">
                 <button type="button" className="library-action-card" onClick={()=>session?setTab("Enregistrés"):setAuthMode("signin")}>
                   <span className="library-action-icon"><Bookmark size={25}/></span>
-                  <span><strong>Mes favoris</strong><small>Les vidéos et publications que tu as enregistrées</small></span>
+                  <span><strong>Mes favoris</strong><small>Publications enregistrées dans ton compte et synchronisées sur tes appareils</small></span>
                   <span className="library-action-arrow">›</span>
                 </button>
                 <button type="button" className="library-action-card" onClick={()=>setTab("Téléchargements")}>
                   <span className="library-action-icon"><Download size={25}/></span>
-                  <span><strong>Téléchargements</strong><small>Les vidéos disponibles hors connexion sur cet appareil</small></span>
+                  <span><strong>Téléchargements</strong><small>Copies hors connexion stockées uniquement sur cet appareil</small></span>
                   <span className="library-action-arrow">›</span>
                 </button>
               </div>
@@ -1927,7 +1927,7 @@ export default function HomePage() {
           )  : tab === "Téléchargements" ? (
             <section className="downloads-page">
               <div className="feed-toolbar"><div><div className="section-kicker">TA BIBLIOTHÈQUE PERSONNELLE</div><h2>Téléchargements ZAVO</h2></div><span>{offlineVideos.length} vidéo(s)</span></div>
-              <p className="section-description">Ces vidéos sont enregistrées sur cet appareil. Tu peux les regarder même sans connexion Internet.</p>
+              <p className="section-description">Ces copies sont enregistrées uniquement sur cet appareil. Elles ne sont pas synchronisées avec les autres appareils connectés à ton compte.</p>
               {offlineVideos.length ? <div className="offline-grid">{offlineVideos.map((v:any)=><OfflineVideoPlayer key={v.id} item={v}/>)}</div> : <section className="empty-state"><div className="empty-icon"><Download/></div><h3>Aucun téléchargement pour le moment</h3><p>Sur une vidéo, utilise l’option « Enregistrer dans ZAVO » lorsque le créateur l’autorise. Elle apparaîtra ici.</p><button className="primary-action" onClick={()=>setTab("Pour toi")}>Découvrir les vidéos</button></section>}
             </section>
           ) : tab === "Messages" ? (
