@@ -13,6 +13,7 @@ import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
 import CreatorStudio from "@/app/creator-studio";
 import CommunityHub from "@/app/community-hub";
+import CreatorLibrary from "@/app/creator-library";
 
 type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; website_url?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; identity_changed_at?: string | null; followers_count?: number; followers?: { count: number }[] };
 type Video = {
@@ -313,6 +314,7 @@ export default function HomePage() {
     }
     if (trackedOpenVideoId.current === watchVideo.id || !db()) return;
     trackedOpenVideoId.current = watchVideo.id;
+    if(session?.user?.id) void db()!.rpc("zavo_record_watch_history",{p_video_id:watchVideo.id,p_watch_seconds:0,p_completed:false}).then(({error}:any)=>{if(error)console.warn("ZAVO watch history:",error.message);});
     const payload: any = session?.user?.id
       ? { video_id: watchVideo.id, viewer_id: session.user.id, visitor_key: null }
       : { video_id: watchVideo.id, viewer_id: null, visitor_key: visitorKey() };
@@ -324,7 +326,7 @@ export default function HomePage() {
       setVideos(items => items.map(item => item.id === watchVideo.id ? { ...item, clicks_count: (item.clicks_count || 0) + 1 } : item));
       setWatchVideo(current => current?.id === watchVideo.id ? { ...current, clicks_count: (current.clicks_count || 0) + 1 } : current);
     });
-  }, [watchVideo?.id]);
+  }, [watchVideo?.id, session?.user?.id]);
   useEffect(() => {
     const urls = photoFiles.map(file => URL.createObjectURL(file));
     setPhotoPreviewUrls(urls);
@@ -1579,6 +1581,7 @@ export default function HomePage() {
       console.warn("ZAVO completion analytics:", error.message);
       return;
     }
+    if(session?.user?.id) void db()!.rpc("zavo_record_watch_history",{p_video_id:video.id,p_watch_seconds:0,p_completed:true}).then(({error}:any)=>{if(error)console.warn("ZAVO history completion:",error.message);});
     setVideos(items => items.map(item => item.id === video.id ? { ...item, completed_views_count: (item.completed_views_count || 0) + 1 } : item));
     setWatchVideo(current => current?.id === video.id ? { ...current, completed_views_count: (current.completed_views_count || 0) + 1 } : current);
   }
@@ -1594,6 +1597,7 @@ export default function HomePage() {
       return;
     }
     const recordedSeconds = Math.min(86400, Math.floor(seconds));
+    if(session?.user?.id) void db()!.rpc("zavo_record_watch_history",{p_video_id:video.id,p_watch_seconds:recordedSeconds,p_completed:false}).then(({error}:any)=>{if(error)console.warn("ZAVO watch history time:",error.message);});
     setVideos(items => items.map(item => item.id === video.id ? { ...item, watch_time_seconds: (item.watch_time_seconds || 0) + recordedSeconds } : item));
     setWatchVideo(current => current?.id === video.id ? { ...current, watch_time_seconds: (current.watch_time_seconds || 0) + recordedSeconds } : current);
   }
@@ -2174,23 +2178,7 @@ export default function HomePage() {
               {adminSection==="payments" && <section className="admin-panel"><h2>Historique des transactions</h2><p className="admin-note">Seules les notifications SasPay vérifiées font foi. Les montants ci-dessous correspondent aux paiements enregistrés ; ils ne représentent pas automatiquement des dépenses publicitaires consommées.</p>{adminData.payments.filter((p:any)=>JSON.stringify(p).toLowerCase().includes(adminSearch.toLowerCase())).map((p:any)=><article className="admin-row" key={p.id}><div><strong>{Number(p.amount).toLocaleString("fr-FR")} {p.currency} · {p.status==="succeeded"?"Paiement confirmé":p.status}</strong><small>Annonceur : {p.owner_profile?.display_name||p.owner_profile?.username||"Compte ZAVO"} · @{p.owner_profile?.username||"utilisateur"} · {p.owner_profile?.email||"E-mail non disponible"}</small><small>Campagne : {p.campaign_title} · {p.provider} · {new Date(p.created_at).toLocaleString("fr-FR")}</small><small>Référence : {p.provider_reference||"Non renseignée"} · Payé le : {p.paid_at?new Date(p.paid_at).toLocaleString("fr-FR"):"—"}</small></div><span>{String(p.campaign_id).slice(0,8)}</span></article>)}</section>}
             </section>
           ) : tab === "Bibliothèque" ? (
-            <section className="library-page">
-              <div className="section-kicker">TA BIBLIOTHÈQUE PERSONNELLE</div>
-              <h1>Ma bibliothèque</h1>
-              <p className="section-description">Les favoris sont synchronisés avec ton compte ZAVO. Les téléchargements hors connexion restent enregistrés sur cet appareil.</p>
-              <div className="library-actions">
-                <button type="button" className="library-action-card" onClick={()=>session?setTab("Enregistrés"):setAuthMode("signin")}>
-                  <span className="library-action-icon"><Bookmark size={25}/></span>
-                  <span><strong>Mes favoris</strong><small>Publications enregistrées dans ton compte et synchronisées sur tes appareils</small></span>
-                  <span className="library-action-arrow">›</span>
-                </button>
-                <button type="button" className="library-action-card" onClick={()=>setTab("Téléchargements")}>
-                  <span className="library-action-icon"><Download size={25}/></span>
-                  <span><strong>Téléchargements</strong><small>Copies hors connexion stockées uniquement sur cet appareil</small></span>
-                  <span className="library-action-arrow">›</span>
-                </button>
-              </div>
-            </section>
+            <CreatorLibrary userId={session?.user?.id||null} onNotice={setNotice} onOpenVideo={(video:any)=>setWatchVideo(video)}/>
           )  : tab === "Téléchargements" ? (
             <section className="downloads-page">
               <div className="feed-toolbar"><div><div className="section-kicker">TA BIBLIOTHÈQUE PERSONNELLE</div><h2>Téléchargements ZAVO</h2></div><span>{offlineVideos.length} vidéo(s)</span></div>
