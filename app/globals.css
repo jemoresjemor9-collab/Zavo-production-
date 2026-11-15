@@ -1659,7 +1659,7 @@ body{color:#d7eaff!important}
 .media-coauthors{display:block;margin-top:4px;color:#a9d7ff;font-size:10px;font-weight:750;text-shadow:0 1px 3px #000}
 
 
-/* ZAVO creator studio: selectable video frames, touch/mouse framing and trim controls */
+/* ZAVO creator studio: thumbnail selection and trim controls */
 .thumbnail-candidate-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:9px;margin-top:14px}
 .thumbnail-candidate{position:relative;overflow:hidden;padding:3px;border:1px solid #2879d2;border-radius:10px;background:#092b6c;cursor:pointer}
 .thumbnail-candidate img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px}
