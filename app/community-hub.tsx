@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Users, MessageCircle, Plus, Search, Trophy, Clapperboard, Play, LogIn, Send, CalendarDays, X, ChevronRight, RefreshCw, Hash, Trash2 } from "lucide-react";
+import { Users, MessageCircle, Plus, Search, Trophy, Clapperboard, Play, LogIn, Send, CalendarDays, X, ChevronRight, RefreshCw, Hash, Trash2, Heart } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type HubTab = "communities" | "challenges" | "series";
@@ -22,6 +22,9 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
   const [selectedCommunity,setSelectedCommunity]=useState<Community|null>(null);
   const [posts,setPosts]=useState<any[]>([]);
   const [postText,setPostText]=useState("");
+  const [communityComments,setCommunityComments]=useState<any[]>([]);
+  const [communityReactions,setCommunityReactions]=useState<any[]>([]);
+  const [commentDrafts,setCommentDrafts]=useState<Record<string,string>>({});
   const [loading,setLoading]=useState(true);
   const [refreshing,setRefreshing]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -85,6 +88,35 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
     const {data,error}=await supabase!.from("zavo_community_posts").select("id,body,created_at,author_id,profiles!zavo_community_posts_author_id_fkey(username,display_name,avatar_url)").eq("community_id",community.id).order("created_at",{ascending:false}).limit(80);
     if(error){onNotice("Impossible de charger les discussions : "+error.message);return;}
     setPosts(data||[]);
+    const postIds=(data||[]).map((post:any)=>post.id);
+    if(postIds.length){
+      const [commentsResult,reactionsResult]=await Promise.all([
+        supabase!.from("zavo_community_post_comments").select("id,post_id,user_id,body,created_at,profiles:profiles!zavo_community_post_comments_user_id_fkey(username,display_name,avatar_url)").in("post_id",postIds).order("created_at",{ascending:true}),
+        supabase!.from("zavo_community_post_reactions").select("post_id,user_id").in("post_id",postIds)
+      ]);
+      if(commentsResult.error||reactionsResult.error)onNotice("Les réactions ou commentaires ne sont pas tous accessibles.");
+      setCommunityComments(commentsResult.data||[]);setCommunityReactions(reactionsResult.data||[]);
+    }else{setCommunityComments([]);setCommunityReactions([]);}
+  };
+  const toggleCommunityReaction=async(post:any)=>{
+    if(!userId){onLogin();return;}
+    const existing=communityReactions.find((reaction:any)=>reaction.post_id===post.id&&reaction.user_id===userId);
+    if(existing){
+      const {error}=await supabase!.from("zavo_community_post_reactions").delete().eq("post_id",post.id).eq("user_id",userId);
+      if(error){onNotice("Impossible de retirer la réaction : "+error.message);return;}
+      setCommunityReactions(rows=>rows.filter((reaction:any)=>!(reaction.post_id===post.id&&reaction.user_id===userId)));
+    }else{
+      const {error}=await supabase!.from("zavo_community_post_reactions").insert({post_id:post.id,user_id:userId});
+      if(error){onNotice("Impossible d’ajouter la réaction : "+error.message);return;}
+      setCommunityReactions(rows=>[...rows,{post_id:post.id,user_id:userId}]);
+    }
+  };
+  const sendCommunityComment=async(post:any)=>{
+    if(!userId){onLogin();return;}
+    const body=(commentDrafts[post.id]||"").trim();if(!body)return;
+    const {data,error}=await supabase!.from("zavo_community_post_comments").insert({post_id:post.id,user_id:userId,body}).select("id,post_id,user_id,body,created_at,profiles:profiles!zavo_community_post_comments_user_id_fkey(username,display_name,avatar_url)").single();
+    if(error){onNotice("Commentaire impossible : "+error.message);return;}
+    setCommunityComments(rows=>[...rows,data]);setCommentDrafts(rows=>({...rows,[post.id]:""}));
   };
   const createCommunity=async()=>{
     if(!userId){onLogin();return;}
@@ -196,7 +228,7 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
       {selectedCommunity?<section className="community-detail"><header><button className="community-back" onClick={()=>setSelectedCommunity(null)}>← Toutes les communautés</button>{selectedCommunity.owner_id===userId?<span className="community-owner-label">Propriétaire</span>:<button onClick={()=>void joinCommunity(selectedCommunity)}>{memberships.includes(selectedCommunity.id)?"Quitter":"Rejoindre"}</button>}</header><div className="community-detail-title"><div><span className="community-eyebrow">COMMUNAUTÉ {selectedCommunity.visibility==="private"?"PRIVÉE":"PUBLIQUE"}</span><h2>{selectedCommunity.name}</h2><p>{selectedCommunity.description||"Un espace pour partager et échanger sur ZAVO."}</p></div><span className="community-symbol"><Users/></span></div>
         {selectedCommunity.owner_id===userId&&<form className="community-invite-form" onSubmit={e=>{e.preventDefault();void inviteCommunityMember();}}><input value={inviteUsername} onChange={e=>setInviteUsername(e.target.value)} placeholder="@nom_utilisateur à inviter" aria-label="Nom d’utilisateur à inviter"/><button disabled={inviteBusy||!inviteUsername.trim()}>{inviteBusy?"Ajout…":"Inviter un membre"}</button></form>}
         {(memberships.includes(selectedCommunity.id)||selectedCommunity.owner_id===userId)&&<form className="community-post-form" onSubmit={sendPost}><textarea value={postText} onChange={e=>setPostText(e.target.value)} maxLength={3000} rows={3} placeholder="Partage une idée avec la communauté…"/><button disabled={busy||!postText.trim()}><Send size={15}/> Publier</button></form>}
-        <div className="community-post-list">{posts.length?posts.map(post=><article key={post.id}><div className="community-post-author"><span>{(post.profiles?.display_name||"Z").slice(0,1).toUpperCase()}</span><div><strong>{post.profiles?.display_name||"Membre ZAVO"}</strong><small>@{post.profiles?.username||"membre"} · {new Date(post.created_at).toLocaleDateString("fr-FR")}</small></div>{post.author_id===userId&&<button className="community-post-delete" title="Supprimer ma publication" aria-label="Supprimer ma publication" onClick={()=>void deletePost(post)}><Trash2 size={14}/></button>}</div><p>{post.body}</p></article>):<div className="community-empty"><MessageCircle/><strong>La discussion commence ici</strong><span>Sois le premier à partager quelque chose.</span></div>}</div>
+        <div className="community-post-list">{posts.length?posts.map(post=><article className="community-discussion-post" key={post.id}><div className="community-post-author"><span>{(post.profiles?.display_name||"Z").slice(0,1).toUpperCase()}</span><div><strong>{post.profiles?.display_name||"Membre ZAVO"}</strong><small>@{post.profiles?.username||"membre"} · {new Date(post.created_at).toLocaleDateString("fr-FR")}</small></div>{post.author_id===userId&&<button className="community-post-delete" title="Supprimer ma publication" aria-label="Supprimer ma publication" onClick={()=>void deletePost(post)}><Trash2 size={14}/></button>}</div><p>{post.body}</p><div className="community-post-engagement"><button type="button" className={communityReactions.some((reaction:any)=>reaction.post_id===post.id&&reaction.user_id===userId)?"liked":""} onClick={()=>void toggleCommunityReaction(post)}><Heart size={15}/> {communityReactions.filter((reaction:any)=>reaction.post_id===post.id).length} J’aime</button><span><MessageCircle size={14}/> {communityComments.filter((comment:any)=>comment.post_id===post.id).length} commentaire(s)</span></div><div className="community-comment-list">{communityComments.filter((comment:any)=>comment.post_id===post.id).map((comment:any)=><div key={comment.id} className="community-comment"><b>{comment.profiles?.display_name||"Membre"}</b><span>{comment.body}</span></div>)}</div><form className="community-comment-form" onSubmit={e=>{e.preventDefault();void sendCommunityComment(post);}}><input value={commentDrafts[post.id]||""} onChange={e=>setCommentDrafts(rows=>({...rows,[post.id]:e.target.value}))} maxLength={2000} placeholder="Écrire un commentaire…"/><button disabled={!(commentDrafts[post.id]||"").trim()}><Send size={14}/></button></form></article>):<div className="community-empty"><MessageCircle/><strong>La discussion commence ici</strong><span>Sois le premier à partager quelque chose.</span></div>}</div>
       </section>:<div className="community-grid">{filteredCommunities.map(c=><article className="community-card" key={c.id}><div className="community-card-icon"><Users/></div><span className="community-eyebrow">{c.visibility==="public"?"PUBLIQUE":"PRIVÉE"}</span><h3>{c.name}</h3><p>{c.description||"Une communauté ZAVO pour échanger et partager."}</p><div className="community-card-actions"><button onClick={()=>void openCommunity(c)}>Voir la communauté <ChevronRight size={15}/></button><button className={memberships.includes(c.id)?"joined":""} onClick={()=>void joinCommunity(c)}>{memberships.includes(c.id)?"Quitter":"Rejoindre"}</button></div></article>)}</div>}
       {!filteredCommunities.length&&<div className="community-empty"><Users/><strong>Aucune communauté trouvée</strong><span>Essaie un autre mot ou crée la première communauté.</span></div>}
     </div>}
