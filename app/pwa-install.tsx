@@ -19,6 +19,7 @@ export default function PwaInstall() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [standalone, setStandalone] = useState(false);
   const [ios, setIos] = useState(false);
+  const [android, setAndroid] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -29,6 +30,7 @@ export default function PwaInstall() {
       window.__zavoAppInstalled === true;
     setStandalone(isStandalone);
     setIos(/iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as Window & { MSStream?: unknown }).MSStream);
+    setAndroid(/android/i.test(navigator.userAgent));
 
     const syncPrompt = () => {
       if (window.__zavoDeferredInstallPrompt) {
@@ -64,14 +66,20 @@ export default function PwaInstall() {
       return;
     }
 
-    await promptEvent.prompt();
-    const choice = await promptEvent.userChoice;
-    window.__zavoDeferredInstallPrompt = null;
-    setInstallPrompt(null);
-    if (choice.outcome === "accepted") {
-      // appinstalled is the confirmation that the browser completed installation.
-      setHelpOpen(false);
+    try {
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      window.__zavoDeferredInstallPrompt = null;
+      setInstallPrompt(null);
+      if (choice.outcome === "accepted") setHelpOpen(false);
+    } catch (error) {
+      console.warn("ZAVO native install prompt failed:", error);
+      setHelpOpen(true);
     }
+  }
+
+  function openChromeForInstall() {
+    window.location.href = "intent://zavo-pink.vercel.app/?source=pwa#Intent;scheme=https;package=com.android.chrome;end";
   }
 
   if (standalone || dismissed) return null;
@@ -99,9 +107,9 @@ export default function PwaInstall() {
             {ios ? (
               <><p>Sur iPhone, Safari ne propose pas le même bouton d’installation native que Chrome. La méthode Apple est :</p><ol><li>Ouvre cette page dans Safari.</li><li>Appuie sur <Share size={14} /> Partager.</li><li>Choisis « Sur l’écran d’accueil » puis « Ajouter » : iOS crée une web app qui s’ouvre en fenêtre autonome.</li></ol></>
             ) : (
-              <><p>Chrome ne propose pas encore le bouton d’installation directe à ZAVO. Vérifie les étapes suivantes :</p><ol><li>Ouvre ZAVO dans Google Chrome, dans un onglet normal (pas en navigation privée).</li><li>Actualise la page après quelques instants, puis ouvre le menu ⋮.</li><li>Choisis « Installer l’application » si Chrome le propose. La confirmation affichée par Android/Chrome est obligatoire.</li></ol><p><strong>Important :</strong> « Ajouter à l’écran d’accueil » peut, selon le navigateur, créer un raccourci plutôt qu’une application autonome.</p></>
+              <><p>Le navigateur actuel ne fournit pas encore le déclencheur d’installation native à ZAVO.</p><ol><li>Ouvre ZAVO dans Google Chrome, dans un onglet normal et hors navigation privée.</li><li>Attends quelques secondes que le service worker soit actif, puis actualise la page.</li><li>Appuie de nouveau sur « Installer ZAVO » : Chrome doit alors afficher sa fenêtre système « Installer l’application ».</li></ol><p>Si Chrome ne propose toujours pas l’installation, ouvre son menu ⋮ et cherche « Installer l’application ». Évite « Ajouter à l’écran d’accueil » lorsqu’il est présenté comme simple raccourci.</p></>
             )}
-            <p className="install-help-note">Le site ne peut pas supprimer la confirmation système de Chrome ni forcer l’installation en silence. Une fois installée via l’option native, ZAVO doit s’ouvrir en mode autonome grâce à son manifeste.</p>
+            <p className="install-help-note">Android et Chrome gardent la confirmation finale : un site ne peut pas installer une application en silence. ZAVO utilise le parcours d’installation natif lorsqu’il est proposé par le navigateur.</p>{android&&!installPrompt&&<button type="button" className="secondary-action modal-submit" onClick={openChromeForInstall}>Ouvrir ZAVO dans Google Chrome</button>}
             <button className="primary-action modal-submit" onClick={() => setHelpOpen(false)}>J’ai compris</button>
           </section>
         </div>
