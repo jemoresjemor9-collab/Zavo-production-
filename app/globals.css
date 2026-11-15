@@ -1541,3 +1541,13 @@ body{color:#d7eaff!important}
 .series-episode.active{border-color:#438fe5;background:rgba(52,132,220,.10)}
 .series-episode:disabled{cursor:not-allowed;opacity:.55}
 @media(max-width:600px){.series-player-caption{align-items:flex-start;flex-direction:column}.series-player-caption>div{width:100%}.series-player-caption button{flex:1}}
+
+
+/* ZAVO challenge ranking */
+.challenge-leaderboard{display:grid;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid #ffffff18}
+.challenge-leaderboard>strong{font-size:10px;color:#aab9c9;text-transform:uppercase;letter-spacing:.08em}
+.challenge-leaderboard>div{display:flex;align-items:center;gap:8px;min-width:0}
+.challenge-leaderboard>div>span{display:grid;place-items:center;width:22px;height:22px;flex:0 0 22px;border-radius:50%;background:#1b2b3d;color:#cfe4ff;font-size:10px;font-weight:800}
+.challenge-leaderboard img{width:32px;height:32px;object-fit:cover;border-radius:6px}
+.challenge-leaderboard b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e7edf5;font-size:11px}
+.challenge-leaderboard small{margin-left:auto;color:#91a2b4;font-size:10px;white-space:nowrap}
