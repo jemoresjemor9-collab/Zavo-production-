@@ -2192,15 +2192,16 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
   const viewSent = useRef(false);
   const [ended, setEnded] = useState(false);
   const creator = creatorOf(video);
-  const recommendations = useMemo(() => videos
-    .filter((item: Video) => item.id !== video.id && item.content_type !== "photo")
-    .map((item: Video) => {
-      const sameCreator = item.user_id === video.user_id ? 5 : 0;
-      const sameCategory = item.category && item.category === video.category ? 2 : 0;
-      const videoTags = [...(video.interest_tags || []), ...(video.hashtags || [])].map((tag:string)=>tag.toLowerCase());
-      const sharedTags = [...(item.interest_tags || []), ...(item.hashtags || [])].filter((tag:string)=>videoTags.includes(tag.toLowerCase())).length;
-      return { item, score: sameCreator + sameCategory + sharedTags * 1.5 + Math.log1p(item.views_count || 0) * 0.25 };
-    }).sort((a:any,b:any)=>b.score-a.score);
+  const recommendations = useMemo(() => {
+    const ranked = videos
+      .filter((item: Video) => item.id !== video.id && item.content_type !== "photo")
+      .map((item: Video) => {
+        const sameCreator = item.user_id === video.user_id ? 5 : 0;
+        const sameCategory = item.category && item.category === video.category ? 2 : 0;
+        const videoTags = [...(video.interest_tags || []), ...(video.hashtags || [])].map((tag:string)=>tag.toLowerCase());
+        const sharedTags = [...(item.interest_tags || []), ...(item.hashtags || [])].filter((tag:string)=>videoTags.includes(tag.toLowerCase())).length;
+        return { item, score: sameCreator + sameCategory + sharedTags * 1.5 + Math.log1p(item.views_count || 0) * 0.25 };
+      }).sort((a:any,b:any)=>b.score-a.score);
     const sameCreator = ranked.filter((entry:any)=>entry.item.user_id===video.user_id);
     const otherCreators = ranked.filter((entry:any)=>entry.item.user_id!==video.user_id);
     const mixed: Video[] = [];
@@ -2208,8 +2209,8 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
       if(sameCreator.length)mixed.push(sameCreator.shift().item);
       if(otherCreators.length&&mixed.length<12)mixed.push(otherCreators.shift().item);
     }
-    return mixed,
-    [videos, video.id, video.user_id, video.category, video.interest_tags, video.hashtags]);
+    return mixed;
+  }, [videos, video.id, video.user_id, video.category, video.interest_tags, video.hashtags]);
   const nextVideo = recommendations[0] || null;
   useEffect(() => { setEnded(false); lastTime.current=0; watched.current=0; viewSent.current=false; }, [video.id]);
   useEffect(() => {
