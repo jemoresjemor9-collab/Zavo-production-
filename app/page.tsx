@@ -574,6 +574,7 @@ export default function HomePage() {
       let affinityTags = new Map<string, number>();
       let affinityCategories = new Map<string, number>();
       let followedCreators = new Set<string>();
+      let recentlyWatchedIds = new Set<string>();
       if (userId) {
         const [likeRows, savedRows, repostRows, followRows, watchRows] = await Promise.all([
           db()!.from("likes").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
@@ -586,7 +587,7 @@ export default function HomePage() {
         const likedIds = (likeRows.data || []).map((row: any) => row.video_id);
         const savedIds = (savedRows.data || []).map((row: any) => row.video_id);
         const repostedIds = (repostRows.data || []).map((row: any) => row.video_id);
-        const recentlyWatchedIds = new Set((watchRows.data || []).filter((row:any)=>Number(row.watch_seconds||0)>=3&&Date.now()-new Date(row.created_at).getTime()<7*86400000).map((row:any)=>row.video_id));
+        recentlyWatchedIds = new Set((watchRows.data || []).filter((row:any)=>Number(row.watch_seconds||0)>=3&&Date.now()-new Date(row.created_at).getTime()<7*86400000).map((row:any)=>row.video_id));
         const weights = new Map<string, number>();
         likedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 3));
         savedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 2));
