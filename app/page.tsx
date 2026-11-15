@@ -2446,7 +2446,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
           src={video.video_url} poster={video.thumbnail_url || undefined} controls={!isShort} playsInline muted preload="none"
           controlsList="nodownload" onContextMenu={e=>e.preventDefault()}
           onLoadedMetadata={e=>{const ratio=e.currentTarget.videoWidth/e.currentTarget.videoHeight;const frame=e.currentTarget.parentElement;if(frame&&ratio>0)frame.style.aspectRatio=String(ratio);}}
-          onPlay={e=>{lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
+          onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=crypto.randomUUID();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
           onTimeUpdate={e=>{
             const current=e.currentTarget.currentTime;
             const delta=current-lastPlaybackTime.current;
@@ -2557,7 +2557,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
           <div className={"watch-player "+(isShort?"watch-player-short":"watch-player-long")} style={{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9),width:Number(video.aspect_ratio)>=1?"min(100%, 900px)":"min(100%, 440px)"}} onTouchStart={e=>{if(isShort)touchStartY.current=e.touches[0]?.clientY??null;}} onTouchEnd={e=>{if(!isShort||touchStartY.current===null)return;const delta=touchStartY.current-e.changedTouches[0].clientY;touchStartY.current=null;if(Math.abs(delta)>55)changeShortBySwipe(delta>0?"next":"previous");}}>
             <video key={video.id} src={video.video_url} poster={video.thumbnail_url||undefined} controls autoPlay playsInline preload="auto" style={{objectFit:"contain",maxWidth:"100%",maxHeight:"100%"}}
               onLoadedMetadata={e=>{const ratio=e.currentTarget.videoWidth/e.currentTarget.videoHeight;const frame=e.currentTarget.parentElement;if(frame&&ratio>0){frame.style.aspectRatio=String(ratio);if(!Number(video.aspect_ratio))frame.style.width=ratio>=1?"min(100%, 900px)":"min(100%, 440px)";}}}
-              onPlay={e=>{lastTime.current=e.currentTarget.currentTime;}}
+              onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=crypto.randomUUID();lastTime.current=e.currentTarget.currentTime;}}
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2){watched.current+=delta;const duration=e.currentTarget.duration;if(Number.isFinite(duration)&&duration>0){const progress=current/duration*100;[10,25,50,75,90,100].forEach(milestone=>{if(progress>=milestone&&!retentionMilestonesRef.current.has(milestone)){retentionMilestonesRef.current.add(milestone);onRetentionProgress?.(video,retentionSessionRef.current,milestone);}});}}lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
               onPause={flushWatchTime}
               onEnded={e=>{flushWatchTime();if(!completionSent.current){completionSent.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}/>
