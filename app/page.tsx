@@ -2551,7 +2551,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
 
   return <div className={"watch-page-overlay "+(isShort?"is-short-viewer":"is-classic-viewer")} role="dialog" aria-modal="true" aria-label={isShort?"Lecteur Shorts ZAVO":"Lecteur vidéo ZAVO"}>
     <div className="watch-page-shell">
-      <header className="watch-page-header"><button type="button" onClick={onClose}><ArrowLeft size={18}/> {isShort?"Retour aux Shorts":"Retour au fil"}</button><strong>{isShort?"ZAVO · SHORTS":"ZAVO · LECTEUR"}</strong><button type="button" onClick={onClose} aria-label="Fermer le lecteur"><X size={18}/></button></header>
+      <header className="watch-page-header"><button type="button" onClick={()=>{flushWatchTime();onClose();}}><ArrowLeft size={18}/> {isShort?"Retour aux Shorts":"Retour au fil"}</button><strong>{isShort?"ZAVO · SHORTS":"ZAVO · LECTEUR"}</strong><button type="button" onClick={()=>{flushWatchTime();onClose();}} aria-label="Fermer le lecteur"><X size={18}/></button></header>
       <div className="watch-page-layout">
         <main className="watch-main">
           <div className={"watch-player "+(isShort?"watch-player-short":"watch-player-long")} style={{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9),width:Number(video.aspect_ratio)>=1?"min(100%, 900px)":"min(100%, 440px)"}} onTouchStart={e=>{if(isShort)touchStartY.current=e.touches[0]?.clientY??null;}} onTouchEnd={e=>{if(!isShort||touchStartY.current===null)return;const delta=touchStartY.current-e.changedTouches[0].clientY;touchStartY.current=null;if(Math.abs(delta)>55)changeShortBySwipe(delta>0?"next":"previous");}}>
