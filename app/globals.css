@@ -1422,3 +1422,73 @@ body{color:#d7eaff!important}
   .short-creator-identity strong{font-size:10px}
   .short-creator-follow{min-height:23px;padding:3px 8px;font-size:9px}
 }
+
+
+/* ZAVO community hub */
+.community-hub{display:flex;flex-direction:column;gap:18px;padding:8px 0 42px;color:#172b45}
+.community-hero{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:25px;border:1px solid #2879d2;border-radius:18px;background:linear-gradient(120deg,#fff 0%,#edf5ff 58%,#effcf5 100%)}
+.community-eyebrow{display:inline-flex;align-items:center;gap:6px;color:#168c58;font-size:10px;font-weight:900;letter-spacing:.14em}
+.community-hero h1{margin:8px 0;color:#172b45;font:850 clamp(27px,4vw,39px) 'Manrope';letter-spacing:-1.1px}
+.community-hero h1 b{color:#176bd1}.community-hero p{margin:0;color:#60738a;font-size:13px;line-height:1.6}
+.community-hero>button,.community-toolbar>button,.community-card-actions button,.community-card-footer button,.community-detail>header>button:not(.community-back),.community-post-form button,.community-add-episode button{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 13px;border:1px solid #176bd1;border-radius:9px;background:#176bd1;color:#fff;font-size:11px;font-weight:850;cursor:pointer}
+.community-hero>button:disabled,.community-post-form button:disabled,.community-add-episode button:disabled{opacity:.55;cursor:wait}
+.community-tabs{display:flex;gap:7px;padding:5px;border:1px solid #d8e3ef;border-radius:12px;background:#f5f8fc}
+.community-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;padding:10px;border:1px solid transparent;border-radius:8px;background:transparent;color:#60738a;font-size:12px;font-weight:800;cursor:pointer}
+.community-tabs button.active{border-color:#176bd1;background:#e7f1ff;color:#145eb6}
+.community-section{display:flex;flex-direction:column;gap:15px}
+.community-toolbar{display:flex;align-items:center;justify-content:space-between;gap:15px}
+.community-toolbar h2{margin:0 0 5px;color:#172b45;font:800 19px 'Manrope'}
+.community-toolbar p{margin:0;color:#6d7e92;font-size:11px;line-height:1.5}
+.community-search{display:flex;align-items:center;gap:9px;padding:11px 13px;border:1px solid #d8e3ef;border-radius:10px;background:#fff;color:#8290a2}
+.community-search input{width:100%;border:0;outline:0;background:transparent;color:#172b45;font-size:12px}
+.community-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.community-card{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:9px;padding:17px;border:1px solid #d8e3ef;border-radius:14px;background:#fff;box-shadow:0 6px 22px #15365c08}
+.community-card-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#e8f1ff;color:#176bd1}
+.community-card-icon.challenge{background:#fff5df;color:#c78310}.community-card-icon.series{background:#e8f8ef;color:#168c58}
+.community-card h3{margin:0;color:#172b45;font:800 16px 'Manrope';overflow-wrap:anywhere}
+.community-card>p{flex:1;margin:0;color:#65758a;font-size:11px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.community-card-actions,.community-card-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:7px}
+.community-card-actions button,.community-card-footer button{padding:8px 10px;font-size:10px}
+.community-card-actions button:first-child{border-color:#d4e2f0;background:#f3f7fc;color:#25537e}
+.community-card-actions button.joined{border-color:#b7e5ca;background:#edf9f1;color:#168c58}
+.community-card-footer>span{color:#718198;font-size:10px}
+.community-hashtag{display:inline-flex;align-items:center;gap:4px;color:#176bd1;font-size:12px}
+.community-date{display:flex;align-items:center;gap:6px;color:#718198;font-size:10px}
+.community-detail{padding:18px;border:1px solid #d8e3ef;border-radius:14px;background:#fff}
+.community-detail>header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px}
+.community-detail>header .community-back{padding:7px 0;border:0;background:transparent;color:#176bd1;font-size:11px;font-weight:800;cursor:pointer}
+.community-detail-title{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0 18px;border-bottom:1px solid #e6edf5}
+.community-detail-title h2{margin:6px 0;color:#172b45;font:850 24px 'Manrope'}
+.community-detail-title p{margin:0;color:#65758a;font-size:12px;line-height:1.6}
+.community-symbol{display:grid;place-items:center;flex:0 0 52px;width:52px;height:52px;border-radius:14px;background:#e8f1ff;color:#176bd1}
+.community-post-form{display:grid;gap:9px;margin:16px 0;padding:13px;border:1px solid #dce7f2;border-radius:11px;background:#f7faff}
+.community-post-form textarea,.community-modal textarea{width:100%;resize:vertical;padding:11px;border:1px solid #d5e0ed;border-radius:8px;background:#fff;color:#172b45;font:inherit;font-size:12px}
+.community-post-form button{justify-self:end}
+.community-post-list{display:grid;gap:10px;margin-top:15px}
+.community-post-list>article{padding:13px;border:1px solid #e1e9f2;border-radius:10px;background:#fff}
+.community-post-author{display:flex;align-items:center;gap:9px}
+.community-post-author>span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(130deg,#e53945,#176bd1 58%,#16a765);color:#fff;font-weight:850}
+.community-post-author>div{display:grid;gap:3px}.community-post-author strong{color:#172b45;font-size:11px}.community-post-author small{color:#8190a3;font-size:9px}
+.community-post-list>article>p{margin:10px 0 0;color:#354a62;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.community-empty,.community-loading{display:flex;min-height:150px;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;border:1px dashed #cbd9e8;border-radius:12px;color:#8293a7;text-align:center}
+.community-empty svg{color:#176bd1}.community-empty strong{color:#304b68;font-size:13px}.community-empty span{max-width:400px;font-size:11px;line-height:1.5}
+.community-loading{flex-direction:row;min-height:90px;border:0}.community-spin{animation:community-spin 1s linear infinite}@keyframes community-spin{to{transform:rotate(360deg)}}
+.community-add-episode{display:flex;gap:9px;margin-top:15px}
+.community-add-episode select,.community-modal input,.community-modal select,.community-date-grid input{width:100%;min-width:0;padding:10px;border:1px solid #d5e0ed;border-radius:8px;background:#fff;color:#172b45;font-size:11px}
+.series-episode{display:flex;align-items:center;gap:12px}
+.series-episode .episode-number{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:9px;background:#e8f1ff;color:#176bd1;font-weight:900}
+.series-episode>div{display:grid;gap:5px}.series-episode strong{color:#172b45;font-size:12px}.series-episode small{color:#8190a3;font-size:10px}
+.community-modal-backdrop{position:fixed;z-index:160;inset:0;display:grid;place-items:center;padding:16px;background:#0c1d33a8}
+.community-modal{width:min(100%,500px);max-height:88vh;overflow:auto;padding:20px;border:1px solid #cbd9e8;border-radius:15px;background:#fff;box-shadow:0 22px 70px #081a30aa}
+.community-modal>header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}
+.community-modal h2{margin:0;color:#172b45;font:850 19px 'Manrope'}
+.community-modal>header button{display:grid;place-items:center;width:34px;height:34px;border:1px solid #d8e3ef;border-radius:8px;background:#f5f8fc;color:#40556e}
+.community-modal>label{display:grid;gap:7px;margin:13px 0;color:#354a62;font-size:11px;font-weight:800}
+.community-modal>p{color:#718198;font-size:11px;line-height:1.6}
+.community-date-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.community-date-grid label{display:grid;gap:7px;color:#354a62;font-size:11px;font-weight:800}
+.community-modal>footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.community-modal>footer button{padding:9px 13px;border:1px solid #d5e0ed;border-radius:8px;background:#f5f8fc;color:#40556e;font-size:11px;font-weight:800}
+.community-modal>footer button:last-child{border-color:#176bd1;background:#176bd1;color:#fff}
+.community-modal>footer button:disabled{opacity:.5}
+@media(max-width:700px){.community-hero{align-items:flex-start;flex-direction:column;padding:19px}.community-hero>button{width:100%}.community-toolbar{align-items:flex-start;flex-direction:column}.community-toolbar>button{width:100%}.community-grid{grid-template-columns:1fr}.community-detail{padding:13px}.community-add-episode{flex-direction:column}.community-date-grid{grid-template-columns:1fr}.community-tabs button{font-size:10px;padding:9px 5px}.mobile-nav{overflow-x:auto;justify-content:flex-start}.mobile-nav button{min-width:52px}.mobile-nav button span{font-size:7px}}
