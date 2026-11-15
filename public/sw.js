@@ -1,4 +1,4 @@
-const CACHE_NAME = "zavo-shell-v2";
+const CACHE_NAME = "zavo-shell-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/zavo-192.png", "/icons/zavo-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -22,7 +22,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request).then((response) => {
         const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         return response;
       }).catch(async () => (await caches.match(request)) || (await caches.match("/")) || Response.error())
     );
