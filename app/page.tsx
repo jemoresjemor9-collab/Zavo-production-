@@ -6,7 +6,7 @@ import {
   Share2, Bell, LogIn, LogOut, Clapperboard, Bookmark, Download, WifiOff,
   Flag, Megaphone, Play, Eye, Settings, X, UploadCloud, Send, Check, Trash2,
   MoreHorizontal, Film, Image as ImageIcon, ExternalLink, Users, ShieldCheck, Repeat2,
-  Mic, Pause, ArrowLeft, Camera, Images, Link2, PlayCircle, EyeOff, BarChart3, Pencil
+  Mic, Pause, ArrowLeft, ArrowUp, ArrowDown, Camera, Images, Link2, PlayCircle, EyeOff, BarChart3, Pencil
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
@@ -1306,14 +1306,20 @@ export default function HomePage() {
   }
 
   async function recordView(video: Video, seconds: number) {
-    if (!db() || seconds < 2) return null;
+    if (!db() || seconds < 3) return null;
     const key = visitorKey();
     const payload: any = session?.user?.id
       ? { video_id: video.id, viewer_id: session.user.id, watch_seconds: Math.floor(seconds) }
       : { video_id: video.id, visitor_key: key, watch_seconds: Math.floor(seconds) };
-    const { data, error } = await db()!.from("video_views").insert(payload).select("id").single();
-    if (!error) setVideos((items) => items.map((v) => v.id === video.id ? { ...v, views_count: v.views_count + 1 } : v));
-    return error ? null : data?.id || null;
+    // No RETURNING/select here: viewers are allowed to INSERT their view, but only
+    // the creator can SELECT analytics rows under the existing RLS policy.
+    const { error } = await db()!.from("video_views").insert(payload);
+    if (error) {
+      console.warn("ZAVO view registration:", error.message);
+      return null;
+    }
+    setVideos((items) => items.map((v) => v.id === video.id ? { ...v, views_count: (v.views_count || 0) + 1 } : v));
+    return true;
   }
 
   async function recordWatchTime(video: Video, seconds: number) {
@@ -2144,7 +2150,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
             const seconds=Math.floor(current);
             if(seconds>watchSeconds){
               setWatchSeconds(seconds);
-              if(seconds>=2&&!viewRecorded.current){viewRecorded.current=true;onView(video,2);if(video.isSponsored)onCampaignEvent?.(video.campaign_id,"result");}
+              if(segmentWatchTime.current>=3&&!viewRecorded.current){viewRecorded.current=true;onView(video,Math.floor(segmentWatchTime.current));if(video.isSponsored)onCampaignEvent?.(video.campaign_id,"result");}
               if(video.isSponsored&&seconds>=1&&watchSeconds<1)onCampaignEvent?.(video.campaign_id,"impression");
             }
             if(isShort&&current>=5){e.currentTarget.pause();setPreviewEnded(true);}
@@ -2197,6 +2203,15 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
     const target = shortVideos[shortIndex + (direction === "next" ? 1 : -1)];
     if (target) onSelect(target);
   };
+  useEffect(() => {
+    if (!isShort) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowDown") { event.preventDefault(); changeShortBySwipe("next"); }
+      if (event.key === "ArrowUp") { event.preventDefault(); changeShortBySwipe("previous"); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isShort, shortIndex, shortVideos]);
   const watched = useRef(0);
   const viewSent = useRef(false);
   const [ended, setEnded] = useState(false);
@@ -2242,9 +2257,13 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
           <div className={"watch-player "+(isShort?"watch-player-short":"watch-player-long")} onTouchStart={e=>{if(isShort)touchStartY.current=e.touches[0]?.clientY??null;}} onTouchEnd={e=>{if(!isShort||touchStartY.current===null)return;const delta=touchStartY.current-e.changedTouches[0].clientY;touchStartY.current=null;if(Math.abs(delta)>55)changeShortBySwipe(delta>0?"next":"previous");}}>
             <video key={video.id} src={video.video_url} poster={video.thumbnail_url||undefined} controls autoPlay playsInline preload="auto"
               onPlay={e=>{lastTime.current=e.currentTarget.currentTime;}}
-              onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2)watched.current+=delta;lastTime.current=current;if(current>=2&&!viewSent.current){viewSent.current=true;onView?.(video,2);}}}
+              onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2)watched.current+=delta;lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
               onPause={flushWatchTime}
               onEnded={()=>{flushWatchTime();setEnded(true);}}/>
+            {isShort&&<div className="short-desktop-nav" aria-label="Navigation entre les Shorts">
+              <button type="button" onClick={()=>changeShortBySwipe("previous")} disabled={shortIndex<=0} aria-label="Short précédent" title="Short précédent"><ArrowUp size={23}/></button>
+              <button type="button" onClick={()=>changeShortBySwipe("next")} disabled={shortIndex<0||shortIndex>=shortVideos.length-1} aria-label="Short suivant" title="Short suivant"><ArrowDown size={23}/></button>
+            </div>}
             {ended&&nextVideo&&<div className="watch-next-overlay"><strong>Vidéo terminée</strong><span>La prochaine vidéo commence dans 5 secondes.</span><button type="button" onClick={()=>selectVideo(nextVideo)}>Lire maintenant <Play size={15}/></button></div>}
           </div>
           <h1 className="watch-video-title">{video.caption||"Vidéo ZAVO"}</h1>
