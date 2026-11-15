@@ -933,3 +933,11 @@ body{color:#d7eaff!important}
  .is-short-viewer .watch-player-short{touch-action:pan-y}
  .is-short-viewer .watch-page-layout{grid-template-columns:minmax(0,1fr) 320px}
 }
+
+
+/* Desktop-only explicit Short navigation; mobile navigation stays gesture-based. */
+.short-desktop-nav{position:absolute;z-index:8;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px}
+.short-desktop-nav button{width:46px;height:46px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.32);border-radius:50%;background:rgba(5,13,24,.72);color:#fff;backdrop-filter:blur(8px);cursor:pointer;transition:background .15s,transform .15s}
+.short-desktop-nav button:hover:not(:disabled){background:rgba(24,112,215,.9);transform:scale(1.06)}
+.short-desktop-nav button:disabled{opacity:.28;cursor:not-allowed}
+@media(max-width:760px){.short-desktop-nav{display:none!important}}
