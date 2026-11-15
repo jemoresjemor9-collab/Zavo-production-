@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Users, MessageCircle, Plus, Search, Trophy, Clapperboard, Play, LogIn, Send, CalendarDays, X, ChevronRight, RefreshCw, Hash } from "lucide-react";
+import { Users, MessageCircle, Plus, Search, Trophy, Clapperboard, Play, LogIn, Send, CalendarDays, X, ChevronRight, RefreshCw, Hash, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type HubTab = "communities" | "challenges" | "series";
@@ -105,6 +105,13 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
     }
     await load(false);
   };
+  const deletePost=async(post:any)=>{
+    if(!userId||post.author_id!==userId||!selectedCommunity)return;
+    if(!window.confirm("Supprimer cette publication de la communauté ?"))return;
+    const {error}=await supabase!.from("zavo_community_posts").delete().eq("id",post.id).eq("author_id",userId);
+    if(error){onNotice("Suppression impossible : "+error.message);return;}
+    setPosts(current=>current.filter(item=>item.id!==post.id));onNotice("Publication supprimée.");
+  };
   const sendPost=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!userId){onLogin();return;}
@@ -168,13 +175,13 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
       <label className="community-search"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher une communauté"/></label>
       {selectedCommunity?<section className="community-detail"><header><button className="community-back" onClick={()=>setSelectedCommunity(null)}>← Toutes les communautés</button>{selectedCommunity.owner_id===userId?<span className="community-owner-label">Propriétaire</span>:<button onClick={()=>void joinCommunity(selectedCommunity)}>{memberships.includes(selectedCommunity.id)?"Quitter":"Rejoindre"}</button>}</header><div className="community-detail-title"><div><span className="community-eyebrow">COMMUNAUTÉ {selectedCommunity.visibility==="private"?"PRIVÉE":"PUBLIQUE"}</span><h2>{selectedCommunity.name}</h2><p>{selectedCommunity.description||"Un espace pour partager et échanger sur ZAVO."}</p></div><span className="community-symbol"><Users/></span></div>
         {(memberships.includes(selectedCommunity.id)||selectedCommunity.owner_id===userId)&&<form className="community-post-form" onSubmit={sendPost}><textarea value={postText} onChange={e=>setPostText(e.target.value)} maxLength={3000} rows={3} placeholder="Partage une idée avec la communauté…"/><button disabled={busy||!postText.trim()}><Send size={15}/> Publier</button></form>}
-        <div className="community-post-list">{posts.length?posts.map(post=><article key={post.id}><div className="community-post-author"><span>{(post.profiles?.display_name||"Z").slice(0,1).toUpperCase()}</span><div><strong>{post.profiles?.display_name||"Membre ZAVO"}</strong><small>@{post.profiles?.username||"membre"} · {new Date(post.created_at).toLocaleDateString("fr-FR")}</small></div></div><p>{post.body}</p></article>):<div className="community-empty"><MessageCircle/><strong>La discussion commence ici</strong><span>Sois le premier à partager quelque chose.</span></div>}</div>
+        <div className="community-post-list">{posts.length?posts.map(post=><article key={post.id}><div className="community-post-author"><span>{(post.profiles?.display_name||"Z").slice(0,1).toUpperCase()}</span><div><strong>{post.profiles?.display_name||"Membre ZAVO"}</strong><small>@{post.profiles?.username||"membre"} · {new Date(post.created_at).toLocaleDateString("fr-FR")}</small></div>{post.author_id===userId&&<button className="community-post-delete" title="Supprimer ma publication" aria-label="Supprimer ma publication" onClick={()=>void deletePost(post)}><Trash2 size={14}/></button>}</div><p>{post.body}</p></article>):<div className="community-empty"><MessageCircle/><strong>La discussion commence ici</strong><span>Sois le premier à partager quelque chose.</span></div>}</div>
       </section>:<div className="community-grid">{filteredCommunities.map(c=><article className="community-card" key={c.id}><div className="community-card-icon"><Users/></div><span className="community-eyebrow">{c.visibility==="public"?"PUBLIQUE":"PRIVÉE"}</span><h3>{c.name}</h3><p>{c.description||"Une communauté ZAVO pour échanger et partager."}</p><div className="community-card-actions"><button onClick={()=>void openCommunity(c)}>Voir la communauté <ChevronRight size={15}/></button><button className={memberships.includes(c.id)?"joined":""} onClick={()=>void joinCommunity(c)}>{memberships.includes(c.id)?"Quitter":"Rejoindre"}</button></div></article>)}</div>}
       {!filteredCommunities.length&&<div className="community-empty"><Users/><strong>Aucune communauté trouvée</strong><span>Essaie un autre mot ou crée la première communauté.</span></div>}
     </div>}
     {tab==="challenges"&&<div className="community-section">
       <div className="community-toolbar"><div><h2>Les défis ZAVO</h2><p>Participe avec une vidéo originale et partage-la avec le hashtag du défi.</p></div><button onClick={()=>userId?setShowChallengeForm(true):onLogin()}><Plus size={16}/> Lancer un défi</button></div>
-      <div className="community-grid">{challenges.map(ch=><article className="community-card challenge-card" key={ch.id}><div className="community-card-icon challenge"><Trophy/></div><span className="community-eyebrow">{ch.status==="active"&&new Date(ch.ends_at)>new Date()?"EN COURS":ch.status==="paused"?"EN PAUSE":"TERMINÉ"}</span><h3>{ch.title}</h3><p>{ch.description||"Relève le défi et publie ta participation sur ZAVO."}</p><strong className="community-hashtag"><Hash size={14}/>{ch.hashtag}</strong><div className="community-card-footer"><span>{ch.entries?.[0]?.count||0} participation(s)</span><button disabled={ch.status!=="active"||new Date(ch.ends_at)<new Date()||new Date(ch.starts_at)>new Date()} onClick={()=>{if(!userId){onLogin();return;}setEntryChallenge(ch);}}>Participer</button></div><small className="community-date"><CalendarDays size={13}/> Jusqu’au {new Date(ch.ends_at).toLocaleDateString("fr-FR")}</small></article>)}</div>
+      <div className="community-grid">{challenges.map(ch=><article className="community-card challenge-card" key={ch.id}><div className="community-card-icon challenge"><Trophy/></div><span className="community-eyebrow">{ch.status==="paused"?"EN PAUSE":new Date(ch.ends_at)<new Date()?"TERMINÉ":new Date(ch.starts_at)>new Date()?"À VENIR":ch.status==="active"?"EN COURS":"TERMINÉ"}</span><h3>{ch.title}</h3><p>{ch.description||"Relève le défi et publie ta participation sur ZAVO."}</p><strong className="community-hashtag"><Hash size={14}/>{ch.hashtag}</strong><div className="community-card-footer"><span>{ch.entries?.[0]?.count||0} participation(s)</span><button disabled={ch.status!=="active"||new Date(ch.ends_at)<new Date()||new Date(ch.starts_at)>new Date()} onClick={()=>{if(!userId){onLogin();return;}setEntryChallenge(ch);}}>Participer</button></div><small className="community-date"><CalendarDays size={13}/> Jusqu’au {new Date(ch.ends_at).toLocaleDateString("fr-FR")}</small></article>)}</div>
       {!challenges.length&&<div className="community-empty"><Trophy/><strong>Aucun défi pour le moment</strong><span>Crée le premier défi et invite les autres à participer.</span></div>}
     </div>}
     {tab==="series"&&<div className="community-section">
