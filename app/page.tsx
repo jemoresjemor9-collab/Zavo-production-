@@ -1430,7 +1430,13 @@ export default function HomePage() {
       ? { video_id: video.id, viewer_id: session.user.id, watch_seconds: Math.min(86400, Math.floor(seconds)) }
       : { video_id: video.id, visitor_key: visitorKey(), watch_seconds: Math.min(86400, Math.floor(seconds)) };
     const { error } = await db()!.from("video_watch_sessions").insert(payload);
-    if (error) console.warn("ZAVO watch-time event:", error.message);
+    if (error) {
+      console.warn("ZAVO watch-time event:", error.message);
+      return;
+    }
+    const recordedSeconds = Math.min(86400, Math.floor(seconds));
+    setVideos(items => items.map(item => item.id === video.id ? { ...item, watch_time_seconds: (item.watch_time_seconds || 0) + recordedSeconds } : item));
+    setWatchVideo(current => current?.id === video.id ? { ...current, watch_time_seconds: (current.watch_time_seconds || 0) + recordedSeconds } : current);
   }
 
   async function downloadVideo(video: Video, offlineOnly = false) {
