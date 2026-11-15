@@ -1173,3 +1173,10 @@ body{color:#d7eaff!important}
   .is-short-viewer .watch-video-meta{right:82px;bottom:13px;left:9px;gap:7px}
   .is-short-viewer .short-follow-cta{min-height:35px;padding:7px 11px;font-size:11px}
 }
+
+
+/* Keep the creator identity and follow action visible in the Short viewer on phones. */
+.creator-avatar{overflow:hidden}
+.creator-avatar img{display:block;width:100%;height:100%;border-radius:inherit;object-fit:cover}
+.is-short-viewer .watch-creator{display:flex!important;visibility:visible!important}
+.is-short-viewer .short-follow-cta{display:inline-flex;align-items:center;justify-content:center;visibility:visible!important}
