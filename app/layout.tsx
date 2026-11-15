@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
+import PwaRegister from "./pwa-register";
 
 export const metadata: Metadata = {
   title: "ZAVO — Regarde. Crée. Partage.",
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="fr">
       <body>
         <Script src="/pwa-install-capture.js" strategy="beforeInteractive" />
+        <PwaRegister />
         {children}
       </body>
     </html>
