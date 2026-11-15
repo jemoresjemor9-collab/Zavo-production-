@@ -17,7 +17,7 @@ import CreatorLibrary from "@/app/creator-library";
 
 type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; website_url?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; identity_changed_at?: string | null; followers_count?: number; followers?: { count: number }[] };
 type Video = {
-  id: string; caption: string; video_url: string; thumbnail_url?: string | null; user_id: string;
+  id: string; title?: string | null; caption: string; video_url: string; thumbnail_url?: string | null; user_id: string;
   views_count: number; created_at: string; content_type: "short" | "video" | "photo"; media_urls?: string[]; allow_download: boolean; allow_repost?: boolean;
   show_stats: boolean; display_mode?: "contain" | "cover" | "custom"; display_scale?: number; display_x?: number; display_y?: number; aspect_ratio?: string | null; duration_seconds?: number | null; clicks_count?: number; watch_time_seconds?: number; completed_views_count?: number; moderation_status?: string; isSponsored?: boolean; campaign_id?: string; target_url?: string | null; objective?: string; category?: string | null; allow_offline_download?: boolean; allow_gallery_download?: boolean; profiles?: Profile | Profile[] | null;
   interest_tags?: string[]; hashtags?: string[]; likes?: { count: number }[]; comments?: { count: number }[]; reposts?: { count: number }[]; collaborations?: {status:string;collaborator_id:string;collaborator?:{username?:string|null;display_name?:string|null}|{username?:string|null;display_name?:string|null}[]|null}[]; remix?: {remix_type:string;original?:{caption?:string;profiles?:{username?:string|null;display_name?:string|null}|{username?:string|null;display_name?:string|null}[]|null}|null}[];
@@ -81,7 +81,7 @@ async function getVideoMetadata(file: File) {
   }
 }
 
-async function createVideoThumbnail(file: File): Promise<File | null> {
+async function createVideoThumbnailCandidates(file: File): Promise<File[]> {
   const objectUrl = URL.createObjectURL(file);
   const video = document.createElement("video");
   video.preload = "metadata";
@@ -92,19 +92,30 @@ async function createVideoThumbnail(file: File): Promise<File | null> {
       video.onloadedmetadata = () => resolve();
       video.onerror = () => reject(new Error("Lecture vidéo impossible"));
     });
-    video.currentTime = Math.min(1, Math.max(0, (video.duration || 1) / 2));
-    await new Promise<void>((resolve, reject) => {
-      video.onseeked = () => resolve();
-      video.onerror = () => reject(new Error("Image vidéo indisponible"));
-    });
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    if (!duration || !video.videoWidth || !video.videoHeight) return [];
+    const positions = [0.04, 0.16, 0.28, 0.40, 0.52, 0.64, 0.76, 0.88, 0.96];
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 360;
+    canvas.width = Math.min(video.videoWidth, 960);
+    canvas.height = Math.round(canvas.width * video.videoHeight / video.videoWidth);
     const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.84));
-    return blob ? new File([blob], "zavo-thumbnail.jpg", { type: "image/jpeg" }) : null;
+    if (!context) return [];
+    const candidates: File[] = [];
+    for (let index = 0; index < positions.length; index++) {
+      const time = Math.min(Math.max(0.05, duration * positions[index]), Math.max(0.05, duration - 0.05));
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const timer = window.setTimeout(() => reject(new Error("seek timeout")), 5000);
+          video.onseeked = () => { window.clearTimeout(timer); resolve(); };
+          video.onerror = () => { window.clearTimeout(timer); reject(new Error("frame unavailable")); };
+          video.currentTime = time;
+        });
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.84));
+        if (blob) candidates.push(new File([blob], "zavo-frame-" + (index + 1) + ".jpg", { type: "image/jpeg" }));
+      } catch { /* Une image illisible ne doit pas empêcher les autres propositions. */ }
+    }
+    return candidates;
   } finally {
     URL.revokeObjectURL(objectUrl);
     video.removeAttribute("src");
@@ -293,6 +304,7 @@ export default function HomePage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState("");
+  const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [videoTargetUrl, setVideoTargetUrl] = useState("");
   const [videoCategory, setVideoCategory] = useState("Divertissement");
@@ -303,6 +315,8 @@ export default function HomePage() {
   const [videoInterestTags, setVideoInterestTags] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [thumbnail, setThumbnail] = useState<File | null>(null);
+  const [thumbnailCandidates, setThumbnailCandidates] = useState<File[]>([]);
+  const [thumbnailCandidateUrls, setThumbnailCandidateUrls] = useState<string[]>([]);
   const [contentType, setContentType] = useState<"short" | "video" | "photo">("short");
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
@@ -339,6 +353,7 @@ export default function HomePage() {
   const [trimDuration, setTrimDuration] = useState(0);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
+  const framingDragRef = useRef<{x:number;y:number;displayX:number;displayY:number}|null>(null);
   const [allowDownload, setAllowDownload] = useState(false);
   const [showStats, setShowStats] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -473,6 +488,12 @@ export default function HomePage() {
   }, [file]);
 
   useEffect(() => {
+    const urls = thumbnailCandidates.map(candidate => URL.createObjectURL(candidate));
+    setThumbnailCandidateUrls(urls);
+    return () => urls.forEach(url => URL.revokeObjectURL(url));
+  }, [thumbnailCandidates]);
+
+  useEffect(() => {
     if (!thumbnail) { setThumbnailPreviewUrl(""); return; }
     const url = URL.createObjectURL(thumbnail);
     setThumbnailPreviewUrl(url);
@@ -544,7 +565,7 @@ export default function HomePage() {
     if (page > 0) setFeedLoadingMore(true);
     else { setFeedLoadingMore(false); setFeedHasMore(false); setFeedPage(0); }
     let query = db()!.from("videos")
-      .select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,duration_seconds,aspect_ratio,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,media_urls,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible,banner_url,profile_photos,followers:follows!follows_following_id_fkey(count)),collaborations:zavo_video_collaborations!zavo_video_collaborations_video_id_fkey(collaborator_id,status,collaborator:profiles!zavo_video_collaborations_collaborator_id_fkey(username,display_name)),remix:zavo_video_remixes!zavo_video_remixes_remix_video_id_fkey(remix_type,original:videos!zavo_video_remixes_original_video_id_fkey(caption,profiles:profiles!videos_user_id_fkey(username,display_name))),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)")
+      .select("id,title,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,duration_seconds,aspect_ratio,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,media_urls,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible,banner_url,profile_photos,followers:follows!follows_following_id_fkey(count)),collaborations:zavo_video_collaborations!zavo_video_collaborations_video_id_fkey(collaborator_id,status,collaborator:profiles!zavo_video_collaborations_collaborator_id_fkey(username,display_name)),remix:zavo_video_remixes!zavo_video_remixes_remix_video_id_fkey(remix_type,original:videos!zavo_video_remixes_original_video_id_fkey(caption,profiles:profiles!videos_user_id_fkey(username,display_name))),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)")
       .eq("visibility", "public").eq("moderation_status", "approved");
     if (tab === "Shorts") query = query.eq("content_type", "short");
     if (tab === "Vidéos") query = query.eq("content_type", "video");
@@ -1256,7 +1277,7 @@ export default function HomePage() {
       return;
     }
     if (["new_video", "view_milestone"].includes(item.kind) && item.entity_id) {
-      const { data, error } = await db()!.from("videos").select("id,caption,video_url,thumbnail_url,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,aspect_ratio,duration_seconds,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,show_stats,display_mode,display_scale,display_x,display_y,media_urls,allow_repost,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("id", item.entity_id).maybeSingle();
+      const { data, error } = await db()!.from("videos").select("id,title,caption,video_url,thumbnail_url,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,aspect_ratio,duration_seconds,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,show_stats,display_mode,display_scale,display_x,display_y,media_urls,allow_repost,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("id", item.entity_id).maybeSingle();
       if (error || !data) { setNotice("Cette publication n’est plus disponible."); return; }
       setWatchVideo(data as Video);
       return;
@@ -1358,7 +1379,7 @@ export default function HomePage() {
       content_type: "photo", visibility: "public", category: videoCategory,
       interest_tags: videoInterestTags, hashtags: [], allow_download: false,
       allow_offline_download: false, allow_gallery_download: false, show_stats: showStats,
-      display_mode: "contain", display_scale: 1, display_x: 0, display_y: 0
+      display_mode: displayMode, display_scale: displayScale, display_x: displayX, display_y: displayY
     });
     if (error) {
       await db()!.storage.from("zavo-media").remove(paths);
@@ -1382,6 +1403,7 @@ export default function HomePage() {
       if (contentType === "photo") { await publishPhotos(); return; }
       if (!db() || !session || !file) { setNotice("Connecte-toi et sélectionne une vidéo avant de publier."); return; }
       if (!getVideoMime(file).startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
+      if (!title.trim()) { setNotice("Ajoute un titre à ta vidéo avant de la publier."); return; }
       let uploadFile: File;
       try { uploadFile = await trimVideoFile(file, trimStart, trimEnd, trimDuration); }
       catch (error: any) { setNotice(error?.message || "Impossible de découper la vidéo."); return; }
@@ -1409,13 +1431,13 @@ export default function HomePage() {
       const offlinePermission = contentType === "short" ? false : allowOfflineDownload;
       const galleryPermission = allowGalleryDownload;
       const { data: published, error } = await db()!.from("videos").insert({
-        user_id: session.user.id, caption: caption.trim(), video_url: videoUrl, thumbnail_url: thumbnailUrl,
+        user_id: session.user.id, title: title.trim(), caption: caption.trim(), video_url: videoUrl, thumbnail_url: thumbnailUrl,
         target_url: safeUrl(videoTargetUrl), category: videoCategory,
         content_type: contentType, allow_download: offlinePermission || galleryPermission, allow_repost: allowRepost,
         allow_offline_download: offlinePermission, allow_gallery_download: galleryPermission,
-        show_stats: showStats, display_mode: "contain", display_scale: 1, display_x: 0, display_y: 0,
+        show_stats: showStats, display_mode: displayMode, display_scale: displayScale, display_x: displayX, display_y: displayY,
         visibility: "public", interest_tags: videoInterestTags, ...videoMetadata
-      }).select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,moderation_status").single();
+      }).select("id,title,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,moderation_status").single();
       if (error) {
         await db()!.storage.from("zavo-videos").remove([uploadedVideoPath]);
         if (uploadedThumbnailPath) await db()!.storage.from("zavo-media").remove([uploadedThumbnailPath]);
@@ -1425,7 +1447,7 @@ export default function HomePage() {
       }
       uploadedVideoPath = null; uploadedThumbnailPath = null;
       setNotice("Ta vidéo est publiée sur ZAVO.");
-      setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setVideoTargetUrl("");
+      setUploadOpen(false); setTitle(""); setCaption(""); setFile(null); setThumbnail(null); setThumbnailCandidates([]); setVideoTargetUrl("");
       setAllowOfflineDownload(false); setAllowGalleryDownload(false); setAllowRepost(false); setVideoInterestTags([]);
       const shouldBoost = boostAfterPublish;
       setBoostAfterPublish(false);
@@ -1447,6 +1469,7 @@ export default function HomePage() {
   async function saveVideoDraft() {
     if (!db() || !session || !file) return;
     if (!getVideoMime(file).startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
+    if (!title.trim()) { setNotice("Ajoute un titre à ta vidéo avant d’enregistrer le brouillon."); return; }
     setBusy(true);
     let uploadFile:File;
     try { uploadFile=await trimVideoFile(file,trimStart,trimEnd,trimDuration); }
@@ -1467,7 +1490,7 @@ export default function HomePage() {
       if(!thumbUpload.error)thumbnailUrl=db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
     }
     const {error}=await db()!.from("video_drafts").insert({
-      user_id:session.user.id,caption:caption.trim(),video_url:videoUrl,thumbnail_url:thumbnailUrl,
+      user_id:session.user.id,title:title.trim(),caption:caption.trim(),video_url:videoUrl,thumbnail_url:thumbnailUrl,
       target_url:safeUrl(videoTargetUrl),category:videoCategory,content_type:contentType,
       interest_tags:videoInterestTags,allow_offline_download:contentType === "short" ? false : allowOfflineDownload,
       allow_gallery_download:allowGalleryDownload,show_stats:showStats,
@@ -1479,7 +1502,7 @@ export default function HomePage() {
       if(thumbPath)await db()!.storage.from("zavo-media").remove([thumbPath]);
       setNotice("Impossible d’enregistrer le brouillon : "+error.message);return;
     }
-    setUploadOpen(false);setFile(null);setThumbnail(null);setCaption("");setVideoTargetUrl("");
+    setUploadOpen(false);setFile(null);setThumbnail(null);setThumbnailCandidates([]);setTitle("");setCaption("");setVideoTargetUrl("");
     setNotice("Brouillon enregistré dans ton Studio ZAVO.");setTab("Studio");
   }
 
@@ -1677,7 +1700,7 @@ export default function HomePage() {
   async function shareVideo(video: Video) {
     const url = window.location.origin + "/?video=" + video.id;
     try {
-      if (navigator.share) await navigator.share({ title: "Vidéo sur ZAVO", text: video.caption, url });
+      if (navigator.share) await navigator.share({ title: video.title || "Vidéo sur ZAVO", text: video.caption, url });
       else { await navigator.clipboard.writeText(url); setNotice("Lien de la vidéo copié."); }
     } catch {}
   }
@@ -1685,7 +1708,7 @@ export default function HomePage() {
   async function sendVideoInZavo(video: Video) {
     if (!session) { setAuthMode("signin"); return; }
     const url = window.location.origin + "/?video=" + video.id;
-    setDmText((video.caption ? video.caption + "\n" : "") + "Regarde cette vidéo sur ZAVO : " + url);
+    setDmText(((video.title || video.caption) ? (video.title || video.caption) + "\n" : "") + "Regarde cette vidéo sur ZAVO : " + url);
     setActiveConversation(null);
     setActiveConversationUser(null);
     setDmUsers([]);
@@ -2299,11 +2322,11 @@ export default function HomePage() {
         <div className="studio-content"><div className="studio-intro"><div className="section-kicker">TON CONTENU, TES RÈGLES</div><h1>Prépare ta publication</h1><p>Importe ta vidéo, vérifie son aperçu et choisis comment elle sera présentée sur ZAVO.</p></div>
           <form onSubmit={publish} className="studio-form">
             <div className="studio-main-column">
-              <label className="studio-upload-drop"><UploadCloud size={28}/><strong>{contentType==="photo"?(photoFiles.length?photoFiles.length+" photo(s) sélectionnée(s)":"Importer une ou plusieurs photos"):file?file.name:"Importer une vidéo"}</strong><span>{contentType==="photo"?"JPG, PNG ou WebP · 10 Mo maximum par photo · jusqu’à 30 photos":"MP4, MOV, WebM et autres formats vidéo courants"}</span><input type="file" accept={contentType==="photo"?"image/jpeg,image/png,image/webp":"video/*,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.3g2,.ts"} multiple={contentType==="photo"} required onChange={async e=>{if(contentType==="photo"){setPhotoFiles(Array.from(e.target.files||[]).slice(0,30));setFile(null);return;}const selected=e.target.files?.[0]||null;setFile(selected);setDisplayMode("contain");setDisplayScale(1);setDisplayX(0);setDisplayY(0);setTrimStart(0);setTrimEnd(0);setTrimDuration(0);if(selected){try{const metadata=await getVideoMetadata(selected);const duration=metadata.duration_seconds||0;setTrimDuration(duration);setTrimEnd(duration);setThumbnail(await createVideoThumbnail(selected));}catch{setThumbnail(null);}}}}/></label>{contentType==="photo"&&photoPreviewUrls.length>0&&<div className="studio-photo-preview">{photoPreviewUrls.map((url,index)=><article key={url}><img src={url} alt={"Aperçu photo "+(index+1)}/><span>Photo {index+1}</span><button type="button" onClick={()=>setPhotoFiles(items=>items.filter((_,i)=>i!==index))}>Retirer</button></article>)}</div>}
-              {videoPreviewUrl && <div className="studio-preview"><div className="studio-preview-head"><strong>Aperçu de ta vidéo</strong><span>{contentType==="short"?"Format Short":"Format vidéo"}</span></div><video src={videoPreviewUrl} controls playsInline preload="metadata" style={{objectFit:"contain"}}/><p className="studio-framing-note">Le format d’origine est conservé automatiquement : ZAVO ne zoome pas et ne coupe pas la vidéo.</p>{trimDuration>0&&<div className="studio-trim-controls"><strong>Découper la vidéo</strong><p>Définis le passage à conserver. Le fichier publié ou enregistré en brouillon sera généré avec cette coupe.</p><div><label>Début (secondes)<input type="number" min="0" max={Math.max(0,trimEnd-1)} step="1" value={trimStart} onChange={e=>setTrimStart(Math.max(0,Math.min(Number(e.target.value)||0,trimEnd-1)))}/></label><label>Fin (secondes)<input type="number" min={trimStart+1} max={trimDuration} step="1" value={trimEnd} onChange={e=>setTrimEnd(Math.max(trimStart+1,Math.min(Number(e.target.value)||trimDuration,trimDuration)))}/></label></div><small>Passage conservé : {Math.max(0,trimEnd-trimStart)} s sur {trimDuration} s. Sans modification, la vidéo entière est conservée.</small></div>}</div>}
+              <label className="studio-upload-drop"><UploadCloud size={28}/><strong>{contentType==="photo"?(photoFiles.length?photoFiles.length+" photo(s) sélectionnée(s)":"Importer une ou plusieurs photos"):file?file.name:"Importer une vidéo"}</strong><span>{contentType==="photo"?"JPG, PNG ou WebP · 10 Mo maximum par photo · jusqu’à 30 photos":"MP4, MOV, WebM et autres formats vidéo courants"}</span><input type="file" accept={contentType==="photo"?"image/jpeg,image/png,image/webp":"video/*,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.3g2,.ts"} multiple={contentType==="photo"} required onChange={async e=>{if(contentType==="photo"){setPhotoFiles(Array.from(e.target.files||[]).slice(0,30));setFile(null);return;}const selected=e.target.files?.[0]||null;setFile(selected);setTitle("");setThumbnailCandidates([]);setDisplayMode("contain");setDisplayScale(1);setDisplayX(0);setDisplayY(0);setTrimStart(0);setTrimEnd(0);setTrimDuration(0);if(selected){try{const metadata=await getVideoMetadata(selected);const duration=metadata.duration_seconds||0;setTrimDuration(duration);setTrimEnd(duration);const frames=await createVideoThumbnailCandidates(selected);setThumbnailCandidates(frames);setThumbnail(frames[0]||null);}catch{setThumbnail(null);}}}}/></label>{contentType==="photo"&&photoPreviewUrls.length>0&&<div className="studio-photo-preview">{photoPreviewUrls.map((url,index)=><article key={url}><img src={url} alt={"Aperçu photo "+(index+1)}/><span>Photo {index+1}</span><button type="button" onClick={()=>setPhotoFiles(items=>items.filter((_,i)=>i!==index))}>Retirer</button></article>)}</div>}
+              {videoPreviewUrl && <div className="studio-preview"><div className="studio-preview-head"><strong>Aperçu de ta vidéo</strong><span>{contentType==="short"?"Format Short":"Format vidéo"}</span></div><video src={videoPreviewUrl} controls playsInline preload="metadata" style={{objectFit:"contain"}}/><p className="studio-framing-note">Tu peux ajuster le cadrage avec le doigt ou la souris dans la zone ci-dessous.</p><div className="studio-framing-stage" onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);framingDragRef.current={x:e.clientX,y:e.clientY,displayX,displayY};}} onPointerMove={e=>{const drag=framingDragRef.current;if(!drag)return;const rect=e.currentTarget.getBoundingClientRect();setDisplayX(Math.max(-50,Math.min(50,drag.displayX+(e.clientX-drag.x)/Math.max(1,rect.width)*100)));setDisplayY(Math.max(-50,Math.min(50,drag.displayY+(e.clientY-drag.y)/Math.max(1,rect.height)*100)));}} onPointerUp={()=>{framingDragRef.current=null;}} onPointerCancel={()=>{framingDragRef.current=null;}}><video src={videoPreviewUrl} muted playsInline loop autoPlay preload="metadata" draggable={false} style={{objectFit:displayMode==="contain"?"contain":"cover",transform:"scale("+displayScale+")",objectPosition:(50+displayX)+"% "+(50+displayY)+"%"}}/></div><div className="studio-framing-tools"><label>Mode de cadrage<select value={displayMode} onChange={e=>setDisplayMode(e.target.value as "contain"|"cover"|"custom")}><option value="contain">Afficher toute la vidéo</option><option value="cover">Remplir le cadre</option><option value="custom">Cadrage personnalisé</option></select></label><label>Zoom <strong>{displayScale.toFixed(2)}×</strong><input type="range" min="0.5" max="2" step="0.05" value={displayScale} onChange={e=>setDisplayScale(Number(e.target.value))}/></label><button type="button" className="secondary-action" onClick={()=>{setDisplayMode("contain");setDisplayScale(1);setDisplayX(0);setDisplayY(0);}}>Réinitialiser le cadrage</button></div>{trimDuration>0&&<div className="studio-trim-controls"><strong>Découper la vidéo</strong><p>Définis le passage à conserver. Le fichier publié ou enregistré en brouillon sera généré avec cette coupe.</p><div className="trim-range-controls"><label>Début · {trimStart.toFixed(1)} s<input type="range" min="0" max={Math.max(0,trimDuration-0.5)} step="0.1" value={trimStart} onChange={e=>setTrimStart(Math.min(Number(e.target.value),trimEnd-0.5))}/><input type="number" min="0" max={Math.max(0,trimEnd-0.5)} step="0.1" value={trimStart} onChange={e=>setTrimStart(Math.max(0,Math.min(Number(e.target.value)||0,trimEnd-0.5)))}/></label><label>Fin · {trimEnd.toFixed(1)} s<input type="range" min={Math.min(trimDuration,trimStart+0.5)} max={trimDuration} step="0.1" value={trimEnd} onChange={e=>setTrimEnd(Math.max(trimStart+0.5,Number(e.target.value)))}/><input type="number" min={trimStart+0.5} max={trimDuration} step="0.1" value={trimEnd} onChange={e=>setTrimEnd(Math.max(trimStart+0.5,Math.min(Number(e.target.value)||trimDuration,trimDuration)))}/></label></div><small>Passage conservé : {Math.max(0,trimEnd-trimStart)} s sur {trimDuration} s. Sans modification, la vidéo entière est conservée.</small></div>}</div>}
               <div className="studio-section"><h2>Type de publication</h2><p className="studio-hint">Choisis Short, Vidéo longue ou Photo / Galerie. Le cadrage vidéo reste indépendant de l’orientation du fichier.</p><div className="publish-format-grid"><button type="button" className={contentType==="short"?"format-choice selected":"format-choice"} onClick={()=>setContentType("short")}><PlayCircle size={22}/><strong>Short</strong><span>Vidéo courte, verticale ou horizontale</span></button><button type="button" className={contentType==="video"?"format-choice selected":"format-choice"} onClick={()=>setContentType("video")}><Film size={22}/><strong>Vidéo</strong><span>Publication vidéo longue ou complète</span></button><button type="button" className={contentType==="photo"?"format-choice selected":"format-choice"} onClick={()=>{setContentType("photo");setFile(null);setThumbnail(null);}}><ImageIcon size={22}/><strong>Photo / Galerie</strong><span>Une ou plusieurs photos</span></button></div></div>
-              <div className="studio-section"><h2>Miniature de la publication</h2><div className="thumbnail-editor">{thumbnail&&<img src={thumbnailPreviewUrl} alt="Miniature sélectionnée"/>}<div><strong>{thumbnail?"Miniature prête":"Miniature automatique"}</strong><p>ZAVO sélectionne automatiquement une image de ta vidéo. Tu peux la remplacer par une image de ton choix.</p><label className="secondary-action"><ImageIcon size={16}/> Importer une miniature<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setThumbnail(e.target.files?.[0]||null)}/></label></div></div></div>
-              <div className="studio-section"><h2>Description et lien</h2><label>Description<textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Présente ta vidéo, ajoute des hashtags et donne envie de la regarder…"/></label><label>Lien externe (facultatif)<div className="input-with-icon"><Link2 size={17}/><input type="url" value={videoTargetUrl} onChange={e=>setVideoTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></div></label><p className="studio-hint">Les liens HTTPS sont reconnus et deviennent cliquables dans la publication.</p></div>
+              <div className="studio-section"><h2>Miniature de la publication</h2><div className="thumbnail-editor">{thumbnail&&<img src={thumbnailPreviewUrl} alt="Miniature sélectionnée"/>}<div><strong>{thumbnail?"Miniature sélectionnée":"Choisis une miniature"}</strong><p>Images proposées automatiquement à différents moments de ta vidéo. Tu peux aussi importer ta propre image.</p><label className="secondary-action"><ImageIcon size={16}/> Importer une miniature<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const selected=e.target.files?.[0]||null;setThumbnail(selected);if(selected)setThumbnailCandidates([]);}}/></label></div></div>{thumbnailCandidateUrls.length>0&&<div className="thumbnail-candidate-grid" aria-label="Miniatures extraites de la vidéo">{thumbnailCandidateUrls.map((url,index)=><button type="button" key={url} className={"thumbnail-candidate "+(thumbnail===thumbnailCandidates[index]?"selected":"")} onClick={()=>setThumbnail(thumbnailCandidates[index])}><img src={url} alt={"Image candidate "+(index+1)}/><span>{Math.round((index+1)*100/(thumbnailCandidateUrls.length+1))}%</span></button>)}</div>}</div>
+              <div className="studio-section"><h2>Titre, description et lien</h2><label>Titre de la vidéo<input type="text" value={title} onChange={e=>setTitle(e.target.value)} maxLength={120} placeholder="Donne un titre clair à ta vidéo" required/></label><label>Description<textarea value={caption} onChange={e=>setCaption(e.target.value)} maxLength={2200} placeholder="Présente ta vidéo, ajoute des hashtags et donne envie de la regarder…"/></label><label>Lien externe (facultatif)<div className="input-with-icon"><Link2 size={17}/><input type="url" value={videoTargetUrl} onChange={e=>setVideoTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></div></label><p className="studio-hint">Les liens HTTPS sont reconnus et deviennent cliquables dans la publication.</p></div>
               <div className="studio-section"><h2>Catégorie</h2><select value={videoCategory} onChange={e=>setVideoCategory(e.target.value)}>{INTERESTS.map(tag=><option key={tag} value={tag}>{tag}</option>)}</select><div className="interest-grid compact-interest-grid">{INTERESTS.map(tag=><button type="button" key={tag} className={"interest-chip "+(videoInterestTags.includes(tag)?"selected":"")} onClick={()=>setVideoInterestTags(old=>old.includes(tag)?old.filter(x=>x!==tag):[...old,tag])}>{tag}</button>)}</div></div>
             </div>
             <aside className="studio-settings"><div className="studio-settings-card"><h2>Paramètres de la vidéo</h2><p>Tu gardes le contrôle sur les téléchargements.</p>{contentType!=="short"&&<label className="permission-row"><span><strong>Enregistrer dans ZAVO</strong><small>Permettre aux personnes de garder la vidéo dans leurs téléchargements pour la regarder hors connexion.</small></span><input type="checkbox" checked={allowOfflineDownload} onChange={e=>setAllowOfflineDownload(e.target.checked)}/></label>}<label className="permission-row"><span><strong>Télécharger dans la galerie</strong><small>Autoriser le téléchargement direct sur le téléphone ou l’ordinateur.</small></span><input type="checkbox" checked={allowGalleryDownload} onChange={e=>setAllowGalleryDownload(e.target.checked)}/></label><label className="permission-row"><span><strong>Autoriser la republication sur les profils</strong><small>Permettre aux autres utilisateurs de republier cette vidéo sur leur propre profil ZAVO.</small></span><input type="checkbox" checked={allowRepost} onChange={e=>setAllowRepost(e.target.checked)}/></label><label className="permission-row"><span><strong>Afficher les statistiques</strong><small>Rendre visibles les vues et les interactions.</small></span><input type="checkbox" checked={showStats} onChange={e=>setShowStats(e.target.checked)}/></label></div><div className="studio-settings-card studio-boost-card"><div className="studio-boost-icon"><Megaphone/></div><h2>Booster cette vidéo</h2><p>Option facultative. Prépare une campagne pour toucher des personnes dans les pays que tu choisis.</p><label className="permission-row"><span><strong>Ouvrir le parcours de promotion après publication</strong><small>Tu pourras définir ton objectif, ton budget et tes pays ciblés.</small></span><input type="checkbox" checked={boostAfterPublish} onChange={e=>setBoostAfterPublish(e.target.checked)}/></label></div><div className="studio-submit-card"><button type="button" className="secondary-action draft-save-action" onClick={saveVideoDraft} disabled={busy||!file||contentType==="photo"}>{busy?"Enregistrement…":"Enregistrer comme brouillon"}</button><button className="primary-action modal-submit" disabled={busy||(contentType==="photo"?!photoFiles.length:!file)}>{busy?"Publication en cours…":"Publier sur ZAVO"}</button><small>Tu peux publier maintenant ou enregistrer ta préparation pour plus tard.</small></div></aside>
@@ -2489,7 +2512,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
           onClick={isShort?()=>onOpenWatch?.(video):undefined}
         />
       </>}
-      {!isPhoto&&<div className="media-creator-overlay"><button type="button" className="media-creator-profile" onClick={()=>onOpenProfile?.(video.user_id)}><span className="media-creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="media-creator-name">{creator?.display_name||"Créateur ZAVO"}</span></button>{!owner&&<button type="button" className="media-creator-follow" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}<span className="media-creator-title">{video.caption||"Publication ZAVO"}</span>{video.collaborations?.some((item:any)=>item.status==="accepted")&&<span className="media-coauthors">Avec {video.collaborations.filter((item:any)=>item.status==="accepted").map((item:any)=>"@"+(Array.isArray(item.collaborator)?item.collaborator[0]?.username:item.collaborator?.username||"créateur")).join(", ")}</span>}{video.remix?.[0]&&<span className="media-coauthors">{video.remix[0].remix_type==="duet"?"Duo avec":"Remix de"} @{(Array.isArray(video.remix[0].original?.profiles)?video.remix[0].original?.profiles[0]?.username:video.remix[0].original?.profiles?.username)||"créateur"}</span>}</div>}
+      {!isPhoto&&<div className="media-creator-overlay"><button type="button" className="media-creator-profile" onClick={()=>onOpenProfile?.(video.user_id)}><span className="media-creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="media-creator-name">{creator?.display_name||"Créateur ZAVO"}</span></button>{!owner&&<button type="button" className="media-creator-follow" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}<span className="media-creator-title">{video.title||video.title||video.caption||"Publication ZAVO"}</span>{video.collaborations?.some((item:any)=>item.status==="accepted")&&<span className="media-coauthors">Avec {video.collaborations.filter((item:any)=>item.status==="accepted").map((item:any)=>"@"+(Array.isArray(item.collaborator)?item.collaborator[0]?.username:item.collaborator?.username||"créateur")).join(", ")}</span>}{video.remix?.[0]&&<span className="media-coauthors">{video.remix[0].remix_type==="duet"?"Duo avec":"Remix de"} @{(Array.isArray(video.remix[0].original?.profiles)?video.remix[0].original?.profiles[0]?.username:video.remix[0].original?.profiles?.username)||"créateur"}</span>}</div>}
       {video.isSponsored&&<span className="video-label">SPONSORISÉ</span>}
       <button className="video-menu-button" onClick={()=>setMenu(!menu)}><MoreHorizontal size={20}/></button>
       {menu && <div className="video-menu">
@@ -2607,7 +2630,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               <button type="button" onClick={()=>changeShortBySwipe("next")} disabled={shortIndex<0||shortIndex>=shortVideos.length-1} aria-label="Short suivant" title="Short suivant"><ArrowDown size={23}/></button>
             </div>}
           </div>
-          {!isShort&&<h1 className="watch-video-title">{video.caption||"Vidéo ZAVO"}</h1>}
+          {!isShort&&<h1 className="watch-video-title">{video.title||"Vidéo ZAVO"}</h1>}
           {!isShort&&<div className="watch-video-meta">
             <button type="button" className="watch-creator watch-creator-trigger" onClick={()=>creator?.id&&onOpenProfile?.(creator.id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span><strong>{creator?.display_name||"Créateur ZAVO"}</strong><small>@{creator?.username||"createur"}</small></span></button>
             <div className="watch-actions">
@@ -2629,7 +2652,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
           {recommendations.map((item:Video)=>{const person=creatorOf(item);return <div className="watch-recommendation-row" key={item.id}>
             <button type="button" className="watch-recommendation" onClick={()=>selectVideo(item)}>
               <span className={"watch-recommendation-thumb "+(item.content_type==="short"?"is-short":"")}>{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<span><Play size={20}/></span>}<i>{item.content_type==="short"?"SHORT":"VIDÉO"}</i></span>
-              <span className="watch-recommendation-copy"><strong>{item.caption||"Vidéo ZAVO"}</strong><small>{person?.display_name||"Créateur ZAVO"} · {(item.views_count||0).toLocaleString("fr-FR")} vues</small></span>
+              <span className="watch-recommendation-copy"><strong>{item.title||"Vidéo ZAVO"}</strong><small>{person?.display_name||"Créateur ZAVO"} · {(item.views_count||0).toLocaleString("fr-FR")} vues</small></span>
             </button>
             {(item.allow_gallery_download??item.allow_download)&&<button type="button" className="watch-recommendation-download" onClick={()=>onDownload(item,false)}><Download size={13}/>Télécharger</button>}
           </div>;})}
