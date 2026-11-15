@@ -1634,3 +1634,19 @@ body{color:#d7eaff!important}
 .creator-retention-step span{color:#718198;font-size:10px}
 .creator-retention-track{height:10px;overflow:hidden;border-radius:999px;background:#eaf0f6}
 .creator-retention-track>span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#176bd1,#19a86b);transition:width .25s ease}
+
+
+/* ZAVO community owner and moderator controls */
+.community-member-manager{margin:14px 0;padding:12px;border:1px solid #dce7f2;border-radius:11px;background:#f8fbff}
+.community-member-manager>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;color:#2b4662;font-size:11px}
+.community-member-manager>header svg{color:#176bd1}
+.community-managed-member{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #e7edf4}
+.community-managed-avatar{display:grid;place-items:center;width:32px;height:32px;flex:0 0 32px;overflow:hidden;border-radius:50%;background:#e5effb;color:#176bd1;font-size:11px;font-weight:850}
+.community-managed-avatar img{width:100%;height:100%;object-fit:cover}
+.community-managed-member>span:nth-child(2){display:grid;gap:3px;min-width:0;flex:1}
+.community-managed-member b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#263e57;font-size:10px}
+.community-managed-member small{color:#8392a4;font-size:9px}
+.community-managed-member button{display:grid;place-items:center;width:29px;height:29px;border:1px solid #d8e4ef;border-radius:7px;background:#fff;color:#176bd1}
+.community-managed-member button:last-child{color:#c34b58}
+.community-member-manager>p{margin:8px 0;color:#8090a3;font-size:10px}
+.community-comment-delete{display:grid;place-items:center;flex:0 0 24px;width:24px;height:24px;margin-left:auto;border:1px solid #e8d7da;border-radius:6px;background:#fff;color:#bd4352}
