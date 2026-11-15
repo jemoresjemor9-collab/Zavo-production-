@@ -2389,6 +2389,13 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2)watched.current+=delta;lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
               onPause={flushWatchTime}
               onEnded={e=>{flushWatchTime();if(!completionSent.current){completionSent.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}/>
+            {isShort&&<div className="short-creator-overlay">
+              <button type="button" className="short-creator-identity" onClick={()=>creator?.id&&onOpenProfile?.(creator.id)}>
+                <span className="short-creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span>
+                <strong>{creator?.display_name||"Créateur ZAVO"}</strong>
+              </button>
+              {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" className="short-creator-follow" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
+            </div>}
             {isShort&&<div className="short-action-rail" aria-label="Actions du Short">
               <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong><span>J’aime</span></button>
               <button type="button" onClick={()=>onComments(video)} aria-label="Commentaires"><MessageSquare size={25}/><strong>{video.comments?.[0]?.count||0}</strong><span>Commentaires</span></button>
@@ -2397,17 +2404,15 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               {(video.show_stats||session?.user?.id===video.user_id)&&<div className="short-rail-stat"><Eye size={23}/><strong>{(video.views_count||0).toLocaleString("fr-FR")}</strong><span>Vues</span></div>}
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)} aria-label="Télécharger"><Download size={23}/><span>Télécharger</span></button>}
               <button type="button" onClick={()=>onShare(video)} aria-label="Partager"><Share2 size={24}/><span>Partager</span></button>
-              {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onFollow(video.user_id)} aria-label="S’abonner"><UserRound size={23}/><span>{following.includes(video.user_id)?"Abonné":"Suivre"}</span></button>}
             </div>}
             {isShort&&<div className="short-desktop-nav" aria-label="Navigation entre les Shorts">
               <button type="button" onClick={()=>changeShortBySwipe("previous")} disabled={shortIndex<=0} aria-label="Short précédent" title="Short précédent"><ArrowUp size={23}/></button>
               <button type="button" onClick={()=>changeShortBySwipe("next")} disabled={shortIndex<0||shortIndex>=shortVideos.length-1} aria-label="Short suivant" title="Short suivant"><ArrowDown size={23}/></button>
             </div>}
           </div>
-          <h1 className="watch-video-title">{video.caption||"Vidéo ZAVO"}</h1>
-          <div className="watch-video-meta">
+          {!isShort&&<h1 className="watch-video-title">{video.caption||"Vidéo ZAVO"}</h1>}
+          {!isShort&&<div className="watch-video-meta">
             <button type="button" className="watch-creator watch-creator-trigger" onClick={()=>creator?.id&&onOpenProfile?.(creator.id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span><strong>{creator?.display_name||"Créateur ZAVO"}</strong><small>@{creator?.username||"createur"}</small></span></button>
-            {isShort&&creator?.id&&session?.user?.id!==video.user_id&&<button type="button" className="short-follow-cta" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
             <div className="watch-actions">
               <button type="button" className={liked.includes(video.id)?"liked":""} onClick={()=>onLike(video)}><Heart size={17}/> {video.likes?.[0]?.count||0}</button>
               <button type="button" onClick={()=>onComments(video)}><MessageSquare size={17}/> {video.comments?.[0]?.count||0} commentaires</button>
@@ -2416,10 +2421,9 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               {!isShort&&(video.allow_offline_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,true)}><Download size={17}/> Enregistrer</button>}
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)}><Download size={17}/> Télécharger</button>}
               <button type="button" onClick={()=>onShare(video)}><Share2 size={17}/> Partager</button>
-              {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
             </div>
           </div>
-          {(video.show_stats||owner)&&<div className="video-stats video-stats-detailed watch-detailed-stats"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
+          {!isShort&&(video.show_stats||owner)&&<div className="video-stats video-stats-detailed watch-detailed-stats"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
           <p className="watch-description">{video.caption||"Découvre cette publication sur ZAVO."}</p>
           {video.target_url&&<a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer">Ouvrir le lien associé <ExternalLink size={13}/></a>}
         </main>
