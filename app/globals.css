@@ -1680,3 +1680,23 @@ body{color:#d7eaff!important}
 
 
 .media-coauthors{display:block;margin-top:4px;color:#a9d7ff;font-size:10px;font-weight:750;text-shadow:0 1px 3px #000}
+
+
+/* ZAVO creator studio: selectable video frames, touch/mouse framing and trim controls */
+.thumbnail-candidate-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:9px;margin-top:14px}
+.thumbnail-candidate{position:relative;overflow:hidden;padding:3px;border:1px solid #2879d2;border-radius:10px;background:#092b6c;cursor:pointer}
+.thumbnail-candidate img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px}
+.thumbnail-candidate span{display:block;padding:5px 2px 2px;color:#b9d9ff;font-size:10px;font-weight:800}
+.thumbnail-candidate.selected{border:2px solid #13b96a;box-shadow:0 0 0 2px rgba(19,185,106,.15)}
+.studio-framing-stage{position:relative;overflow:hidden;width:100%;aspect-ratio:16/9;max-height:360px;margin:12px 0;border:1px solid #2879d2;border-radius:12px;background:#061b45;touch-action:none;cursor:grab}
+.studio-framing-stage:active{cursor:grabbing}
+.studio-framing-stage video{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none}
+.studio-framing-tools{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;margin:10px 0 16px}
+.studio-framing-tools label{display:flex;flex-direction:column;gap:7px;color:#b9d9ff;font-size:12px;font-weight:750}
+.studio-framing-tools select,.studio-framing-tools input[type=range]{width:100%;accent-color:#13b96a}
+.studio-framing-tools select{padding:9px;border:1px solid #2879d2;border-radius:8px;background:#092b6c;color:#d7eaff}
+.trim-range-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.trim-range-controls label{display:flex;flex-direction:column;gap:8px;color:#b9d9ff;font-size:12px;font-weight:800}
+.trim-range-controls input[type=range]{width:100%;accent-color:#13b96a;touch-action:pan-y}
+.trim-range-controls input[type=number]{width:100%;padding:9px;border:1px solid #2879d2;border-radius:8px;background:#092b6c;color:#d7eaff}
+@media(max-width:640px){.studio-framing-tools,.trim-range-controls{grid-template-columns:1fr}.thumbnail-candidate-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
