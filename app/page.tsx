@@ -2188,6 +2188,15 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
 
 function WatchPage({ video, videos, session, liked, saved, following, onClose, onSelect, onLike, onSave, onFollow, onComments, onDownload, onShare, onView, onWatchTime }: any) {
   const lastTime = useRef(0);
+  const touchStartY = useRef<number | null>(null);
+  const isShort = video.content_type === "short";
+  const shortVideos = useMemo(() => videos.filter((item: Video) => item.content_type === "short"), [videos]);
+  const shortIndex = shortVideos.findIndex((item: Video) => item.id === video.id);
+  const changeShortBySwipe = (direction: "next" | "previous") => {
+    if (!isShort || shortIndex < 0) return;
+    const target = shortVideos[shortIndex + (direction === "next" ? 1 : -1)];
+    if (target) onSelect(target);
+  };
   const watched = useRef(0);
   const viewSent = useRef(false);
   const [ended, setEnded] = useState(false);
@@ -2225,12 +2234,12 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
   };
   const selectVideo = (item: Video) => { flushWatchTime(); onSelect(item); };
 
-  return <div className="watch-page-overlay" role="dialog" aria-modal="true" aria-label="Lecteur vidéo ZAVO">
+  return <div className={"watch-page-overlay "+(isShort?"is-short-viewer":"is-classic-viewer")} role="dialog" aria-modal="true" aria-label={isShort?"Lecteur Shorts ZAVO":"Lecteur vidéo ZAVO"}>
     <div className="watch-page-shell">
-      <header className="watch-page-header"><button type="button" onClick={onClose}><ArrowLeft size={18}/> Retour au fil</button><strong>ZAVO · LECTEUR</strong><button type="button" onClick={onClose}><X size={18}/></button></header>
+      <header className="watch-page-header"><button type="button" onClick={onClose}><ArrowLeft size={18}/> {isShort?"Retour aux Shorts":"Retour au fil"}</button><strong>{isShort?"ZAVO · SHORTS":"ZAVO · LECTEUR"}</strong><button type="button" onClick={onClose} aria-label="Fermer le lecteur"><X size={18}/></button></header>
       <div className="watch-page-layout">
         <main className="watch-main">
-          <div className={"watch-player "+(video.content_type==="short"?"watch-player-short":"watch-player-long")}>
+          <div className={"watch-player "+(isShort?"watch-player-short":"watch-player-long")} onTouchStart={e=>{if(isShort)touchStartY.current=e.touches[0]?.clientY??null;}} onTouchEnd={e=>{if(!isShort||touchStartY.current===null)return;const delta=touchStartY.current-e.changedTouches[0].clientY;touchStartY.current=null;if(Math.abs(delta)>55)changeShortBySwipe(delta>0?"next":"previous");}}>
             <video key={video.id} src={video.video_url} poster={video.thumbnail_url||undefined} controls autoPlay playsInline preload="auto"
               onPlay={e=>{lastTime.current=e.currentTarget.currentTime;}}
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2)watched.current+=delta;lastTime.current=current;if(current>=2&&!viewSent.current){viewSent.current=true;onView?.(video,2);}}}
