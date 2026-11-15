@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import CreatorCollaborations from "@/app/creator-collaborations";
 
 type CreatorVideo = {
-  id:string; caption:string; video_url:string; thumbnail_url:string|null; views_count:number;
+  id:string; title?:string|null; caption:string; video_url:string; thumbnail_url:string|null; views_count:number;
   created_at:string; content_type:string; duration_seconds:number|null; visibility:string;
   target_url?:string|null; category?:string|null; hashtags?:string[]; interest_tags?:string[];
   show_stats?:boolean; allow_offline_download?:boolean; allow_gallery_download?:boolean; allow_download?:boolean;
@@ -16,7 +16,7 @@ type ViewEvent = { video_id:string; watch_seconds:number; viewed_on:string };
 type WatchSession = { video_id:string; watch_seconds:number; created_at:string };
 type CompletionEvent = { video_id:string; created_at:string };
 type RetentionEvent = { video_id:string; playback_session_id:string; milestone:number; created_at:string };
-type VideoDraft = { display_mode?:"contain"|"cover"|"custom";display_scale?:number;display_x?:number;display_y?:number;id:string;caption:string;video_url:string;thumbnail_url:string|null;target_url:string|null;category:string|null;content_type:string;duration_seconds:number|null;aspect_ratio:string|null;interest_tags:string[];allow_offline_download:boolean;allow_gallery_download:boolean;show_stats:boolean;created_at:string };
+type VideoDraft = { display_mode?:"contain"|"cover"|"custom";display_scale?:number;display_x?:number;display_y?:number;id:string;title?:string|null;caption:string;video_url:string;thumbnail_url:string|null;target_url:string|null;category:string|null;content_type:string;duration_seconds:number|null;aspect_ratio:string|null;interest_tags:string[];allow_offline_download:boolean;allow_gallery_download:boolean;show_stats:boolean;created_at:string };
 type DailyPoint = { date:string; views:number };
 const dateKey=(d:Date)=>d.toISOString().slice(0,10);
 const fmt=(n:number)=>Math.round(n||0).toLocaleString("fr-FR");
@@ -34,6 +34,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
   const [drafts,setDrafts]=useState<VideoDraft[]>([]);
   const [draftBusy,setDraftBusy]=useState<string|null>(null);
   const [editingDraft,setEditingDraft]=useState<VideoDraft|null>(null);
+  const [draftEditTitle,setDraftEditTitle]=useState("");
   const [draftEditCaption,setDraftEditCaption]=useState("");
   const [draftEditType,setDraftEditType]=useState<"short"|"video">("video");
   const [draftEditTarget,setDraftEditTarget]=useState("");
@@ -48,6 +49,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
   const [loading,setLoading]=useState(true);
   const [refreshing,setRefreshing]=useState(false);
   const [editing,setEditing]=useState<CreatorVideo|null>(null);
+  const [editTitle,setEditTitle]=useState("");
   const [editCaption,setEditCaption]=useState("");
   const [editType,setEditType]=useState<"short"|"video">("video");
   const [editTargetUrl,setEditTargetUrl]=useState("");
@@ -67,7 +69,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     const since=new Date();since.setDate(since.getDate()-period+1);
     const start=dateKey(since);
     const [videoResult,followersResult,newFollowersResult,draftResult]=await Promise.all([
-      supabase.from("videos").select("id,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,target_url,category,hashtags,interest_tags,show_stats,allow_offline_download,allow_gallery_download,allow_download,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
+      supabase.from("videos").select("id,title,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,target_url,category,hashtags,interest_tags,show_stats,allow_offline_download,allow_gallery_download,allow_download,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
       supabase.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId),
       supabase.from("follows").select("created_at").eq("following_id",userId).gte("created_at",since.toISOString()),
       supabase.from("video_drafts").select("*").eq("user_id",userId).order("updated_at",{ascending:false}).limit(100)
@@ -138,7 +140,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     if(!supabase||!window.confirm("Publier ce brouillon maintenant ?"))return;
     setDraftBusy(draft.id);
     const {error}=await supabase.from("videos").insert({
-      user_id:userId,caption:draft.caption,video_url:draft.video_url,thumbnail_url:draft.thumbnail_url,
+      user_id:userId,title:draft.title||null,caption:draft.caption,video_url:draft.video_url,thumbnail_url:draft.thumbnail_url,
       target_url:draft.target_url,category:draft.category,content_type:draft.content_type,
       allow_download:draft.allow_offline_download||draft.allow_gallery_download,
       allow_offline_download:draft.allow_offline_download,allow_gallery_download:draft.allow_gallery_download,
@@ -166,7 +168,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       thumbnailUrl=supabase.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
     }
     const {error}=await supabase.from("video_drafts").update({
-      caption:draftEditCaption.trim(),content_type:draftEditType,target_url:target||null,
+      title:draftEditTitle.trim()||null,caption:draftEditCaption.trim(),content_type:draftEditType,target_url:target||null,
       category:draftEditCategory.trim()||null,interest_tags:draftEditTags.split(",").map(x=>x.trim()).filter(Boolean).slice(0,20),
       show_stats:draftEditShowStats,allow_offline_download:draftEditOffline,allow_gallery_download:draftEditGallery,
       thumbnail_url:thumbnailUrl,updated_at:new Date().toISOString()
@@ -206,7 +208,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     const hashtags=editHashtags.split(/[\s,]+/).map(x=>x.trim().replace(/^#+/,"").toLowerCase()).filter(Boolean).slice(0,30);
     const interestTags=editInterestTags.split(",").map(x=>x.trim()).filter(Boolean).slice(0,20);
     const {error}=await supabase.from("videos").update({
-      caption:editCaption.trim(),thumbnail_url:thumbnailUrl,content_type:editType,
+      title:editTitle.trim()||null,caption:editCaption.trim(),thumbnail_url:thumbnailUrl,content_type:editType,
       target_url:normalizedTarget||null,category:editCategory.trim()||null,hashtags,interest_tags:interestTags,
       show_stats:editShowStats,allow_offline_download:editOfflineDownload,allow_gallery_download:editGalleryDownload,
       allow_download:editOfflineDownload||editGalleryDownload
@@ -263,25 +265,25 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     <CreatorCollaborations userId={userId} onNotice={onNotice}/>
     <section className="creator-panel creator-video-manager creator-drafts-panel">
       <div className="creator-panel-heading"><div><span className="creator-kicker">À TERMINER PLUS TARD</span><h2>Mes brouillons <span className="creator-count">{drafts.length}</span></h2></div></div>
-      {!drafts.length?<div className="creator-empty-videos"><Pencil size={30}/><strong>Aucun brouillon enregistré</strong><span>Depuis l’écran de publication, tu peux enregistrer une vidéo pour la reprendre plus tard.</span></div>:<div className="creator-video-list">{drafts.map(d=><article className="creator-video-row" key={d.id}><div className="creator-video-thumb">{d.thumbnail_url?<img src={d.thumbnail_url} alt=""/>:<div><Play/></div>}</div><div className="creator-video-info"><strong>{d.caption||"Brouillon sans description"}</strong><small><CalendarDays size={12}/> Enregistré le {new Date(d.created_at).toLocaleDateString("fr-FR")} · {d.content_type==="short"?"Short":"Vidéo"}</small></div><div className="creator-video-actions"><button onClick={()=>{setEditingDraft(d);setDraftEditCaption(d.caption||"");setDraftEditType(d.content_type==="short"?"short":"video");setDraftEditTarget(d.target_url||"");setDraftEditCategory(d.category||"");setDraftEditTags((d.interest_tags||[]).join(", "));setDraftEditShowStats(d.show_stats!==false);setDraftEditOffline(!!d.allow_offline_download);setDraftEditGallery(!!d.allow_gallery_download);setDraftThumbnailFile(null);}} disabled={draftBusy===d.id}><Pencil size={14}/> Modifier</button><button onClick={()=>void publishDraft(d)} disabled={draftBusy===d.id}><Play size={14}/> {draftBusy===d.id?"Traitement…":"Publier"}</button><button className="creator-delete" onClick={()=>void deleteDraft(d)} disabled={draftBusy===d.id}><Trash2 size={14}/> Supprimer</button></div></article>)}</div>}
+      {!drafts.length?<div className="creator-empty-videos"><Pencil size={30}/><strong>Aucun brouillon enregistré</strong><span>Depuis l’écran de publication, tu peux enregistrer une vidéo pour la reprendre plus tard.</span></div>:<div className="creator-video-list">{drafts.map(d=><article className="creator-video-row" key={d.id}><div className="creator-video-thumb">{d.thumbnail_url?<img src={d.thumbnail_url} alt=""/>:<div><Play/></div>}</div><div className="creator-video-info"><strong>{d.title||d.caption||"Brouillon sans titre"}</strong><small><CalendarDays size={12}/> Enregistré le {new Date(d.created_at).toLocaleDateString("fr-FR")} · {d.content_type==="short"?"Short":"Vidéo"}</small></div><div className="creator-video-actions"><button onClick={()=>{setEditingDraft(d);setDraftEditTitle(d.title||"");setDraftEditCaption(d.caption||"");setDraftEditType(d.content_type==="short"?"short":"video");setDraftEditTarget(d.target_url||"");setDraftEditCategory(d.category||"");setDraftEditTags((d.interest_tags||[]).join(", "));setDraftEditShowStats(d.show_stats!==false);setDraftEditOffline(!!d.allow_offline_download);setDraftEditGallery(!!d.allow_gallery_download);setDraftThumbnailFile(null);}} disabled={draftBusy===d.id}><Pencil size={14}/> Modifier</button><button onClick={()=>void publishDraft(d)} disabled={draftBusy===d.id}><Play size={14}/> {draftBusy===d.id?"Traitement…":"Publier"}</button><button className="creator-delete" onClick={()=>void deleteDraft(d)} disabled={draftBusy===d.id}><Trash2 size={14}/> Supprimer</button></div></article>)}</div>}
     </section>
     <section className="creator-panel creator-video-manager">
       <div className="creator-panel-heading"><div><span className="creator-kicker">GESTION DU CONTENU</span><h2>{selectedType==="short"?"Mes Shorts":selectedType==="video"?"Mes vidéos longues":"Mes vidéos"} <span className="creator-count">{metrics.publicationCount}</span></h2></div><span className="creator-manage-hint">Modifie ou supprime tes publications</span></div>
       {!videos.length?<div className="creator-empty-videos"><VideoIcon size={34}/><strong>Tu n’as pas encore publié de vidéo</strong><span>Ta première publication apparaîtra ici avec ses statistiques.</span></div>:<div className="creator-video-list">{metrics.videoStats.map(v=><article className="creator-video-row" key={v.id}>
         <div className="creator-video-thumb">{v.thumbnail_url?<img src={v.thumbnail_url} alt=""/>:<div><Play/></div>}</div>
-        <div className="creator-video-info"><strong>{v.caption||"Sans description"}</strong><small><CalendarDays size={12}/> {new Date(v.created_at).toLocaleDateString("fr-FR")} · {v.content_type==="short"?"Short":"Vidéo"} · {v.visibility==="public"?"Publique":"Privée"}</small><div className="creator-video-metrics"><span><Eye size={13}/> {fmt(v.views_count)}</span><span><Heart size={13}/> {fmt(v.likes?.[0]?.count||0)}</span><span><MessageCircle size={13}/> {fmt(v.comments?.[0]?.count||0)}</span><span><Clock3 size={13}/> {Math.round(v.averageWatch)} s moy.</span><span><TrendingUp size={13}/> {v.retentionSamples?v.retention50Rate.toLocaleString("fr-FR",{maximumFractionDigits:0})+"% à 50%":"Rétention en collecte"}</span><span><Play size={13}/> {fmt(v.completionCount)} terminées · {v.completionRate.toLocaleString("fr-FR",{maximumFractionDigits:0})}%</span></div></div>
-        <div className="creator-video-actions"><button onClick={()=>{setEditing(v);setEditCaption(v.caption||"");setEditType(v.content_type==="short"?"short":"video");setEditTargetUrl(v.target_url||"");setEditCategory(v.category||"");setEditHashtags((v.hashtags||[]).join(" "));setEditInterestTags((v.interest_tags||[]).join(", "));setEditShowStats(v.show_stats!==false);setEditOfflineDownload(!!(v.allow_offline_download??v.allow_download));setEditGalleryDownload(!!(v.allow_gallery_download??v.allow_download));setThumbnailFile(null);}}><Pencil size={15}/> Modifier</button><button className="creator-delete" onClick={()=>void removeVideo(v)} disabled={deleting===v.id}><Trash2 size={15}/> {deleting===v.id?"Suppression…":"Supprimer"}</button></div>
+        <div className="creator-video-info"><strong>{v.title||"Sans titre"}</strong><small><CalendarDays size={12}/> {new Date(v.created_at).toLocaleDateString("fr-FR")} · {v.content_type==="short"?"Short":"Vidéo"} · {v.visibility==="public"?"Publique":"Privée"}</small><div className="creator-video-metrics"><span><Eye size={13}/> {fmt(v.views_count)}</span><span><Heart size={13}/> {fmt(v.likes?.[0]?.count||0)}</span><span><MessageCircle size={13}/> {fmt(v.comments?.[0]?.count||0)}</span><span><Clock3 size={13}/> {Math.round(v.averageWatch)} s moy.</span><span><TrendingUp size={13}/> {v.retentionSamples?v.retention50Rate.toLocaleString("fr-FR",{maximumFractionDigits:0})+"% à 50%":"Rétention en collecte"}</span><span><Play size={13}/> {fmt(v.completionCount)} terminées · {v.completionRate.toLocaleString("fr-FR",{maximumFractionDigits:0})}%</span></div></div>
+        <div className="creator-video-actions"><button onClick={()=>{setEditing(v);setEditTitle(v.title||"");setEditCaption(v.caption||"");setEditType(v.content_type==="short"?"short":"video");setEditTargetUrl(v.target_url||"");setEditCategory(v.category||"");setEditHashtags((v.hashtags||[]).join(" "));setEditInterestTags((v.interest_tags||[]).join(", "));setEditShowStats(v.show_stats!==false);setEditOfflineDownload(!!(v.allow_offline_download??v.allow_download));setEditGalleryDownload(!!(v.allow_gallery_download??v.allow_download));setThumbnailFile(null);}}><Pencil size={15}/> Modifier</button><button className="creator-delete" onClick={()=>void removeVideo(v)} disabled={deleting===v.id}><Trash2 size={15}/> {deleting===v.id?"Suppression…":"Supprimer"}</button></div>
       </article>)}</div>}
     </section>
     {editingDraft&&<div className="creator-edit-backdrop" onClick={()=>setEditingDraft(null)}><section className="creator-edit-modal" onClick={e=>e.stopPropagation()}><header><div><span className="creator-kicker">BROUILLON</span><h2>Reprendre la préparation</h2></div><button onClick={()=>setEditingDraft(null)} aria-label="Fermer"><X/></button></header>
-      <label>Description<textarea value={draftEditCaption} onChange={e=>setDraftEditCaption(e.target.value)} maxLength={2200} rows={4}/></label>
+      <label>Titre<input value={draftEditTitle} onChange={e=>setDraftEditTitle(e.target.value)} maxLength={120}/></label><label>Description<textarea value={draftEditCaption} onChange={e=>setDraftEditCaption(e.target.value)} maxLength={2200} rows={4}/></label>
       <div className="creator-edit-grid"><label>Type<select value={draftEditType} onChange={e=>setDraftEditType(e.target.value as "short"|"video")}><option value="short">Short</option><option value="video">Vidéo longue</option></select></label><label>Catégorie<input value={draftEditCategory} onChange={e=>setDraftEditCategory(e.target.value)} maxLength={60}/></label></div>
       <label>Lien externe HTTPS<input type="url" value={draftEditTarget} onChange={e=>setDraftEditTarget(e.target.value)} placeholder="https://ton-site.com"/></label>
       <label>Centres d’intérêt (séparés par des virgules)<input value={draftEditTags} onChange={e=>setDraftEditTags(e.target.value)} placeholder="Musique, Éducation, Technologie"/></label>
       <div className="creator-edit-permissions"><label><span>Afficher les statistiques</span><input type="checkbox" checked={draftEditShowStats} onChange={e=>setDraftEditShowStats(e.target.checked)}/></label><label><span>Enregistrement dans ZAVO</span><input type="checkbox" checked={draftEditOffline} onChange={e=>setDraftEditOffline(e.target.checked)}/></label><label><span>Téléchargement dans la galerie</span><input type="checkbox" checked={draftEditGallery} onChange={e=>setDraftEditGallery(e.target.checked)}/></label></div>
       <label className="creator-thumbnail-upload"><ImagePlus/><span>{draftThumbnailFile?draftThumbnailFile.name:"Changer la miniature"}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setDraftThumbnailFile(e.target.files?.[0]||null)}/></label>
       <footer><button className="creator-cancel" onClick={()=>setEditingDraft(null)}>Annuler</button><button className="creator-save" onClick={()=>void saveDraftEdit()} disabled={draftBusy===editingDraft.id}><Save size={15}/> {draftBusy===editingDraft.id?"Enregistrement…":"Enregistrer le brouillon"}</button></footer></section></div>}
-    {editing&&<div className="creator-edit-backdrop" onClick={()=>setEditing(null)}><section className="creator-edit-modal" onClick={e=>e.stopPropagation()}><header><div><span className="creator-kicker">MODIFICATION</span><h2>Modifier la vidéo</h2></div><button onClick={()=>setEditing(null)} aria-label="Fermer"><X/></button></header><label>Description de la vidéo<textarea value={editCaption} onChange={e=>setEditCaption(e.target.value)} maxLength={2200} rows={5}/><small>{editCaption.length}/2200 caractères</small></label>
+    {editing&&<div className="creator-edit-backdrop" onClick={()=>setEditing(null)}><section className="creator-edit-modal" onClick={e=>e.stopPropagation()}><header><div><span className="creator-kicker">MODIFICATION</span><h2>Modifier la vidéo</h2></div><button onClick={()=>setEditing(null)} aria-label="Fermer"><X/></button></header><label>Titre de la vidéo<input value={editTitle} onChange={e=>setEditTitle(e.target.value)} maxLength={120}/></label><label>Description de la vidéo<textarea value={editCaption} onChange={e=>setEditCaption(e.target.value)} maxLength={2200} rows={5}/><small>{editCaption.length}/2200 caractères</small></label>
       <div className="creator-edit-grid"><label>Type de publication<select value={editType} onChange={e=>setEditType(e.target.value as "short"|"video")}><option value="short">Short</option><option value="video">Vidéo longue</option></select></label><label>Catégorie<input value={editCategory} onChange={e=>setEditCategory(e.target.value)} maxLength={60} placeholder="Ex. Éducation, musique…"/></label></div>
       <label>Lien externe (HTTPS)<input type="url" value={editTargetUrl} onChange={e=>setEditTargetUrl(e.target.value)} placeholder="https://ton-site.com"/></label>
       <label>Hashtags<input value={editHashtags} onChange={e=>setEditHashtags(e.target.value)} placeholder="#musique #zavo #création"/></label>
