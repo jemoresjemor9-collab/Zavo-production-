@@ -232,6 +232,8 @@ function Caption({ value }: { value: string }) {
 export default function HomePage() {
   const [tab, setTab] = useState("Pour toi");
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [watchVideo, setWatchVideo] = useState<Video | null>(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [discoverCategory, setDiscoverCategory] = useState("Tout");
   const [videos, setVideos] = useState<Video[]>([]);
   const [session, setSession] = useState<any>(null);
@@ -490,10 +492,11 @@ export default function HomePage() {
       let affinityCategories = new Map<string, number>();
       let followedCreators = new Set<string>();
       if (userId) {
-        const [likeRows, savedRows, followRows] = await Promise.all([
+        const [likeRows, savedRows, followRows, watchRows] = await Promise.all([
           db()!.from("likes").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
           db()!.from("saved_videos").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
-          db()!.from("follows").select("following_id").eq("follower_id", userId)
+          db()!.from("follows").select("following_id").eq("follower_id", userId),
+          db()!.from("video_watch_sessions").select("video_id,watch_seconds").eq("viewer_id", userId).order("created_at", { ascending: false }).limit(120)
         ]);
         followedCreators = new Set((followRows.data || []).map((row: any) => row.following_id));
         const likedIds = (likeRows.data || []).map((row: any) => row.video_id);
@@ -501,6 +504,10 @@ export default function HomePage() {
         const weights = new Map<string, number>();
         likedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 3));
         savedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 2));
+        (watchRows.data || []).forEach((row: any) => {
+          const seconds = Math.max(0, Number(row.watch_seconds || 0));
+          if (seconds >= 2) weights.set(row.video_id, (weights.get(row.video_id) || 0) + Math.min(8, 1 + seconds / 8));
+        });
         const affinityIds = [...weights.keys()].slice(0, 100);
         if (affinityIds.length) {
           const { data: affinityVideos } = await db()!.from("videos")
@@ -684,7 +691,7 @@ export default function HomePage() {
     const channel = client.channel("zavo-notifications-" + userId)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "recipient_id=eq." + userId }, (payload) => {
         const incoming = payload.new as any;
-        setNotifications((current) => [incoming, ...current.filter((item:any) => item.id !== incoming.id)].slice(0, 50));
+        if (incoming.kind !== "message") setNotifications((current) => [incoming, ...current.filter((item:any) => item.id !== incoming.id)].slice(0, 50));
       })
       .subscribe();
     return () => { client.removeChannel(channel); };
@@ -721,6 +728,16 @@ export default function HomePage() {
       .subscribe();
     return () => { client.removeChannel(channel); };
   }, [session?.user?.id, activeConversation]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !db()) { setUnreadMessageCount(0); return; }
+    const client = db()!;
+    void loadUnreadMessageCount();
+    const channel = client.channel("zavo-unread-message-count-" + session.user.id)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => { void loadUnreadMessageCount(); })
+      .subscribe();
+    return () => { client.removeChannel(channel); };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (tab !== "Messages" || !session?.user?.id || !db()) return;
@@ -815,6 +832,14 @@ export default function HomePage() {
     }).sort((a:any,b:any) => new Date(b.lastMessage?.created_at || b.created_at).getTime() - new Date(a.lastMessage?.created_at || a.created_at).getTime());
     setDmConversations(conversations);
     setDmInboxLoading(false);
+  }
+
+  async function loadUnreadMessageCount() {
+    if (!db() || !session?.user?.id) { setUnreadMessageCount(0); return; }
+    const { count, error } = await db()!.from("messages").select("id", { count: "exact", head: true })
+      .neq("sender_id", session.user.id).is("read_at", null);
+    if (error) { console.warn("ZAVO unread message count unavailable", error); return; }
+    setUnreadMessageCount(count || 0);
   }
 
   async function searchPeople() {
@@ -956,7 +981,7 @@ export default function HomePage() {
 
   async function loadNotifications() {
     if (!db() || !session) return;
-    const { data, error } = await db()!.from("notifications").select("*").eq("recipient_id", session.user.id).order("created_at", { ascending: false }).limit(50);
+    const { data, error } = await db()!.from("notifications").select("*").eq("recipient_id", session.user.id).neq("kind", "message").order("created_at", { ascending: false }).limit(50);
     if (error) { setNotice("Impossible de charger les notifications : " + error.message); return; }
     setNotifications(data || []);
   }
@@ -972,7 +997,7 @@ export default function HomePage() {
   async function markAllNotificationsRead() {
     if (!db() || !session) return;
     const readAt = new Date().toISOString();
-    const { error } = await db()!.from("notifications").update({ read_at: readAt }).eq("recipient_id", session.user.id).is("read_at", null);
+    const { error } = await db()!.from("notifications").update({ read_at: readAt }).eq("recipient_id", session.user.id).neq("kind", "message").is("read_at", null);
     if (error) { setNotice("Impossible de mettre les notifications à jour : " + error.message); return; }
     setNotifications((items) => items.map((item:any) => ({ ...item, read_at: item.read_at || readAt })));
   }
@@ -989,6 +1014,12 @@ export default function HomePage() {
       setTab("Profil");
       setShowFollowers(true);
       await loadFollowStats(session.user.id);
+      return;
+    }
+    if (["new_video", "view_milestone"].includes(item.kind) && item.entity_id) {
+      const { data, error } = await db()!.from("videos").select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,show_stats,display_mode,display_scale,display_x,display_y,media_urls,allow_repost,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("id", item.entity_id).maybeSingle();
+      if (error || !data) { setNotice("Cette publication n’est plus disponible."); return; }
+      setWatchVideo(data as Video);
       return;
     }
     if (["like", "comment", "comment_like"].includes(item.kind) && item.entity_id) {
@@ -1730,7 +1761,7 @@ export default function HomePage() {
       <aside className="sidebar">
         <a className="brand-lockup" href="/"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><span>ZAVO</span></a>
         <div className="brand-caption">REGARDE · CRÉE · PARTAGE</div>
-        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === (item as any).value || tab === item.label ? "nav-link active" : "nav-link"} onClick={() => { if(item.label === "Studio" && !session){setAuthMode("signin");return;} if(item.label === "Téléchargements"){setTab("Téléchargements");return;} setTab((item as any).value || item.label); }}><Icon size={19}/><span>{item.label}</span></button>; })}</nav>
+        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === (item as any).value || tab === item.label ? "nav-link active" : "nav-link"} onClick={() => { if(item.label === "Studio" && !session){setAuthMode("signin");return;} if(item.label === "Téléchargements"){setTab("Téléchargements");return;} setTab((item as any).value || item.label); }}><Icon size={19}/><span>{item.label}</span>{item.label==="Messages"&&unreadMessageCount>0&&<b className="nav-unread-badge">{unreadMessageCount>99?"99+":unreadMessageCount}</b>}</button>; })}</nav>
         {isAdmin && <button className="nav-link" onClick={() => setTab("Administration")}><ShieldCheck size={18}/> Administration</button>}
         <div className="sidebar-bottom"><div className="live-indicator"><span/> ZAVO est ouvert à tous</div><p>Une plateforme. Toutes les voix.</p></div>
       </aside>
@@ -1997,7 +2028,7 @@ export default function HomePage() {
           </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci pour ta réponse !</h2><p>Ta réponse a bien été envoyée en privé à l’équipe ZAVO. Tu as terminé pour cette campagne.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
         </section>
       </div>}
-      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Messages"?"active":""} onClick={()=>session?setTab("Messages"):setAuthMode("signin")}><MessageCircle size={19}/><span>Messages</span></button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
+      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Messages"?"active":""} onClick={()=>session?setTab("Messages"):setAuthMode("signin")}><MessageCircle size={19}/><span>Messages</span>{unreadMessageCount>0&&<b className="mobile-unread-badge">{unreadMessageCount>99?"99+":unreadMessageCount}</b>}</button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
     </main>
   );
 }
