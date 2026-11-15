@@ -1008,9 +1008,10 @@ export default function HomePage() {
     if (!db()) return;
     const { data, error } = await db()!.from("messages")
       .select("id,conversation_id,sender_id,body,created_at,read_at,message_type,media_url,media_name,mime_type,duration_seconds")
-      .eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(200);
+      .eq("conversation_id", conversationId).order("created_at", { ascending: false }).limit(200);
     if (error) { setNotice(error.message); return; }
-    const hydrated = await Promise.all((data || []).map(async (message: any) => {
+    const latestMessages = [...(data || [])].reverse();
+    const hydrated = await Promise.all(latestMessages.map(async (message: any) => {
       if (!message.media_url || message.media_url.startsWith("http")) return message;
       const { data: signed, error: signedError } = await db()!.storage.from("zavo-message-media").createSignedUrl(message.media_url, 3600);
       if (signedError) console.error("ZAVO message attachment URL error", signedError);
