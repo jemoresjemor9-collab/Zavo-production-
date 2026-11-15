@@ -2270,7 +2270,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
     {isPhoto&&<div className="post-creator-top"><div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"}</span></span></button>{!owner&&<button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div></div>}
     <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")} style={!isPhoto?{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9)}:undefined} onTouchStart={e=>{if(isPhoto)photoTouchStartX.current=e.touches[0]?.clientX??null;}} onTouchEnd={e=>{if(!isPhoto||photoTouchStartX.current===null)return;const delta=photoTouchStartX.current-e.changedTouches[0].clientX;photoTouchStartX.current=null;if(Math.abs(delta)>45&&photoUrls.length>1)setPhotoIndex(index=>(index+(delta>0?1:-1)+photoUrls.length)%photoUrls.length);}}>
       {isPhoto ? <>
-        <img className="video-photo" src={photoUrls[photoIndex] || video.video_url} alt={video.caption || "Photo publiée sur ZAVO"}/>
+        <img className="video-photo" src={photoUrls[photoIndex] || video.video_url} alt={video.caption || "Photo publiée sur ZAVO"} loading="lazy" decoding="async"/>
         {photoUrls.length>1&&<div className="photo-gallery-controls"><button type="button" aria-label="Photo précédente" onClick={()=>setPhotoIndex(index=>(index-1+photoUrls.length)%photoUrls.length)}>‹</button><span>{photoIndex+1} / {photoUrls.length}</span><button type="button" aria-label="Photo suivante" onClick={()=>setPhotoIndex(index=>(index+1)%photoUrls.length)}>›</button></div>}
       </> : <>
         <video ref={playerRef} data-zavo-feed data-display-mode="contain" style={{objectFit:"contain"}}
@@ -2302,13 +2302,13 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         <button onClick={()=>{onReport(video);setMenu(false);}}><Flag size={14}/> Signaler</button>
         {owner && <button onClick={()=>{onBoost(video);setMenu(false);}}><Megaphone size={14}/> Booster</button>}
         {owner && <button onClick={()=>{onToggleStats(video);setMenu(false);}}><Eye size={14}/> {video.show_stats?"Masquer":"Afficher"} mes statistiques</button>}
-        {owner && <button onClick={()=>{onToggleDownload(video);setMenu(false);}}><Download size={14}/> {(video.allow_offline_download||video.allow_gallery_download||video.allow_download)?"Désactiver les téléchargements":"Autoriser les téléchargements"}</button>}
+        {owner && <button onClick={()=>{onToggleDownload(video);setMenu(false);}}><Download size={14}/> {(isShort?(video.allow_gallery_download??video.allow_download):(video.allow_offline_download||video.allow_gallery_download||video.allow_download))?"Désactiver les téléchargements":"Autoriser les téléchargements"}</button>}
         {!isShort&&(video.allow_offline_download??video.allow_download) && <button onClick={()=>{onDownload(video,true);setMenu(false);}}><Download size={14}/> Enregistrer dans ZAVO</button>}
         {(video.allow_gallery_download??video.allow_download) && <button onClick={()=>{onDownload(video,false);setMenu(false);}}><Download size={14}/> Télécharger dans la galerie</button>}
       </div>}
     </div>
     <div className="video-details">
-      <p className="video-caption"><Caption value={video.caption||""}/></p>
+      {isPhoto&&<p className="video-caption"><Caption value={video.caption||""}/></p>}
       {video.target_url && <a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer" onClick={()=>video.isSponsored&&onCampaignEvent?.(video.campaign_id,"click")}>{video.isSponsored?"Découvrir l’offre":"Ouvrir le lien associé"} <ExternalLink size={13}/></a>}
       <div className="video-controls">
         <button className={liked.includes(video.id)?"engagement like-action liked":"engagement like-action"} onClick={()=>onLike(video)} aria-label="Aimer cette vidéo"><Heart size={18} fill={liked.includes(video.id)?"currentColor":"none"}/><span>J’aime</span><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong></button>
