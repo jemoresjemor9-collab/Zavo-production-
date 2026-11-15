@@ -520,7 +520,7 @@ export default function HomePage() {
   const loadVideos = useCallback(async (page = 0) => {
     if (!db()) return;
     if (page > 0) setFeedLoadingMore(true);
-    else setFeedLoadingMore(false);
+    else { setFeedLoadingMore(false); setFeedHasMore(false); setFeedPage(0); }
     let query = db()!.from("videos")
       .select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,duration_seconds,aspect_ratio,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,media_urls,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible,banner_url,profile_photos,followers:follows!follows_following_id_fkey(count)),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)")
       .eq("visibility", "public").eq("moderation_status", "approved");
