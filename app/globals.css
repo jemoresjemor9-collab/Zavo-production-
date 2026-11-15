@@ -888,3 +888,9 @@ body{color:#d7eaff!important}
  .shorts-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
  .long-preview-cta{opacity:1}
 }
+
+.watch-recommendation-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;margin-bottom:7px;border-radius:9px}
+.watch-recommendation-row:hover{background:#142235}
+.watch-recommendation-row .watch-recommendation{min-width:0}
+.watch-recommendation-download{display:inline-flex;align-items:center;gap:5px;margin:0 7px 0 0;padding:7px 8px;border:1px solid rgba(160,190,225,.2);border-radius:7px;background:#10243b;color:#c9e1ff;font-size:9px;font-weight:800;white-space:nowrap}
+.watch-recommendation-download:hover{background:#176fe0;color:#fff}
