@@ -373,15 +373,24 @@ export default function HomePage() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageText, setEditingMessageText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [isVoicePaused, setIsVoicePaused] = useState(false);
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
+  const voiceStopResolverRef = useRef<((file: File | null) => void) | null>(null);
+  const discardVoiceRef = useRef(false);
   useEffect(() => {
-    if (!dmFile || !dmFile.type.startsWith("audio/")) { setDmPreviewUrl(null); setDmAudioDuration(null); return; }
-    setDmAudioDuration(null);
+    if (!dmFile) { setDmPreviewUrl(null); setDmAudioDuration(null); return; }
+    if (dmFile.type.startsWith("audio/")) setDmAudioDuration(null);
     const url = URL.createObjectURL(dmFile);
     setDmPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [dmFile]);
+  useEffect(() => {
+    if (!isRecording || isVoicePaused) return;
+    const timer = window.setInterval(() => setVoiceSeconds(value => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [isRecording, isVoicePaused]);
   const [dmBusy, setDmBusy] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [campaignType, setCampaignType] = useState<"video"|"profile"|"product">("video");
@@ -1031,31 +1040,55 @@ export default function HomePage() {
 
   async function sendDirectMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!session || !activeConversation || (!dmText.trim() && !dmFile)) return;
-    setDmBusy(true);
-    let mediaUrl: string | null = null;
-    let messageType: "text"|"image"|"video"|"audio" = "text";
-    let mimeType: string | null = null;
-    const mediaName = dmFile?.name || null;
-    if (dmFile) {
-      mimeType = dmFile.type || "application/octet-stream";
-      messageType = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : mimeType.startsWith("audio/") ? "audio" : "text";
-      if (messageType === "text") { setNotice("Format de pièce jointe non pris en charge."); setDmBusy(false); return; }
-      if (dmFile.size > 50 * 1024 * 1024) { setNotice("La pièce jointe doit faire 50 Mo maximum."); setDmBusy(false); return; }
-      const path = activeConversation + "/" + session.user.id + "/" + crypto.randomUUID() + "-" + dmFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const upload = await db()!.storage.from("zavo-message-media").upload(path, dmFile, { contentType: mimeType });
-      if (upload.error) { setNotice("Le fichier n’a pas pu être envoyé : " + upload.error.message); setDmBusy(false); return; }
-      mediaUrl = path;
+    if (!session || !activeConversation) return;
+    let fileToSend = dmFile;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      fileToSend = await finishVoiceRecording();
     }
-    const body = dmText.trim() || (dmFile ? "Pièce jointe" : "");
-    const { error } = await db()!.from("messages").insert({
-      conversation_id: activeConversation, sender_id: session.user.id, body,
-      message_type: messageType, media_url: mediaUrl, media_name: mediaName, mime_type: mimeType,
-      duration_seconds: messageType === "audio" ? dmAudioDuration : null
-    });
-    if (error) setNotice(error.message);
-    else { setDmText(""); setDmFile(null); await loadMessages(activeConversation); }
-    setDmBusy(false);
+    if (!dmText.trim() && !fileToSend) return;
+    setDmBusy(true);
+    let uploadedPath: string | null = null;
+    try {
+      let mediaUrl: string | null = null;
+      let messageType: "text"|"image"|"video"|"audio" = "text";
+      let mimeType: string | null = null;
+      const mediaName = fileToSend?.name || null;
+      if (fileToSend) {
+        const fileName = fileToSend.name.toLowerCase();
+        mimeType = fileToSend.type || (
+          /\.(jpe?g|png|webp|gif|avif|heic|heif)$/.test(fileName) ? "image/jpeg" :
+          /\.(mp4|m4v|mov|webm|3gp|3gpp|mkv|avi)$/.test(fileName) ? "video/mp4" :
+          /\.(webm|ogg|oga|m4a|mp3|wav)$/.test(fileName) ? "audio/webm" : "application/octet-stream"
+        );
+        messageType = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : mimeType.startsWith("audio/") ? "audio" : "text";
+        if (messageType === "text") { setNotice("Ce format de fichier n’est pas pris en charge. Choisis une image, une vidéo ou un note vocale."); return; }
+        if (fileToSend.size > 50 * 1024 * 1024) { setNotice("La pièce jointe doit faire 50 Mo maximum."); return; }
+        const path = activeConversation + "/" + session.user.id + "/" + crypto.randomUUID() + "-" + fileToSend.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const upload = await db()!.storage.from("zavo-message-media").upload(path, fileToSend, { contentType: mimeType, upsert: false });
+        if (upload.error) { setNotice("Le fichier n’a pas pu être envoyé : " + upload.error.message); return; }
+        mediaUrl = path;
+        uploadedPath = path;
+      }
+      const body = dmText.trim() || (fileToSend ? "Pièce jointe" : "");
+      const { error } = await db()!.from("messages").insert({
+        conversation_id: activeConversation, sender_id: session.user.id, body,
+        message_type: messageType, media_url: mediaUrl, media_name: mediaName, mime_type: mimeType,
+        duration_seconds: messageType === "audio" ? (dmAudioDuration || voiceSeconds || null) : null
+      });
+      if (error) {
+        if (uploadedPath) await db()!.storage.from("zavo-message-media").remove([uploadedPath]);
+        setNotice("Le message n’a pas pu être envoyé : " + error.message);
+      } else {
+        setDmText(""); setDmFile(null); setVoiceSeconds(0); setDmAudioDuration(null);
+        await loadMessages(activeConversation);
+      }
+    } catch (error) {
+      if (uploadedPath) await db()!.storage.from("zavo-message-media").remove([uploadedPath]);
+      setNotice("Une erreur est survenue pendant l’envoi. Vérifie ta connexion et réessaie.");
+      console.error("ZAVO direct message send failed", error);
+    } finally {
+      setDmBusy(false);
+    }
   }
 
   async function saveEditedMessage(messageId: string) {
@@ -1083,8 +1116,8 @@ export default function HomePage() {
     if (!message.media_path) setNotice("Message supprimé.");
   }
 
-  async function toggleVoiceRecording() {
-    if (isRecording) { mediaRecorderRef.current?.stop(); setIsRecording(false); return; }
+  async function startVoiceRecording() {
+    if (dmFile) { setNotice("Envoie ou retire d’abord la pièce jointe sélectionnée."); return; }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setNotice("L’enregistrement vocal n’est pas disponible sur cet appareil ou ce navigateur.");
       return;
@@ -1095,15 +1128,25 @@ export default function HomePage() {
         .find(type => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, supportedMime ? { mimeType: supportedMime } : undefined);
       recordingChunksRef.current = [];
+      discardVoiceRef.current = false;
+      setVoiceSeconds(0);
       recorder.ondataavailable = (event) => { if (event.data.size) recordingChunksRef.current.push(event.data); };
       recorder.onerror = () => setNotice("L’enregistrement vocal a rencontré une erreur. Réessaie.");
       recorder.onstop = () => {
         const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || supportedMime || "audio/webm" });
         stream.getTracks().forEach(track => track.stop());
-        setIsRecording(false);
-        if (!blob.size) { setNotice("Aucun son n’a été enregistré. Vérifie le microphone et réessaie."); return; }
-        const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
-        setDmFile(new File([blob], "vocal-zavo." + extension, { type: blob.type }));
+        setIsRecording(false); setIsVoicePaused(false);
+        let preparedFile: File | null = null;
+        if (!discardVoiceRef.current && blob.size) {
+          const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
+          preparedFile = new File([blob], "vocal-zavo." + extension, { type: blob.type });
+          setDmFile(preparedFile);
+        } else if (!discardVoiceRef.current) {
+          setNotice("Aucun son n’a été enregistré. Vérifie le microphone et réessaie.");
+        }
+        const resolve = voiceStopResolverRef.current;
+        voiceStopResolverRef.current = null;
+        resolve?.(preparedFile);
       };
       mediaRecorderRef.current = recorder;
       recorder.start(250);
@@ -1111,6 +1154,33 @@ export default function HomePage() {
     } catch {
       setNotice("Autorise l’accès au microphone pour envoyer un message vocal.");
     }
+  }
+
+  function toggleVoicePause() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    if (recorder.state === "recording") { recorder.pause(); setIsVoicePaused(true); }
+    else if (recorder.state === "paused") { recorder.resume(); setIsVoicePaused(false); }
+  }
+
+  function finishVoiceRecording(): Promise<File | null> {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return Promise.resolve(dmFile);
+    return new Promise(resolve => {
+      voiceStopResolverRef.current = resolve;
+      recorder.stop();
+    });
+  }
+
+  function discardVoiceRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      discardVoiceRef.current = true;
+      voiceStopResolverRef.current = null;
+      recorder.stop();
+    }
+    setDmFile(null); setDmPreviewUrl(null); setDmAudioDuration(null);
+    setIsRecording(false); setIsVoicePaused(false); setVoiceSeconds(0);
   }
 
   useEffect(() => {
@@ -2132,7 +2202,7 @@ export default function HomePage() {
                   }
                 </section>}
                 {dmUsers.length>0 && <div className="dm-results">{dmUsers.map(u=><button key={u.id} onClick={()=>openConversation(u.id)}><span className="creator-avatar">{(u.display_name||"Z").slice(0,1).toUpperCase()}</span><span><strong>{u.display_name||"Utilisateur"}</strong><small>@{u.username||"zavo"} · {(u.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</small></span><MessageCircle size={17}/></button>)}</div>}
-                {activeConversation ? <div className="dm-chat"><div className="dm-chat-head"><div className="dm-chat-person"><span className="dm-inbox-avatar">{(activeConversationUser?.display_name || activeConversationUser?.username || "Z").slice(0,1).toUpperCase()}</span><span><strong>{activeConversationUser?.display_name || "Conversation privée"}</strong><small>@{activeConversationUser?.username || "zavo"}</small></span></div><div className="dm-safety-actions">{activeConversationUser && <><button type="button" onClick={()=>setReportTarget({targetType:"profile",targetId:activeConversationUser.id,label:"ce profil",details:("Profil : "+(activeConversationUser.display_name||"Utilisateur")+" @"+(activeConversationUser.username||"zavo")).slice(0,1900)})}>Signaler</button><button type="button" onClick={()=>toggleBlockUser(activeConversationUser)}>{myBlockedUserIds.includes(activeConversationUser.id)?"Débloquer":"Bloquer"}</button></>}<button onClick={()=>{setActiveConversation(null);setActiveConversationUser(null);loadConversations();}}>Retour</button></div></div><div className="dm-chat-list">{dmMessages.map(m=><div key={m.id} className={m.sender_id===session.user.id?"dm-message mine":"dm-message"}>{m.message_type==="image"&&m.media_url&&<a href={m.media_url} target="_blank" rel="noopener noreferrer"><img className="dm-media-image" src={m.media_url} alt={m.media_name||"Image reçue"}/></a>}{m.message_type==="video"&&m.media_url&&<video className="dm-media-video" src={m.media_url} controls playsInline/>}{m.message_type==="audio"&&m.media_url&&<audio className="dm-media-audio" src={m.media_url} controls preload="metadata"/>}{editingMessageId===m.id?<div className="dm-message-editor"><textarea value={editingMessageText} onChange={e=>setEditingMessageText(e.target.value)} maxLength={4000}/><button type="button" onClick={()=>saveEditedMessage(m.id)}>Enregistrer</button><button type="button" onClick={()=>{setEditingMessageId(null);setEditingMessageText("");}}>Annuler</button></div>:m.body&&<p>{m.body}</p>}<small>{new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}{m.sender_id===session.user.id&&m.read_at?" · Lu":""}</small>{m.sender_id===session.user.id?<div className="dm-message-actions">{m.message_type==="text"&&<button type="button" onClick={()=>{setEditingMessageId(m.id);setEditingMessageText(m.body||"");}}><Pencil size={12}/> Modifier</button>}<button type="button" onClick={()=>deleteDirectMessage(m)}><Trash2 size={12}/> Supprimer</button></div>:<button type="button" className="dm-message-report" onClick={()=>setReportTarget({targetType:"message",targetId:m.id,label:"ce message",details:(m.body||"Message multimédia").slice(0,1900)})}>Signaler</button>}</div>)}</div>{dmFile&&<div className="dm-attachment-preview"><span>{dmFile.name}</span>{dmFile.type.startsWith("audio/")&&dmPreviewUrl&&<audio className="dm-audio-preview" src={dmPreviewUrl} controls preload="metadata" onLoadedMetadata={e=>setDmAudioDuration(Number.isFinite(e.currentTarget.duration)?Math.round(e.currentTarget.duration):null)}/>}<button type="button" onClick={()=>setDmFile(null)} aria-label="Retirer la pièce jointe"><X size={14}/></button></div>}<form className="dm-send" onSubmit={sendDirectMessage}><label className="dm-attach" title="Joindre une photo ou une vidéo"><Images size={18}/><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={e=>setDmFile(e.target.files?.[0]||null)}/></label><button type="button" className={isRecording?"recording-button":"dm-attach"} onClick={toggleVoiceRecording} title={isRecording?"Arrêter l’enregistrement":"Enregistrer un vocal"}>{isRecording?<Pause size={18}/>:<Mic size={18}/>}</button><input value={dmText} onChange={e=>setDmText(e.target.value)} maxLength={4000} placeholder={isRecording?"Enregistrement vocal…":"Écrire un message..."}/><button className="primary-action" disabled={dmBusy||(!dmText.trim()&&!dmFile)}><Send size={16}/></button></form></div> : <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Parle directement aux créateurs</h3><p>Recherche un utilisateur pour commencer une conversation privée. Les messages sont synchronisés en temps réel.</p></section>}
+                {activeConversation ? <div className="dm-chat"><div className="dm-chat-head"><div className="dm-chat-person"><span className="dm-inbox-avatar">{(activeConversationUser?.display_name || activeConversationUser?.username || "Z").slice(0,1).toUpperCase()}</span><span><strong>{activeConversationUser?.display_name || "Conversation privée"}</strong><small>@{activeConversationUser?.username || "zavo"}</small></span></div><div className="dm-safety-actions">{activeConversationUser && <><button type="button" onClick={()=>setReportTarget({targetType:"profile",targetId:activeConversationUser.id,label:"ce profil",details:("Profil : "+(activeConversationUser.display_name||"Utilisateur")+" @"+(activeConversationUser.username||"zavo")).slice(0,1900)})}>Signaler</button><button type="button" onClick={()=>toggleBlockUser(activeConversationUser)}>{myBlockedUserIds.includes(activeConversationUser.id)?"Débloquer":"Bloquer"}</button></>}<button onClick={()=>{setActiveConversation(null);setActiveConversationUser(null);loadConversations();}}>Retour</button></div></div><div className="dm-chat-list">{dmMessages.map(m=><div key={m.id} className={m.sender_id===session.user.id?"dm-message mine":"dm-message"}>{m.message_type==="image"&&m.media_url&&<a href={m.media_url} target="_blank" rel="noopener noreferrer"><img className="dm-media-image" src={m.media_url} alt={m.media_name||"Image reçue"}/></a>}{m.message_type==="video"&&m.media_url&&<video className="dm-media-video" src={m.media_url} controls playsInline/>}{m.message_type==="audio"&&m.media_url&&<audio className="dm-media-audio" src={m.media_url} controls preload="metadata"/>}{editingMessageId===m.id?<div className="dm-message-editor"><textarea value={editingMessageText} onChange={e=>setEditingMessageText(e.target.value)} maxLength={4000}/><button type="button" onClick={()=>saveEditedMessage(m.id)}>Enregistrer</button><button type="button" onClick={()=>{setEditingMessageId(null);setEditingMessageText("");}}>Annuler</button></div>:m.body&&<p>{m.body}</p>}<small>{new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}{m.sender_id===session.user.id&&m.read_at?" · Lu":""}</small>{m.sender_id===session.user.id?<div className="dm-message-actions">{m.message_type==="text"&&<button type="button" onClick={()=>{setEditingMessageId(m.id);setEditingMessageText(m.body||"");}}><Pencil size={12}/> Modifier</button>}<button type="button" onClick={()=>deleteDirectMessage(m)}><Trash2 size={12}/> Supprimer</button></div>:<button type="button" className="dm-message-report" onClick={()=>setReportTarget({targetType:"message",targetId:m.id,label:"ce message",details:(m.body||"Message multimédia").slice(0,1900)})}>Signaler</button>}</div>)}</div>{dmFile&&<div className="dm-attachment-preview"><div className="dm-attachment-content"><strong>{dmFile.name}</strong>{dmPreviewUrl&&dmFile.type.startsWith("image/")&&<img className="dm-attachment-image-preview" src={dmPreviewUrl} alt="Aperçu de la photo à envoyer"/>}{dmPreviewUrl&&dmFile.type.startsWith("video/")&&<video className="dm-attachment-video-preview" src={dmPreviewUrl} controls playsInline preload="metadata"/>}{dmFile.type.startsWith("audio/")&&dmPreviewUrl&&<audio className="dm-audio-preview" src={dmPreviewUrl} controls preload="metadata" onLoadedMetadata={e=>setDmAudioDuration(Number.isFinite(e.currentTarget.duration)?Math.round(e.currentTarget.duration):null)}/>}</div><button type="button" onClick={discardVoiceRecording} aria-label="Retirer la pièce jointe"><X size={14}/></button></div>}{(isRecording||isVoicePaused)&&<div className="dm-voice-controls"><span className={isRecording?"dm-recording-indicator":"dm-paused-indicator"}>{isRecording?"● Enregistrement":"Ⅱ En pause"} · {String(Math.floor(voiceSeconds/60)).padStart(2,"0")}:{String(voiceSeconds%60).padStart(2,"0")}</span><button type="button" onClick={toggleVoicePause}>{isVoicePaused?"Reprendre":"Pause"}</button><button type="button" onClick={()=>void finishVoiceRecording()}>Terminer</button><button type="button" className="dm-voice-delete" onClick={discardVoiceRecording}>Supprimer</button></div>}<form className="dm-send" onSubmit={sendDirectMessage}><label className="dm-attach" title="Joindre une photo ou une vidéo"><Images size={18}/><input type="file" accept="image/*,video/*" onChange={e=>{const selected=e.target.files?.[0]||null;if(selected&&!(selected.type.startsWith("image/")||selected.type.startsWith("video/"))){setNotice("Choisis une image ou une vidéo.");e.currentTarget.value="";return;}setDmFile(selected);}}/></label><button type="button" className="dm-attach" onClick={startVoiceRecording} disabled={!!dmFile||isRecording||isVoicePaused||dmBusy} title="Enregistrer un vocal"><Mic size={18}/></button><input value={dmText} onChange={e=>setDmText(e.target.value)} maxLength={4000} placeholder={isRecording?"Enregistrement vocal…":isVoicePaused?"Vocal en pause…":"Écrire un message..."}/><button className="primary-action" disabled={dmBusy||(!dmText.trim()&&!dmFile&&!isRecording&&!isVoicePaused)}><Send size={16}/></button></form></div> : <section className="empty-state"><div className="empty-icon"><MessageCircle/></div><h3>Parle directement aux créateurs</h3><p>Recherche un utilisateur pour commencer une conversation privée. Les messages sont synchronisés en temps réel.</p></section>}
                 {dmBusy&&<p className="dm-loading">Ouverture de la conversation…</p>}
               </>}
             </section>
