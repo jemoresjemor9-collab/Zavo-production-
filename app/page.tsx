@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
-import PwaRegister from "@/app/pwa-register";
 import CreatorStudio from "@/app/creator-studio";
 import CommunityHub from "@/app/community-hub";
 import CreatorLibrary from "@/app/creator-library";
@@ -2123,7 +2122,6 @@ export default function HomePage() {
 
   return (
     <main className="zavo-app">
-      <PwaRegister />
       <aside className="sidebar">
         <a className="brand-lockup" href="/"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><span>ZAVO</span></a>
         <div className="brand-caption">REGARDE · CRÉE · PARTAGE</div>
