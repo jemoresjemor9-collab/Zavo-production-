@@ -2637,7 +2637,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               <button type="button" onClick={()=>changeShortBySwipe("next")} disabled={shortIndex<0||shortIndex>=shortVideos.length-1} aria-label="Short suivant" title="Short suivant"><ArrowDown size={23}/></button>
             </div>}
           </div>
-          {!isShort&&<h1 className="watch-video-title">{video.title||"Vidéo ZAVO"}</h1>}
+          {!isShort&&<h1 className="watch-video-title">{video.title||video.caption||"Vidéo ZAVO"}</h1>}
           {!isShort&&<div className="watch-video-meta">
             <button type="button" className="watch-creator watch-creator-trigger" onClick={()=>creator?.id&&onOpenProfile?.(creator.id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span><strong>{creator?.display_name||"Créateur ZAVO"}</strong><small>@{creator?.username||"createur"}</small></span></button>
             <div className="watch-actions">
@@ -2659,7 +2659,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
           {recommendations.map((item:Video)=>{const person=creatorOf(item);return <div className="watch-recommendation-row" key={item.id}>
             <button type="button" className="watch-recommendation" onClick={()=>selectVideo(item)}>
               <span className={"watch-recommendation-thumb "+(item.content_type==="short"?"is-short":"")}>{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<span><Play size={20}/></span>}<i>{item.content_type==="short"?"SHORT":"VIDÉO"}</i></span>
-              <span className="watch-recommendation-copy"><strong>{item.title||"Vidéo ZAVO"}</strong><small>{person?.display_name||"Créateur ZAVO"} · {(item.views_count||0).toLocaleString("fr-FR")} vues</small></span>
+              <span className="watch-recommendation-copy"><strong>{item.title||item.caption||"Vidéo ZAVO"}</strong><small>{person?.display_name||"Créateur ZAVO"} · {(item.views_count||0).toLocaleString("fr-FR")} vues</small></span>
             </button>
             {(item.allow_gallery_download??item.allow_download)&&<button type="button" className="watch-recommendation-download" onClick={()=>onDownload(item,false)}><Download size={13}/>Télécharger</button>}
           </div>;})}
