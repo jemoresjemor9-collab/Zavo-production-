@@ -29,6 +29,8 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
   const [communityName,setCommunityName]=useState("");
   const [communityDescription,setCommunityDescription]=useState("");
   const [communityVisibility,setCommunityVisibility]=useState<"public"|"private">("public");
+  const [inviteUsername,setInviteUsername]=useState("");
+  const [inviteBusy,setInviteBusy]=useState(false);
   const [showChallengeForm,setShowChallengeForm]=useState(false);
   const [challengeTitle,setChallengeTitle]=useState("");
   const [challengeDescription,setChallengeDescription]=useState("");
@@ -105,6 +107,19 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
     }
     await load(false);
   };
+  const inviteCommunityMember=async()=>{
+    if(!userId||!selectedCommunity||selectedCommunity.owner_id!==userId)return;
+    const username=inviteUsername.trim().replace(/^@/,"");
+    if(!username){onNotice("Saisis le nom d’utilisateur à inviter.");return;}
+    setInviteBusy(true);
+    const {data:profile,error:profileError}=await supabase!.from("profiles").select("id,username").ilike("username",username).maybeSingle();
+    if(profileError||!profile){setInviteBusy(false);onNotice(profileError?"Recherche impossible : "+profileError.message:"Aucun utilisateur trouvé avec ce nom.");return;}
+    if(profile.id===userId){setInviteBusy(false);onNotice("Tu es déjà propriétaire de cette communauté.");return;}
+    const {error}=await supabase!.from("zavo_community_members").insert({community_id:selectedCommunity.id,user_id:profile.id,role:"member"});
+    setInviteBusy(false);
+    if(error){onNotice(error.code==="23505"?"Cet utilisateur est déjà membre.":"Invitation impossible : "+error.message);return;}
+    setInviteUsername("");onNotice("@"+(profile.username||username)+" a rejoint la communauté.");
+  };
   const deletePost=async(post:any)=>{
     if(!userId||post.author_id!==userId||!selectedCommunity)return;
     if(!window.confirm("Supprimer cette publication de la communauté ?"))return;
@@ -174,6 +189,7 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
       <div className="community-toolbar"><div><h2>Des espaces pour échanger</h2><p>Découvre les communautés publiques et participe aux discussions.</p></div><button onClick={()=>userId?setShowCommunityForm(true):onLogin()}><Plus size={16}/> Créer une communauté</button></div>
       <label className="community-search"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher une communauté"/></label>
       {selectedCommunity?<section className="community-detail"><header><button className="community-back" onClick={()=>setSelectedCommunity(null)}>← Toutes les communautés</button>{selectedCommunity.owner_id===userId?<span className="community-owner-label">Propriétaire</span>:<button onClick={()=>void joinCommunity(selectedCommunity)}>{memberships.includes(selectedCommunity.id)?"Quitter":"Rejoindre"}</button>}</header><div className="community-detail-title"><div><span className="community-eyebrow">COMMUNAUTÉ {selectedCommunity.visibility==="private"?"PRIVÉE":"PUBLIQUE"}</span><h2>{selectedCommunity.name}</h2><p>{selectedCommunity.description||"Un espace pour partager et échanger sur ZAVO."}</p></div><span className="community-symbol"><Users/></span></div>
+        {selectedCommunity.owner_id===userId&&<form className="community-invite-form" onSubmit={e=>{e.preventDefault();void inviteCommunityMember();}}><input value={inviteUsername} onChange={e=>setInviteUsername(e.target.value)} placeholder="@nom_utilisateur à inviter" aria-label="Nom d’utilisateur à inviter"/><button disabled={inviteBusy||!inviteUsername.trim()}>{inviteBusy?"Ajout…":"Inviter un membre"}</button></form>}
         {(memberships.includes(selectedCommunity.id)||selectedCommunity.owner_id===userId)&&<form className="community-post-form" onSubmit={sendPost}><textarea value={postText} onChange={e=>setPostText(e.target.value)} maxLength={3000} rows={3} placeholder="Partage une idée avec la communauté…"/><button disabled={busy||!postText.trim()}><Send size={15}/> Publier</button></form>}
         <div className="community-post-list">{posts.length?posts.map(post=><article key={post.id}><div className="community-post-author"><span>{(post.profiles?.display_name||"Z").slice(0,1).toUpperCase()}</span><div><strong>{post.profiles?.display_name||"Membre ZAVO"}</strong><small>@{post.profiles?.username||"membre"} · {new Date(post.created_at).toLocaleDateString("fr-FR")}</small></div>{post.author_id===userId&&<button className="community-post-delete" title="Supprimer ma publication" aria-label="Supprimer ma publication" onClick={()=>void deletePost(post)}><Trash2 size={14}/></button>}</div><p>{post.body}</p></article>):<div className="community-empty"><MessageCircle/><strong>La discussion commence ici</strong><span>Sois le premier à partager quelque chose.</span></div>}</div>
       </section>:<div className="community-grid">{filteredCommunities.map(c=><article className="community-card" key={c.id}><div className="community-card-icon"><Users/></div><span className="community-eyebrow">{c.visibility==="public"?"PUBLIQUE":"PRIVÉE"}</span><h3>{c.name}</h3><p>{c.description||"Une communauté ZAVO pour échanger et partager."}</p><div className="community-card-actions"><button onClick={()=>void openCommunity(c)}>Voir la communauté <ChevronRight size={15}/></button><button className={memberships.includes(c.id)?"joined":""} onClick={()=>void joinCommunity(c)}>{memberships.includes(c.id)?"Quitter":"Rejoindre"}</button></div></article>)}</div>}
