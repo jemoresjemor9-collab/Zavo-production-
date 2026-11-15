@@ -218,6 +218,13 @@ async function readOfflineVideos(): Promise<any[]> {
 function creatorOf(video: Video) {
   return Array.isArray(video.profiles) ? video.profiles[0] : video.profiles;
 }
+function composeHomeFeed(items: Video[]): Video[] {
+  const pools: Record<"short" | "video" | "photo", Video[]> = { short: items.filter(x=>x.content_type==="short"), video: items.filter(x=>x.content_type==="video"), photo: items.filter(x=>x.content_type==="photo") };
+  const result: Video[] = [];
+  const take=(type:"short"|"video"|"photo",count:number)=>{for(let i=0;i<count&&pools[type].length;i++)result.push(pools[type].shift()!);};
+  while(pools.short.length||pools.video.length||pools.photo.length){const before=result.length;take("short",4);take("video",2);take("photo",1);if(result.length===before)break;}
+  return result;
+}
 function safeUrl(value: string) {
   try { const url = new URL(value); return ["https:", "http:"].includes(url.protocol) ? url.href : null; } catch { return null; }
 }
@@ -295,6 +302,11 @@ export default function HomePage() {
   const [commentText, setCommentText] = useState("");
   const [replyToComment, setReplyToComment] = useState<Comment | null>(null);
   const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [publicProfile, setPublicProfile] = useState<Profile | null>(null);
+  const [publicProfileVideos, setPublicProfileVideos] = useState<Video[]>([]);
+  const [publicProfileFollowerCount, setPublicProfileFollowerCount] = useState(0);
+  const [publicProfileLoading, setPublicProfileLoading] = useState(false);
   const [offline, setOffline] = useState(false);
   const [offlineVideos, setOfflineVideos] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -1264,6 +1276,20 @@ export default function HomePage() {
     if (result.error) { setNotice(result.error.message); await loadUserData(session.user.id); }
   }
 
+  async function openPublicProfile(userId: string) {
+    if (!db() || !userId) return;
+    if (session?.user?.id === userId) { setTab("Profil"); return; }
+    setPublicProfileLoading(true); setPublicProfile(null); setPublicProfileVideos([]); setPublicProfileFollowerCount(0);
+    const [person,posts,followers]=await Promise.all([
+      db()!.from("profiles").select("id,username,display_name,avatar_url,bio,banner_url,profile_photos,stats_visible").eq("id",userId).maybeSingle(),
+      db()!.from("videos").select("id,caption,video_url,thumbnail_url,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,media_urls,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).eq("visibility","public").eq("moderation_status","approved").order("created_at",{ascending:false}).limit(60),
+      db()!.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId)
+    ]);
+    setPublicProfileLoading(false);
+    if(person.error||!person.data){setNotice("Ce profil n’est pas disponible.");return;}
+    setPublicProfile(person.data as Profile);setPublicProfileVideos((posts.data||[]) as Video[]);setPublicProfileFollowerCount(followers.count||0);
+  }
+
   async function toggleFollow(userId: string) {
     if (!session) { setAuthMode("signin"); return; }
     if (userId === session.user.id) return;
@@ -1332,6 +1358,7 @@ export default function HomePage() {
   }
 
   async function downloadVideo(video: Video, offlineOnly = false) {
+    if (!session?.user?.id) { setNotice("Connecte-toi à ZAVO pour télécharger ou enregistrer une vidéo."); setAuthMode("signin"); return; }
     const canSaveOffline = video.allow_offline_download ?? video.allow_download;
     const canSaveGallery = video.allow_gallery_download ?? video.allow_download;
     if (offlineOnly && !canSaveOffline) { setNotice("Le créateur n’autorise pas l’enregistrement hors connexion."); return; }
@@ -1737,6 +1764,8 @@ export default function HomePage() {
     const p = creatorOf(v);
     return (v.caption || "").toLowerCase().includes(q) || (p?.username || "").toLowerCase().includes(q) || (p?.display_name || "").toLowerCase().includes(q);
   }), [videos, search, tab, discoverCategory]);
+  const feedVideos = useMemo(() => tab === "Pour toi" ? composeHomeFeed(visibleVideos) : visibleVideos, [visibleVideos, tab]);
+  const searchSuggestions = useMemo(() => { const q=search.trim().toLocaleLowerCase(); if(!q)return []; return videos.filter(item=>(item.caption||"").toLocaleLowerCase().includes(q)||(creatorOf(item)?.username||"").toLocaleLowerCase().includes(q)||(creatorOf(item)?.display_name||"").toLocaleLowerCase().includes(q)).slice(0,6); },[videos,search]);
 
   const nav = [
     { label: "Pour toi", icon: Home }, { label: "Shorts", icon: Play }, { label: "Vidéos", icon: Clapperboard }, { label: "Découvrir", icon: Compass },
@@ -1775,7 +1804,7 @@ export default function HomePage() {
       <section className="main-column">
         <header className="topbar">
           <a className="mobile-brand" href="/"><img src="/icons/zavo-192.png" alt=""/><strong>ZAVO</strong></a>
-          <label className="search-box"><Search size={18}/><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une vidéo ou un créateur"/><kbd>⌕</kbd></label>
+          <div className="top-search-wrap"><button type="button" className="top-icon search-trigger" aria-label="Rechercher" aria-expanded={searchOpen} onClick={()=>{setSearchOpen(value=>!value);setSearch("");}}><Search size={20}/></button>{searchOpen&&<div className="search-popover"><div className="search-input-row"><Search size={17}/><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Escape"){setSearchOpen(false);setSearch("");}if(e.key==="Enter")setSearchOpen(false);}} placeholder="Rechercher une vidéo ou un créateur"/><button type="button" onClick={()=>{setSearch("");setSearchOpen(false);}} aria-label="Fermer"><X size={17}/></button></div>{search.trim()&&<div className="search-suggestions">{searchSuggestions.length?searchSuggestions.map(item=><button type="button" key={item.id} onClick={()=>{setWatchVideo(item);setSearchOpen(false);}}><span className="search-suggestion-thumb">{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<Play size={15}/>}</span><span><strong>{(item.caption||"Publication sans titre").slice(0,76)}</strong><small>{creatorOf(item)?.display_name||"Créateur ZAVO"} · {item.content_type==="short"?"Short":item.content_type==="photo"?"Photo":"Vidéo"}</small></span></button>):<p>Aucune suggestion pour « {search} ».</p>}</div>}</div>}</div>
           <div className="top-actions">
             <button className="create-top-button" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={17}/><span>Créer</span></button>
             <button className="top-icon notification-top-button" aria-label={`Notifications${notifications.some((n:any)=>!n.read_at)?", non lues":""}`} onClick={() => setTab("Notifications")}><Bell size={19}/>{notifications.some((n:any)=>!n.read_at)&&<span className="notification-badge">{notifications.filter((n:any)=>!n.read_at).length>99?"99+":notifications.filter((n:any)=>!n.read_at).length}</span>}</button>
@@ -1952,7 +1981,7 @@ export default function HomePage() {
               <section className="welcome-panel compact-welcome"><div className="welcome-copy"><div className="eyebrow"><span className="eyebrow-mark"/> LA SCÈNE EST À TOI</div><h1>Regarde. Explore.<br/><span>Découvre de nouveaux univers.</span></h1><p>Découvre des vidéos de tous les horizons, rencontre de nouveaux créateurs et trouve les contenus qui t’inspirent.</p><div className="welcome-actions"><button className="secondary-action" onClick={()=>setTab("Découvrir")}><Compass size={16}/> Explorer les vidéos</button></div></div><div className="welcome-art"><img src="/icons/zavo-512.png" alt="ZAVO"/></div></section>
               <div className="feed-toolbar"><div><div className="section-kicker">LE FLUX ZAVO</div><h2>{tab === "Découvrir" ? "Découvrir" : tab === "Abonnements" ? "Tes abonnements" : tab === "Enregistrés" ? "Vidéos enregistrées" : tab === "Shorts" ? "Shorts" : tab === "Vidéos" ? "Vidéos" : tab === "Photos" ? "Photos" : "Pour toi"}</h2></div><div className="feed-tabs">{["Pour toi","Shorts","Vidéos","Photos","Abonnements","Découvrir","Enregistrés"].map((x: string) => <button key={x} className={tab === x ? "selected" : ""} onClick={() => setTab(x)}>{x}</button>)}</div></div>
               {tab === "Découvrir" && <div className="discover-category-strip" aria-label="Filtrer par centre d’intérêt">{["Tout", ...INTERESTS].map((category) => <button type="button" key={category} className={discoverCategory === category ? "active" : ""} onClick={() => setDiscoverCategory(category)}>{category}</button>)}</div>}
-              {visibleVideos.length ? <div className={tab === "Shorts" ? "video-grid shorts-video-grid" : "video-grid"}>{visibleVideos.map(v => <VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onWatchTime={recordWatchTime} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x: Video) => {setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");setCampaignDescription("");setCampaignTargetUrl("");setCampaignProductPrice("");setCampaignProductContact("");setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent}/>)}</div> : <section className="empty-state"><div className="empty-icon"><Play/></div><h3>{tab === "Abonnements" ? "Tu ne suis pas encore de créateur" : "Le fil commence ici."}</h3><p>Les vidéos publiques apparaîtront ici. Crée un compte pour publier, suivre et interagir avec les créateurs.</p><button className="primary-action" onClick={() => {if(session){setTab("Découvrir");}else setAuthMode("signup");}}>Rejoindre ZAVO</button></section>}
+              {feedVideos.length ? <div className={(tab==="Shorts"?"video-grid shorts-video-grid":tab==="Pour toi"?"video-grid home-feed-grid":"video-grid")}>{feedVideos.map(v=><VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onOpenProfile={openPublicProfile} onWatchTime={recordWatchTime} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x:Video)=>{setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");setCampaignDescription("");setCampaignTargetUrl("");setCampaignProductPrice("");setCampaignProductContact("");setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent}/>)}</div> : <section className="empty-state"><div className="empty-icon"><Play/></div><h3>{tab === "Abonnements" ? "Tu ne suis pas encore de créateur" : "Le fil commence ici."}</h3><p>Les vidéos publiques apparaîtront ici. Crée un compte pour publier, suivre et interagir avec les créateurs.</p><button className="primary-action" onClick={() => {if(session){setTab("Découvrir");}else setAuthMode("signup");}}>Rejoindre ZAVO</button></section>}
               {sponsoredPromos.map(campaign=><SponsoredPromoCard key={campaign.id} campaign={campaign} currentUserId={session?.user?.id} following={following} onFollow={toggleFollow} onCampaignEvent={trackCampaignEvent}/>) }
             </>
           )}
@@ -1961,6 +1990,7 @@ export default function HomePage() {
       </section>
       <aside className="right-rail"><section className="rail-card"><div className="rail-heading"><h3>Sur ZAVO</h3><span className="tiny-status">EN DIRECT</span></div><div className="rail-feature"><span className="feature-icon red-feature"><Film size={18}/></span><div><strong>Des vidéos pour tous</strong><p>Découvre de nouveaux univers.</p></div></div><div className="rail-feature"><span className="feature-icon blue-feature"><Users size={18}/></span><div><strong>Une communauté ouverte</strong><p>Échange avec les créateurs.</p></div></div><div className="rail-feature"><span className="feature-icon green-feature"><Megaphone size={18}/></span><div><strong>Fais grandir ta visibilité</strong><p>Booste tes publications.</p></div></div></section><section className="business-card"><div className="business-topline"><span className="green-dot"/> PROMOTION DE CONTENU</div><h3>Ton contenu mérite<br/>plus de visibilité.</h3><p>Transforme une publication en campagne sponsorisée pour toucher de nouvelles personnes.</p><button onClick={() => session ? setCampaignOpen(true) : setAuthMode("signin")}>Découvrir le boost <Plus size={15}/></button></section><div className="rail-links"><a href="#">Conditions</a><a href="#">Confidentialité</a><a href="#">Règles de la communauté</a></div></aside>
 
+      {publicProfile&&<div className="public-profile-backdrop" onClick={()=>setPublicProfile(null)}><section className="public-profile-modal" onClick={e=>e.stopPropagation()}><button type="button" className="public-profile-close" onClick={()=>setPublicProfile(null)} aria-label="Fermer"><X size={20}/></button><div className="public-profile-banner" style={publicProfile.banner_url?{backgroundImage:"url("+publicProfile.banner_url+")"}:undefined}/><div className="public-profile-heading"><span className="public-profile-avatar">{publicProfile.avatar_url?<img src={publicProfile.avatar_url} alt=""/>:(publicProfile.display_name||"Z").slice(0,1).toUpperCase()}</span><div><h2>{publicProfile.display_name||"Créateur ZAVO"}</h2><p>@{publicProfile.username||"createur"}</p></div><button type="button" className="follow-button" onClick={()=>toggleFollow(publicProfile.id)}>{following.includes(publicProfile.id)?"Abonné":"S’abonner"}</button></div><p className="public-profile-bio">{publicProfile.bio||"Bienvenue sur mon profil ZAVO."}</p><div className="public-profile-stats"><strong>{publicProfileFollowerCount.toLocaleString("fr-FR")} abonnés</strong><strong>{publicProfileVideos.length} publications</strong></div><h3>Publications</h3>{publicProfileLoading?<p>Chargement du profil…</p>:publicProfileVideos.length?<div className="public-profile-grid">{publicProfileVideos.map(item=><button type="button" key={item.id} onClick={()=>{setWatchVideo(item);setPublicProfile(null);}}>{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:item.content_type==="photo"&&item.media_urls?.[0]?<img src={item.media_urls[0]} alt=""/>:<span><Play size={22}/></span>}<small>{item.content_type==="short"?"SHORT":item.content_type==="photo"?"PHOTO":"VIDÉO"}</small></button>)}</div>:<p>Aucune publication publique pour le moment.</p>}</section></div>}
       {watchVideo && <WatchPage video={watchVideo} videos={videos} session={session} liked={liked} saved={saved} following={following} onClose={()=>setWatchVideo(null)} onSelect={(next:Video)=>setWatchVideo(next)} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onDownload={downloadVideo} onShare={shareVideo} onView={recordView} onWatchTime={recordWatchTime}/>}
       {authMode && <div className="modal-backdrop" onClick={() => setAuthMode(null)}><section className="modal signup-modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setAuthMode(null)}><X/></button><div className="modal-brand"><img src="/icons/zavo-192.png" alt=""/><span>ZAVO</span></div><div className="section-kicker">{authMode === "signin" ? "HEUREUX DE TE REVOIR" : signupStep === 1 ? "REJOINS LA COMMUNAUTÉ" : "PERSONNALISONS TON FIL"}</div><h2>{authMode === "signin" ? "Connexion" : signupStep === 1 ? "Créer ton compte" : "Qu’aimes-tu regarder ?"}</h2>
       {authMode === "signin" ? <form onSubmit={signIn} autoComplete="on"><label>Adresse e-mail</label><input type="email" name="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="username" inputMode="email" spellCheck={false} required/><label>Mot de passe</label><div className="password-field"><input type={showSigninPassword ? "text" : "password"} name="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} autoComplete="current-password" required/><button type="button" className="password-toggle" onClick={()=>setShowSigninPassword(v=>!v)} aria-label={showSigninPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showSigninPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div><button className="primary-action modal-submit" disabled={busy}>{busy ? "Patiente..." : "Se connecter"}</button></form> :
@@ -2086,7 +2116,7 @@ function SponsoredPromoCard({ campaign, currentUserId, following, onFollow, onCa
   </article>;
 }
 
-function VideoCard({ video, session, liked, saved, following, onLike, onSave, onFollow, onComments, onShare, onSendInZavo, onOpenWatch, onReport, onDownload, onBoost, onView, onWatchTime, onToggleStats, onToggleDownload, onRepost, onCampaignEvent }: any) {
+function VideoCard({ video, session, liked, saved, following, onLike, onSave, onFollow, onComments, onShare, onSendInZavo, onOpenWatch, onOpenProfile, onReport, onDownload, onBoost, onView, onWatchTime, onToggleStats, onToggleDownload, onRepost, onCampaignEvent }: any) {
   const creator = creatorOf(video);
   const [menu, setMenu] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -2162,6 +2192,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
           <PlayCircle size={18}/><span>{isShort?(previewEnded?"Regarder le Short":"Voir le Short complet"):"Ouvrir le lecteur"}</span>
         </button>
       </>}
+      {isShort&&<button type="button" className="short-preview-title" onClick={()=>onOpenWatch?.(video)}>{video.caption||"Short ZAVO"}</button>}
       <span className="video-label">{video.isSponsored ? "SPONSORISÉ" : isPhoto ? "PHOTO" : isShort ? "SHORT" : "VIDÉO"}</span>
       <button className="video-menu-button" onClick={()=>setMenu(!menu)}><MoreHorizontal size={20}/></button>
       {menu && <div className="video-menu">
@@ -2174,13 +2205,13 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
       </div>}
     </div>
     <div className="video-details">
-      <div className="creator-row"><div className="creator-avatar">{(creator?.display_name||"Z").slice(0,1).toUpperCase()}</div><div className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"} · {(creator?.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</span></div>{!owner && <button className="follow-button" onClick={()=>{if(video.isSponsored)onCampaignEvent?.(video.campaign_id,"click");onFollow(video.user_id);}}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div>
+      <div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"} · {(creator?.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</span></span></button>{!owner&&<button className="follow-button" onClick={()=>{if(video.isSponsored)onCampaignEvent?.(video.campaign_id,"click");onFollow(video.user_id);}}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div>
       <p className="video-caption"><Caption value={video.caption||""}/></p>
       {video.target_url && <a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer" onClick={()=>video.isSponsored&&onCampaignEvent?.(video.campaign_id,"click")}>{video.isSponsored?"Découvrir l’offre":"Ouvrir le lien associé"} <ExternalLink size={13}/></a>}
       <div className="video-controls">
         <button className={liked.includes(video.id)?"engagement like-action liked":"engagement like-action"} onClick={()=>onLike(video)} aria-label="Aimer cette vidéo"><Heart size={18} fill={liked.includes(video.id)?"currentColor":"none"}/><span>J’aime</span><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong></button>
         <button className="engagement comment-action" onClick={()=>onComments(video)} aria-label="Voir les commentaires"><MessageSquare size={18}/><span>Commenter</span><strong>{commentsCount}</strong></button>
-        <button className="engagement repost-action" onClick={()=>onRepost(video)} disabled={!video.allow_repost} aria-label="Republier sur mon profil"><Repeat2 size={18}/><span>{video.allow_repost ? "Republier" : "Republication désactivée"}</span><strong>{repostsCount}</strong></button>
+        {video.allow_repost&&<button className="engagement repost-action" onClick={()=>onRepost(video)} aria-label="Republier sur mon profil"><Repeat2 size={18}/><span>Republier</span><strong>{repostsCount}</strong></button>}
         <button className={saved.includes(video.id)?"save-button saved":"save-button"} onClick={()=>onSave(video)} aria-label="Enregistrer"><Bookmark size={18}/><span>Favori</span></button>
         <button className="engagement external-share-action" onClick={()=>onShare(video)} aria-label="Partager à l’extérieur de ZAVO"><Share2 size={18}/><span>Partager</span></button>
         {onSendInZavo&&<button className="engagement" onClick={()=>onSendInZavo(video)} aria-label="Envoyer dans une conversation ZAVO"><MessageCircle size={18}/><span>Envoyer ZAVO</span></button>}
@@ -2272,7 +2303,8 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
             <div className="watch-actions">
               <button type="button" className={liked.includes(video.id)?"liked":""} onClick={()=>onLike(video)}><Heart size={17}/> {video.likes?.[0]?.count||0}</button>
               <button type="button" onClick={()=>onComments(video)}><MessageSquare size={17}/> Commentaires</button>
-              {video.allow_download&&<button type="button" onClick={()=>onDownload(video,false)}><Download size={17}/> Télécharger</button>}
+              {(video.allow_offline_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,true)}><Download size={17}/> Enregistrer</button>}
+              {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)}><Download size={17}/> Télécharger</button>}
               <button type="button" onClick={()=>onShare(video)}><Share2 size={17}/> Partager</button>
               {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
             </div>
