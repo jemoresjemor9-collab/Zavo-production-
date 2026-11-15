@@ -1184,7 +1184,7 @@ export default function HomePage() {
 
   async function publishPhotos() {
     if (!db() || !session || !photoFiles.length) { setNotice("Sélectionne au moins une photo."); return; }
-    if (photoFiles.length > 10) { setNotice("Tu peux publier 10 photos maximum par publication."); return; }
+    if (photoFiles.length > 30) { setNotice("Tu peux publier jusqu’à 30 photos par galerie."); return; }
     if (photoFiles.some(file => !["image/jpeg","image/png","image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024)) {
       setNotice("Utilise des images JPG, PNG ou WebP de 10 Mo maximum chacune."); return;
     }
@@ -1243,7 +1243,7 @@ export default function HomePage() {
       const thumbUpload = await db()!.storage.from("zavo-media").upload(thumbPath, thumbnail, { contentType: thumbnail.type || "image/jpeg" });
       if (!thumbUpload.error) thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
     }
-    const offlinePermission = allowOfflineDownload;
+    const offlinePermission = contentType === "short" ? false : allowOfflineDownload;
     const galleryPermission = allowGalleryDownload;
     const { data: published, error } = await db()!.from("videos").insert({
       user_id: session.user.id, caption, video_url: videoUrl, thumbnail_url: thumbnailUrl,
@@ -1294,7 +1294,7 @@ export default function HomePage() {
     const {error}=await db()!.from("video_drafts").insert({
       user_id:session.user.id,caption:caption.trim(),video_url:videoUrl,thumbnail_url:thumbnailUrl,
       target_url:safeUrl(videoTargetUrl),category:videoCategory,content_type:contentType,
-      interest_tags:videoInterestTags,allow_offline_download:allowOfflineDownload,
+      interest_tags:videoInterestTags,allow_offline_download:contentType === "short" ? false : allowOfflineDownload,
       allow_gallery_download:allowGalleryDownload,show_stats:showStats,
       display_mode:"contain",display_scale:1,display_x:0,display_y:0,...videoMetadata
     });
@@ -1318,10 +1318,14 @@ export default function HomePage() {
 
   async function toggleVideoDownload(video: Video) {
     if (!session || video.user_id !== session.user.id) return;
-    const nextValue = !(video.allow_offline_download || video.allow_gallery_download || video.allow_download);
-    const { error } = await db()!.from("videos").update({ allow_download: nextValue, allow_offline_download: nextValue, allow_gallery_download: nextValue }).eq("id", video.id);
+    const currentPermission = video.content_type === "short" ? (video.allow_gallery_download ?? video.allow_download) : (video.allow_offline_download || video.allow_gallery_download || video.allow_download);
+    const nextValue = !currentPermission;
+    const permissionPatch = video.content_type === "short"
+      ? { allow_download: nextValue, allow_offline_download: false, allow_gallery_download: nextValue }
+      : { allow_download: nextValue, allow_offline_download: nextValue, allow_gallery_download: nextValue };
+    const { error } = await db()!.from("videos").update(permissionPatch).eq("id", video.id);
     if (error) setNotice(error.message);
-    else setVideos(items => items.map(v => v.id === video.id ? { ...v, allow_download: nextValue, allow_offline_download: nextValue, allow_gallery_download: nextValue } : v));
+    else setVideos(items => items.map(v => v.id === video.id ? { ...v, ...permissionPatch } : v));
   }
 
   async function toggleLike(video: Video) {
@@ -1455,8 +1459,9 @@ export default function HomePage() {
 
   async function downloadVideo(video: Video, offlineOnly = false) {
     if (!session?.user?.id) { setNotice("Connecte-toi à ZAVO pour télécharger ou enregistrer une vidéo."); setAuthMode("signin"); return; }
-    const canSaveOffline = video.allow_offline_download ?? video.allow_download;
+    const canSaveOffline = video.content_type !== "short" && (video.allow_offline_download ?? video.allow_download);
     const canSaveGallery = video.allow_gallery_download ?? video.allow_download;
+    if (offlineOnly && video.content_type === "short") { setNotice("Les Shorts ne peuvent plus être enregistrés hors connexion."); return; }
     if (offlineOnly && !canSaveOffline) { setNotice("Le créateur n’autorise pas l’enregistrement hors connexion."); return; }
     if (!offlineOnly && !canSaveGallery) { setNotice("Le créateur n’autorise pas le téléchargement dans la galerie."); return; }
     try {
@@ -2102,7 +2107,7 @@ export default function HomePage() {
         <div className="studio-content"><div className="studio-intro"><div className="section-kicker">TON CONTENU, TES RÈGLES</div><h1>Prépare ta publication</h1><p>Importe ta vidéo, vérifie son aperçu et choisis comment elle sera présentée sur ZAVO.</p></div>
           <form onSubmit={publish} className="studio-form">
             <div className="studio-main-column">
-              <label className="studio-upload-drop"><UploadCloud size={28}/><strong>{contentType==="photo"?(photoFiles.length?photoFiles.length+" photo(s) sélectionnée(s)":"Importer une ou plusieurs photos"):file?file.name:"Importer une vidéo"}</strong><span>{contentType==="photo"?"JPG, PNG ou WebP · 10 Mo maximum par photo · 10 photos maximum":"MP4, MOV, WebM et autres formats vidéo courants"}</span><input type="file" accept={contentType==="photo"?"image/jpeg,image/png,image/webp":"video/*,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.3g2,.ts"} multiple={contentType==="photo"} required onChange={async e=>{if(contentType==="photo"){setPhotoFiles(Array.from(e.target.files||[]).slice(0,10));setFile(null);return;}const selected=e.target.files?.[0]||null;setFile(selected);setDisplayMode("contain");setDisplayScale(1);setDisplayX(0);setDisplayY(0);setTrimStart(0);setTrimEnd(0);setTrimDuration(0);if(selected){try{const metadata=await getVideoMetadata(selected);const duration=metadata.duration_seconds||0;setTrimDuration(duration);setTrimEnd(duration);setThumbnail(await createVideoThumbnail(selected));}catch{setThumbnail(null);}}}}/></label>{contentType==="photo"&&photoPreviewUrls.length>0&&<div className="studio-photo-preview">{photoPreviewUrls.map((url,index)=><article key={url}><img src={url} alt={"Aperçu photo "+(index+1)}/><span>Photo {index+1}</span><button type="button" onClick={()=>setPhotoFiles(items=>items.filter((_,i)=>i!==index))}>Retirer</button></article>)}</div>}
+              <label className="studio-upload-drop"><UploadCloud size={28}/><strong>{contentType==="photo"?(photoFiles.length?photoFiles.length+" photo(s) sélectionnée(s)":"Importer une ou plusieurs photos"):file?file.name:"Importer une vidéo"}</strong><span>{contentType==="photo"?"JPG, PNG ou WebP · 10 Mo maximum par photo · jusqu’à 30 photos":"MP4, MOV, WebM et autres formats vidéo courants"}</span><input type="file" accept={contentType==="photo"?"image/jpeg,image/png,image/webp":"video/*,.mkv,.avi,.wmv,.flv,.mpeg,.mpg,.3gp,.3g2,.ts"} multiple={contentType==="photo"} required onChange={async e=>{if(contentType==="photo"){setPhotoFiles(Array.from(e.target.files||[]).slice(0,30));setFile(null);return;}const selected=e.target.files?.[0]||null;setFile(selected);setDisplayMode("contain");setDisplayScale(1);setDisplayX(0);setDisplayY(0);setTrimStart(0);setTrimEnd(0);setTrimDuration(0);if(selected){try{const metadata=await getVideoMetadata(selected);const duration=metadata.duration_seconds||0;setTrimDuration(duration);setTrimEnd(duration);setThumbnail(await createVideoThumbnail(selected));}catch{setThumbnail(null);}}}}/></label>{contentType==="photo"&&photoPreviewUrls.length>0&&<div className="studio-photo-preview">{photoPreviewUrls.map((url,index)=><article key={url}><img src={url} alt={"Aperçu photo "+(index+1)}/><span>Photo {index+1}</span><button type="button" onClick={()=>setPhotoFiles(items=>items.filter((_,i)=>i!==index))}>Retirer</button></article>)}</div>}
               {videoPreviewUrl && <div className="studio-preview"><div className="studio-preview-head"><strong>Aperçu de ta vidéo</strong><span>{contentType==="short"?"Format Short":"Format vidéo"}</span></div><video src={videoPreviewUrl} controls playsInline preload="metadata" style={{objectFit:"contain"}}/><p className="studio-framing-note">Le format d’origine est conservé automatiquement : ZAVO ne zoome pas et ne coupe pas la vidéo.</p>{trimDuration>0&&<div className="studio-trim-controls"><strong>Découper la vidéo</strong><p>Définis le passage à conserver. Le fichier publié ou enregistré en brouillon sera généré avec cette coupe.</p><div><label>Début (secondes)<input type="number" min="0" max={Math.max(0,trimEnd-1)} step="1" value={trimStart} onChange={e=>setTrimStart(Math.max(0,Math.min(Number(e.target.value)||0,trimEnd-1)))}/></label><label>Fin (secondes)<input type="number" min={trimStart+1} max={trimDuration} step="1" value={trimEnd} onChange={e=>setTrimEnd(Math.max(trimStart+1,Math.min(Number(e.target.value)||trimDuration,trimDuration)))}/></label></div><small>Passage conservé : {Math.max(0,trimEnd-trimStart)} s sur {trimDuration} s. Sans modification, la vidéo entière est conservée.</small></div>}</div>}
               <div className="studio-section"><h2>Type de publication</h2><p className="studio-hint">Choisis Short, Vidéo longue ou Photo / Galerie. Le cadrage vidéo reste indépendant de l’orientation du fichier.</p><div className="publish-format-grid"><button type="button" className={contentType==="short"?"format-choice selected":"format-choice"} onClick={()=>setContentType("short")}><PlayCircle size={22}/><strong>Short</strong><span>Vidéo courte, verticale ou horizontale</span></button><button type="button" className={contentType==="video"?"format-choice selected":"format-choice"} onClick={()=>setContentType("video")}><Film size={22}/><strong>Vidéo</strong><span>Publication vidéo longue ou complète</span></button><button type="button" className={contentType==="photo"?"format-choice selected":"format-choice"} onClick={()=>{setContentType("photo");setFile(null);setThumbnail(null);}}><ImageIcon size={22}/><strong>Photo / Galerie</strong><span>Une ou plusieurs photos</span></button></div></div>
               <div className="studio-section"><h2>Miniature de la publication</h2><div className="thumbnail-editor">{thumbnail&&<img src={thumbnailPreviewUrl} alt="Miniature sélectionnée"/>}<div><strong>{thumbnail?"Miniature prête":"Miniature automatique"}</strong><p>ZAVO sélectionne automatiquement une image de ta vidéo. Tu peux la remplacer par une image de ton choix.</p><label className="secondary-action"><ImageIcon size={16}/> Importer une miniature<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setThumbnail(e.target.files?.[0]||null)}/></label></div></div></div>
@@ -2219,7 +2224,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
   const creator = creatorOf(video);
   const [menu, setMenu] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
-  const [previewEnded, setPreviewEnded] = useState(false);
+  const photoTouchStartX = useRef<number | null>(null);
   const photoUrls: string[] = Array.isArray(video.media_urls) && video.media_urls.length ? video.media_urls : [video.video_url];
   const isPhoto = video.content_type === "photo";
   const isShort = video.content_type === "short";
@@ -2250,9 +2255,9 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
     }, { threshold: [0, 0.25, 0.65, 1] });
     observer.observe(player);
     return () => observer.disconnect();
-  }, [video.id, previewEnded]);
+  }, [video.id]);
 
-  useEffect(() => { setPhotoIndex(0); setPreviewEnded(false); viewRecorded.current = false; completionRecorded.current = false; setWatchSeconds(0); }, [video.id]);
+  useEffect(() => { setPhotoIndex(0); viewRecorded.current = false; completionRecorded.current = false; setWatchSeconds(0); }, [video.id]);
 
   const recordSegment = () => {
     const seconds = Math.floor(segmentWatchTime.current);
@@ -2262,8 +2267,8 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
   };
 
   return <article className={"video-card social-video-card " + (isPhoto ? "is-photo" : isShort ? "is-short" : "is-long-video")}>
-    <div className="post-creator-top"><div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"} · {(creator?.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</span></span></button>{!owner&&<button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div></div>
-    <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")} style={!isPhoto?{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9)}:undefined}>
+    {isPhoto&&<div className="post-creator-top"><div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"}</span></span></button>{!owner&&<button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div></div>}
+    <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")} style={!isPhoto?{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9)}:undefined} onTouchStart={e=>{if(isPhoto)photoTouchStartX.current=e.touches[0]?.clientX??null;}} onTouchEnd={e=>{if(!isPhoto||photoTouchStartX.current===null)return;const delta=photoTouchStartX.current-e.changedTouches[0].clientX;photoTouchStartX.current=null;if(Math.abs(delta)>45&&photoUrls.length>1)setPhotoIndex(index=>(index+(delta>0?1:-1)+photoUrls.length)%photoUrls.length);}}>
       {isPhoto ? <>
         <img className="video-photo" src={photoUrls[photoIndex] || video.video_url} alt={video.caption || "Photo publiée sur ZAVO"}/>
         {photoUrls.length>1&&<div className="photo-gallery-controls"><button type="button" aria-label="Photo précédente" onClick={()=>setPhotoIndex(index=>(index-1+photoUrls.length)%photoUrls.length)}>‹</button><span>{photoIndex+1} / {photoUrls.length}</span><button type="button" aria-label="Photo suivante" onClick={()=>setPhotoIndex(index=>(index+1)%photoUrls.length)}>›</button></div>}
@@ -2284,17 +2289,13 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
               if(segmentWatchTime.current>=3&&!viewRecorded.current){viewRecorded.current=true;onView(video,Math.floor(segmentWatchTime.current));if(video.isSponsored)onCampaignEvent?.(video.campaign_id,"result");}
               if(video.isSponsored&&seconds>=1&&watchSeconds<1)onCampaignEvent?.(video.campaign_id,"impression");
             }
-            if(isShort&&current>=5){e.currentTarget.pause();setPreviewEnded(true);}
           }}
           onPause={recordSegment}
-          onEnded={()=>{recordSegment();if(!completionRecorded.current){completionRecorded.current=true;onComplete?.(video);}}}
-          onClick={()=>onOpenWatch?.(video)}
+          onEnded={e=>{recordSegment();if(!completionRecorded.current){completionRecorded.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}
+          onClick={isShort?()=>onOpenWatch?.(video):undefined}
         />
-        <button type="button" className={"video-watch-overlay "+(isShort?"short-preview-cta":"long-preview-cta")} onClick={()=>onOpenWatch?.(video)}>
-          <PlayCircle size={18}/><span>{isShort?(previewEnded?"Regarder le Short":"Voir le Short complet"):"Ouvrir le lecteur"}</span>
-        </button>
       </>}
-      {isShort&&<button type="button" className="short-preview-title" onClick={()=>onOpenWatch?.(video)}>{video.caption||"Short ZAVO"}</button>}
+      {!isPhoto&&<div className="media-creator-overlay"><button type="button" className="media-creator-profile" onClick={()=>onOpenProfile?.(video.user_id)}><span className="media-creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="media-creator-name">{creator?.display_name||"Créateur ZAVO"}</span></button>{!owner&&<button type="button" className="media-creator-follow" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}<span className="media-creator-title">{video.caption||"Publication ZAVO"}</span></div>}
       {video.isSponsored&&<span className="video-label">SPONSORISÉ</span>}
       <button className="video-menu-button" onClick={()=>setMenu(!menu)}><MoreHorizontal size={20}/></button>
       {menu && <div className="video-menu">
@@ -2302,7 +2303,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         {owner && <button onClick={()=>{onBoost(video);setMenu(false);}}><Megaphone size={14}/> Booster</button>}
         {owner && <button onClick={()=>{onToggleStats(video);setMenu(false);}}><Eye size={14}/> {video.show_stats?"Masquer":"Afficher"} mes statistiques</button>}
         {owner && <button onClick={()=>{onToggleDownload(video);setMenu(false);}}><Download size={14}/> {(video.allow_offline_download||video.allow_gallery_download||video.allow_download)?"Désactiver les téléchargements":"Autoriser les téléchargements"}</button>}
-        {(video.allow_offline_download??video.allow_download) && <button onClick={()=>{onDownload(video,true);setMenu(false);}}><Download size={14}/> Enregistrer dans ZAVO</button>}
+        {!isShort&&(video.allow_offline_download??video.allow_download) && <button onClick={()=>{onDownload(video,true);setMenu(false);}}><Download size={14}/> Enregistrer dans ZAVO</button>}
         {(video.allow_gallery_download??video.allow_download) && <button onClick={()=>{onDownload(video,false);setMenu(false);}}><Download size={14}/> Télécharger dans la galerie</button>}
       </div>}
     </div>
@@ -2317,7 +2318,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         <button className="engagement external-share-action" onClick={()=>onShare(video)} aria-label="Partager à l’extérieur de ZAVO"><Share2 size={18}/><span>Partager</span></button>
         {onSendInZavo&&<button className="engagement" onClick={()=>onSendInZavo(video)} aria-label="Envoyer dans une conversation ZAVO"><MessageCircle size={18}/><span>Envoyer ZAVO</span></button>}
         {(video.allow_gallery_download ?? video.allow_download) && <button className="save-button" onClick={()=>onDownload(video,false)} aria-label="Télécharger dans la galerie"><Download size={17}/></button>}
-        <button className="save-button" onClick={()=>onBoost(video)} aria-label="Booster"><Megaphone size={17}/></button>
+        {owner&&<button className="save-button" onClick={()=>onBoost(video)} aria-label="Booster"><Megaphone size={17}/></button>}
       </div>
       {(video.show_stats || owner) && <div className="video-stats video-stats-detailed"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
     </div>
@@ -2348,11 +2349,10 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
   const watched = useRef(0);
   const viewSent = useRef(false);
   const completionSent = useRef(false);
-  const [ended, setEnded] = useState(false);
   const creator = creatorOf(video);
   const recommendations = useMemo(() => {
     const ranked = videos
-      .filter((item: Video) => item.id !== video.id && item.content_type !== "photo")
+      .filter((item: Video) => item.id !== video.id && item.content_type === "video")
       .map((item: Video) => {
         const sameCreator = item.user_id === video.user_id ? 5 : 0;
         const sameCategory = item.category && item.category === video.category ? 2 : 0;
@@ -2370,12 +2370,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
     return mixed;
   }, [videos, video.id, video.user_id, video.category, video.interest_tags, video.hashtags]);
   const nextVideo = recommendations[0] || null;
-  useEffect(() => { setEnded(false); lastTime.current=0; watched.current=0; viewSent.current=false; completionSent.current=false; }, [video.id]);
-  useEffect(() => {
-    if (!ended || !nextVideo) return;
-    const timer = window.setTimeout(() => onSelect(nextVideo), 5000);
-    return () => window.clearTimeout(timer);
-  }, [ended, nextVideo?.id]);
+  useEffect(() => { lastTime.current=0; watched.current=0; viewSent.current=false; completionSent.current=false; }, [video.id]);
   const flushWatchTime = () => {
     const seconds = Math.floor(watched.current);
     if (seconds >= 1) onWatchTime?.(video, seconds);
@@ -2394,7 +2389,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               onPlay={e=>{lastTime.current=e.currentTarget.currentTime;}}
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2)watched.current+=delta;lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
               onPause={flushWatchTime}
-              onEnded={()=>{flushWatchTime();if(!completionSent.current){completionSent.current=true;onComplete?.(video);}setEnded(true);}}/>
+              onEnded={e=>{flushWatchTime();if(!completionSent.current){completionSent.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}/
             {isShort&&<div className="short-action-rail" aria-label="Actions du Short">
               <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong><span>J’aime</span></button>
               <button type="button" onClick={()=>onComments(video)} aria-label="Commentaires"><MessageSquare size={25}/><strong>{video.comments?.[0]?.count||0}</strong><span>Commentaires</span></button>
@@ -2409,7 +2404,6 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               <button type="button" onClick={()=>changeShortBySwipe("previous")} disabled={shortIndex<=0} aria-label="Short précédent" title="Short précédent"><ArrowUp size={23}/></button>
               <button type="button" onClick={()=>changeShortBySwipe("next")} disabled={shortIndex<0||shortIndex>=shortVideos.length-1} aria-label="Short suivant" title="Short suivant"><ArrowDown size={23}/></button>
             </div>}
-            {ended&&nextVideo&&<div className="watch-next-overlay"><strong>Vidéo terminée</strong><span>La prochaine vidéo commence dans 5 secondes.</span><button type="button" onClick={()=>selectVideo(nextVideo)}>Lire maintenant <Play size={15}/></button></div>}
           </div>
           <h1 className="watch-video-title">{video.caption||"Vidéo ZAVO"}</h1>
           <div className="watch-video-meta">
@@ -2420,7 +2414,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               <button type="button" onClick={()=>onComments(video)}><MessageSquare size={17}/> {video.comments?.[0]?.count||0} commentaires</button>
               <button type="button" className={saved.includes(video.id)?"liked":""} onClick={()=>onSave(video)}><Bookmark size={17}/> {saved.includes(video.id)?"Enregistré":"Favori"}</button>
               {(video.show_stats||session?.user?.id===video.user_id)&&<span className="watch-view-count"><Eye size={16}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>}
-              {(video.allow_offline_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,true)}><Download size={17}/> Enregistrer</button>}
+              {!isShort&&(video.allow_offline_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,true)}><Download size={17}/> Enregistrer</button>}
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)}><Download size={17}/> Télécharger</button>}
               <button type="button" onClick={()=>onShare(video)}><Share2 size={17}/> Partager</button>
               {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
@@ -2429,19 +2423,18 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
           {(video.show_stats||owner)&&<div className="video-stats video-stats-detailed watch-detailed-stats"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
           <p className="watch-description">{video.caption||"Découvre cette publication sur ZAVO."}</p>
           {video.target_url&&<a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer">Ouvrir le lien associé <ExternalLink size={13}/></a>}
-          {ended&&nextVideo&&<div className="watch-next-banner"><span>À suivre : {nextVideo.caption||"Vidéo ZAVO"}</span><button type="button" onClick={()=>selectVideo(nextVideo)}>Passer à la suite</button></div>}
         </main>
-        <aside className="watch-recommendations">
-          <h2>À regarder ensuite</h2>
+        {!isShort&&<aside className="watch-recommendations">
+          <h2>Vidéos recommandées</h2>
           {recommendations.map((item:Video)=>{const person=creatorOf(item);return <div className="watch-recommendation-row" key={item.id}>
             <button type="button" className="watch-recommendation" onClick={()=>selectVideo(item)}>
               <span className={"watch-recommendation-thumb "+(item.content_type==="short"?"is-short":"")}>{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<span><Play size={20}/></span>}<i>{item.content_type==="short"?"SHORT":"VIDÉO"}</i></span>
               <span className="watch-recommendation-copy"><strong>{item.caption||"Vidéo ZAVO"}</strong><small>{person?.display_name||"Créateur ZAVO"} · {(item.views_count||0).toLocaleString("fr-FR")} vues</small></span>
             </button>
-            {(item.allow_offline_download||item.allow_gallery_download||item.allow_download)&&<button type="button" className="watch-recommendation-download" onClick={()=>onDownload(item,!!item.allow_offline_download&&!item.allow_gallery_download)}><Download size={13}/>{item.allow_offline_download&&!item.allow_gallery_download?"Enregistrer":"Télécharger"}</button>}
+            {(item.allow_gallery_download??item.allow_download)&&<button type="button" className="watch-recommendation-download" onClick={()=>onDownload(item,false)}><Download size={13}/>Télécharger</button>}
           </div>;})}
           {!recommendations.length&&<p className="watch-no-recommendations">D’autres vidéos apparaîtront ici dès qu’elles seront disponibles.</p>}
-        </aside>
+        </aside>}
       </div>
     </div>
   </div>;
