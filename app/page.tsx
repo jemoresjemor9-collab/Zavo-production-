@@ -440,6 +440,9 @@ export default function HomePage() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [feedbackTitle, setFeedbackTitle] = useState(FEEDBACK_QUESTION_PRESETS[0]);
   const [feedbackQuestionPreset, setFeedbackQuestionPreset] = useState(FEEDBACK_QUESTION_PRESETS[0]);
+  const [feedbackResponseType, setFeedbackResponseType] = useState<"text"|"choice"|"rating"|"combined">("text");
+  const [feedbackOptionsText, setFeedbackOptionsText] = useState("Oui\nNon\nJe ne sais pas");
+  const [feedbackChoice, setFeedbackChoice] = useState("");
   const [feedbackDescription, setFeedbackDescription] = useState("Prends un instant pour répondre à cette question. Ta réponse sera transmise uniquement à l’équipe ZAVO.");
   const [feedbackStartsAt, setFeedbackStartsAt] = useState(() => new Date(Date.now() + 2 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16));
   const [feedbackEndsAt, setFeedbackEndsAt] = useState(() => new Date(Date.now() + 24 * 60 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0,16));
@@ -1822,6 +1825,8 @@ export default function HomePage() {
       setNotice("Vérifie les dates : la fin de l'avis doit être après son lancement.");
       return;
     }
+    const options = feedbackResponseType === "choice" ? [...new Set(feedbackOptionsText.split("\n").map(x=>x.trim()).filter(Boolean))].slice(0,12) : [];
+    if (feedbackResponseType === "choice" && options.length < 2) { setNotice("Ajoute au moins deux choix de réponse, un par ligne."); return; }
     const now = new Date();
     const { data: existing, error: existingError } = await db()!.from("app_feedback_campaigns")
       .select("id,title,ends_at,status")
@@ -1839,6 +1844,8 @@ export default function HomePage() {
       starts_at: starts.toISOString(),
       ends_at: ends.toISOString(),
       status,
+      response_type: feedbackResponseType,
+      response_options: options,
       created_by: session.user.id
     });
     setFeedbackCampaignBusy(false);
@@ -1861,13 +1868,16 @@ export default function HomePage() {
   async function submitAppFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session?.user?.id || !feedbackCampaign || !db()) return;
-    if (feedbackRating < 1 || feedbackRating > 5) { setNotice("Choisis une note entre 1 et 5 étoiles."); return; }
+    const type = feedbackCampaign.response_type || "combined";
+    if ((type === "rating" || type === "combined") && (feedbackRating < 1 || feedbackRating > 5)) { setNotice("Choisis une note entre 1 et 5 étoiles."); return; }
+    if (type === "text" && !feedbackText.trim()) { setNotice("Écris ta réponse avant de l’envoyer."); return; }
+    if (type === "choice" && !feedbackChoice) { setNotice("Choisis une réponse dans la liste."); return; }
     setFeedbackBusy(true);
     const { error } = await db()!.from("app_feedback_responses").insert({
       campaign_id: feedbackCampaign.id,
       user_id: session.user.id,
-      rating: feedbackRating,
-      feedback: feedbackText.trim(),
+      rating: type === "rating" || type === "combined" ? feedbackRating : null,
+      feedback: type === "choice" ? feedbackChoice : feedbackText.trim(),
       suggestions: feedbackSuggestions.trim()
     });
     setFeedbackBusy(false);
@@ -1969,7 +1979,7 @@ export default function HomePage() {
     const checkFeedbackCampaign = async () => {
       const now = new Date().toISOString();
       const { data: campaign, error } = await db()!.from("app_feedback_campaigns")
-        .select("id,title,description,starts_at,ends_at")
+        .select("id,title,description,starts_at,ends_at,response_type,response_options")
         .in("status", ["active","scheduled"])
         .lte("starts_at", now)
         .gt("ends_at", now)
@@ -2116,6 +2126,8 @@ export default function HomePage() {
                   <h2>Créer et programmer une question</h2>
                   <p className="admin-note">Tu choisis une question, tu peux partir d’un modèle ou écrire la tienne, puis tu programmes son lancement et sa fin. Chaque compte peut répondre une seule fois à chaque campagne. Les réponses restent privées : seul le tableau d’administration les affiche. Tu peux aussi arrêter une campagne à tout moment.</p>
                   <form className="feedback-admin-form" onSubmit={createFeedbackCampaign}>
+                    <label>Format de l’avis<select value={feedbackResponseType} onChange={e=>setFeedbackResponseType(e.target.value as "text"|"choice"|"rating"|"combined")}><option value="text">Question ouverte — réponse écrite</option><option value="choice">Question — choix de réponse</option><option value="rating">Évaluation — étoiles de 1 à 5</option><option value="combined">Question + évaluation par étoiles</option></select></label>
+                    {feedbackResponseType==="choice"&&<label>Choix proposés (un par ligne)<textarea value={feedbackOptionsText} onChange={e=>setFeedbackOptionsText(e.target.value)} rows={4} maxLength={1200} placeholder={"Oui\nNon\nJe ne sais pas"}/></label>}
                     <label>Question préenregistrée<select value={feedbackQuestionPreset} onChange={e=>{setFeedbackQuestionPreset(e.target.value);if(e.target.value!=="__custom__")setFeedbackTitle(e.target.value);}}><option value="__custom__">Écrire ma propre question</option>{FEEDBACK_QUESTION_PRESETS.map(question=><option key={question} value={question}>{question}</option>)}</select></label>
                     <label>Ta question<input value={feedbackTitle} onChange={e=>{setFeedbackTitle(e.target.value);setFeedbackQuestionPreset("__custom__");}} maxLength={300} required placeholder="Écris la question que les utilisateurs verront"/></label>
                     <label>Petit message d’introduction (facultatif)<textarea value={feedbackDescription} onChange={e=>setFeedbackDescription(e.target.value)} maxLength={600} rows={2} placeholder="Ajoute une précision pour aider les utilisateurs à répondre…"/></label>
@@ -2130,17 +2142,18 @@ export default function HomePage() {
                   <h2>Campagnes d'avis</h2>
                   {adminData.feedbackCampaigns.length===0 ? <p className="admin-empty">Aucun avis créé pour le moment.</p> : adminData.feedbackCampaigns.map((campaign:any)=>{
                     const responses=adminData.feedbackResponses.filter((r:any)=>r.campaign_id===campaign.id);
-                    const average=responses.length?responses.reduce((sum:number,r:any)=>sum+Number(r.rating||0),0)/responses.length:0;
+                    const ratedResponses=responses.filter((r:any)=>r.rating!==null&&r.rating!==undefined);
+                    const average=ratedResponses.length?ratedResponses.reduce((sum:number,r:any)=>sum+Number(r.rating),0)/ratedResponses.length:0;
                     const status=campaign.ends_at<=new Date().toISOString()&&campaign.status!=="closed"?"terminé automatiquement":campaign.status==="active"?"en cours":campaign.status==="scheduled"?"programmé":"terminé";
                     return <article className="feedback-campaign-card" key={campaign.id}>
-                      <div><strong>{campaign.title}</strong><p>{campaign.description}</p><small>Début : {new Date(campaign.starts_at).toLocaleString("fr-FR")} · Fin : {new Date(campaign.ends_at).toLocaleString("fr-FR")}</small><small>Statut : {status} · {responses.length} réponse(s) · Note moyenne : {average?average.toFixed(1).replace(".",",")+"/5":"—"}</small></div>
+                      <div><strong>{campaign.title}</strong><p>{campaign.description}</p><small>Début : {new Date(campaign.starts_at).toLocaleString("fr-FR")} · Fin : {new Date(campaign.ends_at).toLocaleString("fr-FR")}</small><small>Format : {({text:"Question ouverte",choice:"Choix de réponse",rating:"Étoiles",combined:"Question + étoiles"} as any)[campaign.response_type||"combined"]} · Statut : {status} · {responses.length} réponse(s) · Note moyenne : {average?average.toFixed(1).replace(".",",")+"/5":"—"}</small></div>
                       {(campaign.status==="active"||campaign.status==="scheduled")&&campaign.ends_at>new Date().toISOString()&&<button type="button" onClick={()=>closeFeedbackCampaign(campaign)}>Terminer l'avis</button>}
                     </article>;
                   })}
                 </section>
                 <section className="admin-panel feedback-responses-panel">
                   <h2>Réponses privées reçues · {adminData.feedbackResponses.length}</h2>
-                  <div className="feedback-rating-summary">{[5,4,3,2,1].map(star=>{const count=adminData.feedbackResponses.filter((r:any)=>Number(r.rating)===star).length;const pct=adminData.feedbackResponses.length?count/adminData.feedbackResponses.length*100:0;return <div className="feedback-rating-row" key={star}><b>{star} ★</b><span><i style={{width:pct+"%"}}/></span><small>{count}</small></div>;})}</div>
+                  <div className="feedback-rating-summary">{[5,4,3,2,1].map(star=>{const rated=adminData.feedbackResponses.filter((r:any)=>r.rating!==null&&r.rating!==undefined);const count=rated.filter((r:any)=>Number(r.rating)===star).length;const pct=rated.length?count/rated.length*100:0;return <div className="feedback-rating-row" key={star}><b>{star} ★</b><span><i style={{width:pct+"%"}}/></span><small>{count}</small></div>;})}</div>
                   {adminData.feedbackResponses.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(adminSearch.toLowerCase())).map((response:any)=>{
                     const person=response.profile;
                     return <article className="feedback-response-card" key={response.id}>
@@ -2148,7 +2161,7 @@ export default function HomePage() {
                         {person?.avatar_url?<img src={person.avatar_url} alt=""/>:<span>{(person?.display_name||person?.username||"Z").slice(0,1).toUpperCase()}</span>}
                         <div><strong>{person?.display_name||"Utilisateur ZAVO"}</strong><small>@{person?.username||"profil indisponible"} · {person?.country_code||"Pays non renseigné"}</small><small>ID : {response.user_id}</small></div>
                       </div>
-                      <div className="feedback-response-rating"><span>{"★".repeat(Number(response.rating))}{"☆".repeat(5-Number(response.rating))}</span><small>{response.rating}/5 · {new Date(response.created_at).toLocaleString("fr-FR")}</small></div>
+                      {response.rating!==null&&response.rating!==undefined&&<div className="feedback-response-rating"><span>{"★".repeat(Number(response.rating))}{"☆".repeat(5-Number(response.rating))}</span><small>{response.rating}/5 · {new Date(response.created_at).toLocaleString("fr-FR")}</small></div>}
                       <p><b>Sa réponse à la question :</b> {response.feedback||"Aucune réponse écrite."}</p>
                       <p><b>Ce qu'il souhaite voir évoluer :</b> {response.suggestions||"Aucune suggestion ajoutée."}</p>
                       <small>Campagne : {adminData.feedbackCampaigns.find((c:any)=>c.id===response.campaign_id)?.title||"Avis archivé"}</small>
@@ -2309,13 +2322,13 @@ export default function HomePage() {
             <h2 id="feedback-modal-title">{feedbackCampaign.title}</h2>
             <p>{feedbackCampaign.description}</p>
             <form onSubmit={submitAppFeedback}>
-              <fieldset className="feedback-stars"><legend>Quelle note donnes-tu à ZAVO ?</legend>
+              {(feedbackCampaign.response_type==="rating"||feedbackCampaign.response_type==="combined"||!feedbackCampaign.response_type)&&<fieldset className="feedback-stars"><legend>Quelle note donnes-tu à ZAVO ?</legend>
                 <div>{[1,2,3,4,5].map(star=><button type="button" key={star} aria-label={star+" étoile(s)"} aria-pressed={feedbackRating===star} className={feedbackRating>=star?"selected":""} onClick={()=>setFeedbackRating(star)}>★</button>)}</div>
                 <small>{feedbackRating?["","Très mauvais","Insuffisant","Moyen","Bien","Excellent"][feedbackRating]:"Choisis de 1 à 5 étoiles"}</small>
-              </fieldset>
-              <label>Ta réponse à la question<textarea value={feedbackText} onChange={e=>setFeedbackText(e.target.value)} maxLength={4000} rows={4} required placeholder="Écris ta réponse ici…"/></label>
-              <label>Une remarque ou une suggestion supplémentaire (facultatif)<textarea value={feedbackSuggestions} onChange={e=>setFeedbackSuggestions(e.target.value)} maxLength={4000} rows={2} placeholder="Tu peux ajouter une idée ou une précision…"/></label>
-              <button className="primary-action modal-submit" type="submit" disabled={feedbackBusy||feedbackRating===0}>{feedbackBusy?"Envoi de ton avis…":"Envoyer mon avis"}</button>
+              </fieldset>}
+              {feedbackCampaign.response_type==="choice" ? <label>Choisis ta réponse<select value={feedbackChoice} onChange={e=>setFeedbackChoice(e.target.value)} required><option value="">Sélectionne une réponse…</option>{(feedbackCampaign.response_options||[]).map((option:string)=><option key={option} value={option}>{option}</option>)}</select></label> : (feedbackCampaign.response_type==="text"||feedbackCampaign.response_type==="combined"||!feedbackCampaign.response_type)&&<label>Ta réponse à la question<textarea value={feedbackText} onChange={e=>setFeedbackText(e.target.value)} maxLength={4000} rows={4} required placeholder="Écris ta réponse ici…"/></label>}
+              {feedbackCampaign.response_type!=="rating"&&<label>Une remarque ou une suggestion supplémentaire (facultatif)<textarea value={feedbackSuggestions} onChange={e=>setFeedbackSuggestions(e.target.value)} maxLength={4000} rows={2} placeholder="Tu peux ajouter une idée ou une précision…"/></label>}
+              <button className="primary-action modal-submit" type="submit" disabled={feedbackBusy||((feedbackCampaign.response_type==="rating"||feedbackCampaign.response_type==="combined"||!feedbackCampaign.response_type)&&feedbackRating===0)|| (feedbackCampaign.response_type==="choice"&&!feedbackChoice)|| (feedbackCampaign.response_type==="text"&&!feedbackText.trim())}>{feedbackBusy?"Envoi de ton avis…":"Envoyer mon avis"}</button>
             </form>
             <small className="feedback-privacy-note">Ton nom, ton nom d'utilisateur et ta photo de profil seront visibles uniquement dans le tableau d'administration pour permettre à l'équipe ZAVO de comprendre les retours.</small>
           </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci pour ta réponse !</h2><p>Ta réponse a bien été envoyée en privé à l’équipe ZAVO. Tu as terminé pour cette campagne.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
