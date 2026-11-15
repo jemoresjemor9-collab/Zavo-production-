@@ -814,10 +814,10 @@ export default function HomePage() {
     let active = true;
     setSearchLoading(true);
     const timer = window.setTimeout(async () => {
-      const videoSelect = "id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,duration_seconds,aspect_ratio,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,media_urls,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible),collaborations:zavo_video_collaborations!zavo_video_collaborations_video_id_fkey(collaborator_id,status,collaborator:profiles!zavo_video_collaborations_collaborator_id_fkey(username,display_name)),remix:zavo_video_remixes!zavo_video_remixes_remix_video_id_fkey(remix_type,original:videos!zavo_video_remixes_original_video_id_fkey(caption,profiles:profiles!videos_user_id_fkey(username,display_name))),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)";
+      const videoSelect = "id,title,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,duration_seconds,aspect_ratio,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,media_urls,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible),collaborations:zavo_video_collaborations!zavo_video_collaborations_video_id_fkey(collaborator_id,status,collaborator:profiles!zavo_video_collaborations_collaborator_id_fkey(username,display_name)),remix:zavo_video_remixes!zavo_video_remixes_remix_video_id_fkey(remix_type,original:videos!zavo_video_remixes_original_video_id_fkey(caption,profiles:profiles!videos_user_id_fkey(username,display_name))),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)";
       const [captionMatches, hashtagMatches, interestMatches, creatorMatches] = await Promise.all([
         db()!.from("videos").select(videoSelect).eq("visibility", "public").eq("moderation_status", "approved")
-          .or("caption.ilike.%"+term+"%,category.ilike.%"+term+"%").order("created_at", { ascending: false }).limit(40),
+          .or("title.ilike.%"+term+"%,caption.ilike.%"+term+"%,category.ilike.%"+term+"%").order("created_at", { ascending: false }).limit(40),
         db()!.from("videos").select(videoSelect).eq("visibility", "public").eq("moderation_status", "approved")
           .contains("hashtags", [term]).order("created_at", { ascending: false }).limit(20),
         db()!.from("videos").select(videoSelect).eq("visibility", "public").eq("moderation_status", "approved")
@@ -1560,7 +1560,7 @@ export default function HomePage() {
     setPublicProfileLoading(true); setPublicProfile(null); setPublicProfileVideos([]); setPublicProfileFollowerCount(0); setPublicProfileVideoFilter("all");
     const [person,posts,followers]=await Promise.all([
       db()!.from("profiles").select("id,username,display_name,avatar_url,bio,website_url,country_code,interest_tags,banner_url,profile_photos,stats_visible").eq("id",userId).maybeSingle(),
-      db()!.from("videos").select("id,caption,video_url,thumbnail_url,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,aspect_ratio,duration_seconds,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,media_urls,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).eq("visibility","public").eq("moderation_status","approved").order("created_at",{ascending:false}).limit(60),
+      db()!.from("videos").select("id,title,caption,video_url,thumbnail_url,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,aspect_ratio,duration_seconds,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,media_urls,moderation_status,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).eq("visibility","public").eq("moderation_status","approved").order("created_at",{ascending:false}).limit(60),
       db()!.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId)
     ]);
     setPublicProfileLoading(false);
@@ -1966,7 +1966,7 @@ export default function HomePage() {
         db()!.from("reports").select("*").order("created_at", { ascending: false }).limit(100),
         db()!.from("ad_campaigns").select("*").order("created_at", { ascending: false }).limit(100),
         db()!.from("profiles").select("id,username,display_name,avatar_url,country_code,account_status,created_at").order("created_at", { ascending: false }).limit(1000),
-        db()!.from("videos").select("id,caption,user_id,moderation_status,visibility,created_at,profiles:profiles!videos_user_id_fkey(username,display_name)").order("created_at", { ascending: false }).limit(100),
+        db()!.from("videos").select("id,title,caption,user_id,moderation_status,visibility,created_at,profiles:profiles!videos_user_id_fkey(username,display_name)").order("created_at", { ascending: false }).limit(100),
         db()!.from("ad_payments").select("id,campaign_id,owner_id,amount,currency,status,provider,provider_reference,created_at,paid_at").order("created_at", { ascending: false }).limit(200),
         db()!.functions.invoke("admin-user-analytics"),
         db()!.from("app_feedback_campaigns").select("*").order("created_at", { ascending: false }).limit(50),
