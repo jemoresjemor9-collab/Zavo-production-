@@ -923,7 +923,7 @@ body{color:#d7eaff!important}
  .is-short-viewer .watch-player-short{width:100%;height:100%;max-height:none;aspect-ratio:auto;margin:0;border-radius:0;touch-action:none}
  .is-short-viewer .watch-player-short video{width:100%;height:100%;max-height:none;object-fit:contain;background:#000}
  .is-short-viewer .watch-video-title{position:absolute;left:14px;right:14px;bottom:90px;z-index:2;margin:0;padding:9px 12px;border-radius:9px;background:rgba(4,12,22,.62);font-size:14px}
- .is-short-viewer .watch-video-meta{position:absolute;left:10px;right:10px;bottom:12px;z-index:3;padding:0;border:0;display:flex;align-items:end;flex-direction:row;gap:8px}
+ .is-short-viewer .watch-video-meta{position:absolute;left:10px;right:10px;bottom:12px;z-index:3;padding:0;border:0;display:flex;align-items:flex-end;flex-direction:row;gap:8px}
  .is-short-viewer .watch-creator{display:none}
  .is-short-viewer .watch-actions{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto}
  .is-short-viewer .watch-actions button{min-height:38px;padding:8px 10px;background:rgba(5,17,31,.84);white-space:nowrap}
@@ -994,7 +994,7 @@ body{color:#d7eaff!important}
  .home-feed-grid .video-card{min-width:0}
  .home-feed-grid .video-label{font-size:8px}
  .short-preview-title{font-size:10px;left:6px;right:6px;bottom:35px;padding:6px 7px}
- .public-profile-backdrop{padding:0;align-items:end}
+ .public-profile-backdrop{padding:0;align-items:flex-end}
  .public-profile-modal{width:100%;max-height:92dvh;border-radius:18px 18px 0 0;padding:0 14px 24px}
  .public-profile-banner{margin:0 -14px}
  .public-profile-heading h2{font-size:17px}
