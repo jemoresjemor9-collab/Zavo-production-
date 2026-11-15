@@ -755,7 +755,7 @@ export default function HomePage() {
   useEffect(() => { loadVideos(); }, [loadVideos]);
 
   useEffect(() => {
-    const term = search.trim().replace(/[,%()]/g, " ").replace(/\\s+/g, " ").trim();
+    const term = search.trim().replace(/[,%()]/g, " ").replace(/\s+/g, " ").trim();
     if (term.length < 2 || !db()) {
       setSearchResults(null);
       setSearchLoading(false);
