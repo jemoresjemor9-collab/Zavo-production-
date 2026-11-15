@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import PwaInstall from "@/app/pwa-install";
 import PwaRegister from "@/app/pwa-register";
 import CreatorStudio from "@/app/creator-studio";
+import CommunityHub from "@/app/community-hub";
 
 type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null; bio?: string | null; stats_visible?: boolean; account_status?: string; country_code?: string; interest_tags?: string[]; banner_url?: string | null; profile_photos?: string[]; identity_changed_at?: string | null; followers_count?: number; followers?: { count: number }[] };
 type Video = {
@@ -1932,7 +1933,7 @@ export default function HomePage() {
 
   const nav = [
     { label: "Pour toi", icon: Home }, { label: "Shorts", icon: Play }, { label: "Vidéos", icon: Clapperboard }, { label: "Découvrir", icon: Compass },
-    { label: "Abonnements", icon: Users }, { label: "Messages", icon: MessageCircle },
+    { label: "Abonnements", icon: Users }, { label: "Communauté", icon: Users }, { label: "Messages", icon: MessageCircle },
     { label: "Favoris", value: "Enregistrés", icon: Bookmark }, { label: "Téléchargements", icon: Download },
     { label: "Studio", icon: BarChart3 }, { label: "Notifications", icon: Bell }, { label: "Profil", icon: UserRound }
   ];
@@ -1944,6 +1945,7 @@ export default function HomePage() {
     { label: "Favoris", value: "Enregistrés", icon: Heart },
     { label: "Téléchargements", icon: Download },
     { label: "Studio créateur", value: "Studio", icon: BarChart3 },
+    { label: "Communauté", icon: Users },
     { label: "Notifications", icon: Bell },
     { label: "Promotions", icon: Megaphone },
     ...(isAdmin ? [{ label: "Administration", icon: ShieldCheck }] : [])
@@ -2124,6 +2126,8 @@ export default function HomePage() {
               <div className="feed-toolbar"><div><div className="section-kicker">VISIBILITÉ DE TON CONTENU</div><h2>Mes promotions</h2></div><button className="primary-action" onClick={()=>session?setCampaignOpen(true):setAuthMode("signin")}><Megaphone size={15}/> Nouvelle campagne</button></div>
               {myCampaigns.length ? myCampaigns.map((campaign:any)=><article className="campaign-card" key={campaign.id}><div className="campaign-card-top"><strong>{campaign.title}</strong><span className="campaign-status">{campaign.status==="awaiting_payment"?"Paiement en attente":campaign.status==="pending"?"Paiement confirmé — validation ZAVO":campaign.status==="active"?"En diffusion":campaign.status==="paused"?"Suspendue":campaign.status==="completed"?"Terminée":campaign.status==="rejected"?"Refusée":campaign.status}</span></div><div className="campaign-card-meta">{campaign.target_type==="profile"?"Promotion du compte":campaign.target_type==="product"?"Promotion d’un produit ou service":"Promotion d’une vidéo"} · {campaign.country_codes?.length||0} pays · {Number(campaign.daily_budget||600).toLocaleString("fr-FR")} FCFA/jour · {campaign.duration_days||1} jour(s) · total {Number(campaign.budget).toLocaleString("fr-FR")} FCFA · {campaign.objective}</div><div className="campaign-metrics"><span><Eye size={14}/> {campaign.impressions||0} impressions</span><span><ExternalLink size={14}/> {campaign.clicks||0} clics</span><span><Check size={14}/> {campaign.objective_results||0} {campaign.objective==="views"?"vues obtenues":campaign.objective==="profile_visits"?"visites du profil":campaign.objective==="website_clicks"?"visites de l’offre":"demandes de contact"}</span></div>{campaign.status==="active"&&campaign.end_at&&<p className="campaign-note">Ta campagne est en cours de diffusion. Fin prévue le {new Date(campaign.end_at).toLocaleString("fr-FR")}.</p>}{campaign.status==="paused"&&<p className="campaign-note">Ta campagne est temporairement suspendue. Le temps restant est conservé : {Math.floor(Number(campaign.remaining_seconds||0)/86400)} j {Math.floor((Number(campaign.remaining_seconds||0)%86400)/3600)} h.</p>}{campaign.status==="completed"&&<p className="campaign-note">Cette campagne est terminée. Consulte les résultats enregistrés : {campaign.impressions||0} impressions et {campaign.clicks||0} clics.</p>}{campaign.status==="rejected"&&campaign.admin_note&&<p className="campaign-note">Motif : {campaign.admin_note}</p>}{campaign.status==="awaiting_payment"&&<><p className="campaign-note">En attente du règlement. La diffusion commencera uniquement après confirmation du paiement et validation par ZAVO.</p><button className="primary-action" disabled={busy} onClick={()=>startCampaignCheckout(campaign.id)}>{busy?"Préparation…":"Payer ma publicité"}</button></>}</article>) : <section className="empty-state"><div className="empty-icon"><Megaphone/></div><h3>Aucune campagne pour le moment</h3><p>Fais connaître ton compte, une vidéo ou ton produit auprès d’une nouvelle audience.</p><button className="primary-action" onClick={()=>session?setCampaignOpen(true):setAuthMode("signin")}>Créer une campagne</button></section>}
             </section>
+          ) : tab === "Communauté" ? (
+            <CommunityHub userId={session?.user?.id||null} onNotice={setNotice} onLogin={()=>setAuthMode("signin")}/>
           ) : tab === "Studio" ? (
             session?.user?.id ? <CreatorStudio key={session.user.id} userId={session.user.id} onNotice={setNotice} onCreate={()=>setUploadOpen(true)}/> : <section className="empty-state"><div className="empty-icon"><BarChart3/></div><h3>Ton espace créateur t’attend</h3><p>Connecte-toi pour consulter tes statistiques et gérer tes vidéos.</p><button className="primary-action" onClick={()=>setAuthMode("signin")}>Se connecter</button></section>
           ) : tab === "Notifications" ? (
@@ -2229,7 +2233,7 @@ export default function HomePage() {
           </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci pour ta réponse !</h2><p>Ta réponse a bien été envoyée en privé à l’équipe ZAVO. Tu as terminé pour cette campagne.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
         </section>
       </div>}
-      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Messages"?"active":""} onClick={()=>{if(session){setTab("Messages");void markAllMessagesRead();}else setAuthMode("signin");}}><MessageCircle size={19}/><span>Messages</span>{unreadMessageCount>0&&<b className="mobile-unread-badge">{unreadMessageCount>99?"99+":unreadMessageCount}</b>}</button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
+      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Communauté"?"active":""} onClick={()=>setTab("Communauté")}><Users size={19}/><span>Communauté</span></button><button className={tab==="Messages"?"active":""} onClick={()=>{if(session){setTab("Messages");void markAllMessagesRead();}else setAuthMode("signin");}}><MessageCircle size={19}/><span>Messages</span>{unreadMessageCount>0&&<b className="mobile-unread-badge">{unreadMessageCount>99?"99+":unreadMessageCount}</b>}</button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
     </main>
   );
 }
