@@ -2162,6 +2162,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
   };
 
   return <article className={"video-card social-video-card " + (isPhoto ? "is-photo" : isShort ? "is-short" : "is-long-video")}>
+    {isPhoto&&<div className="photo-creator-top"><div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"}</span></span></button>{!owner&&<button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div></div>}
     <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")}>
       {isPhoto ? <>
         <img className="video-photo" src={photoUrls[photoIndex] || video.video_url} alt={video.caption || "Photo publiée sur ZAVO"}/>
@@ -2193,7 +2194,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         </button>
       </>}
       {isShort&&<button type="button" className="short-preview-title" onClick={()=>onOpenWatch?.(video)}>{video.caption||"Short ZAVO"}</button>}
-      <span className="video-label">{video.isSponsored ? "SPONSORISÉ" : isPhoto ? "PHOTO" : isShort ? "SHORT" : "VIDÉO"}</span>
+      {video.isSponsored&&<span className="video-label">SPONSORISÉ</span>}
       <button className="video-menu-button" onClick={()=>setMenu(!menu)}><MoreHorizontal size={20}/></button>
       {menu && <div className="video-menu">
         <button onClick={()=>{onReport(video);setMenu(false);}}><Flag size={14}/> Signaler</button>
@@ -2205,7 +2206,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
       </div>}
     </div>
     <div className="video-details">
-      <div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"} · {(creator?.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</span></span></button>{!owner&&<button className="follow-button" onClick={()=>{if(video.isSponsored)onCampaignEvent?.(video.campaign_id,"click");onFollow(video.user_id);}}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div>
+      {!isPhoto&&<div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"} · {(creator?.followers?.[0]?.count||0).toLocaleString("fr-FR")} abonnés</span></span></button>{!owner&&<button className="follow-button" onClick={()=>{if(video.isSponsored)onCampaignEvent?.(video.campaign_id,"click");onFollow(video.user_id);}}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div>}
       <p className="video-caption"><Caption value={video.caption||""}/></p>
       {video.target_url && <a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer" onClick={()=>video.isSponsored&&onCampaignEvent?.(video.campaign_id,"click")}>{video.isSponsored?"Découvrir l’offre":"Ouvrir le lien associé"} <ExternalLink size={13}/></a>}
       <div className="video-controls">
@@ -2291,6 +2292,16 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2)watched.current+=delta;lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
               onPause={flushWatchTime}
               onEnded={()=>{flushWatchTime();setEnded(true);}}/>
+            {isShort&&<div className="short-action-rail" aria-label="Actions du Short">
+              <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong><span>J’aime</span></button>
+              <button type="button" onClick={()=>onComments(video)} aria-label="Commentaires"><MessageSquare size={25}/><strong>{video.comments?.[0]?.count||0}</strong><span>Commentaires</span></button>
+              {video.allow_repost&&<button type="button" onClick={()=>onRepost?.(video)} aria-label="Republication"><Repeat2 size={24}/><strong>{video.reposts?.[0]?.count||0}</strong><span>Reposter</span></button>}
+              <button type="button" className={saved.includes(video.id)?"active":""} onClick={()=>onSave(video)} aria-label="Favori"><Bookmark size={24} fill={saved.includes(video.id)?"currentColor":"none"}/><span>Favori</span></button>
+              {(video.show_stats||session?.user?.id===video.user_id)&&<div className="short-rail-stat"><Eye size={23}/><strong>{(video.views_count||0).toLocaleString("fr-FR")}</strong><span>Vues</span></div>}
+              {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)} aria-label="Télécharger"><Download size={23}/><span>Télécharger</span></button>}
+              <button type="button" onClick={()=>onShare(video)} aria-label="Partager"><Share2 size={24}/><span>Partager</span></button>
+              {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onFollow(video.user_id)} aria-label="S’abonner"><UserRound size={23}/><span>{following.includes(video.user_id)?"Abonné":"Suivre"}</span></button>}
+            </div>}
             {isShort&&<div className="short-desktop-nav" aria-label="Navigation entre les Shorts">
               <button type="button" onClick={()=>changeShortBySwipe("previous")} disabled={shortIndex<=0} aria-label="Short précédent" title="Short précédent"><ArrowUp size={23}/></button>
               <button type="button" onClick={()=>changeShortBySwipe("next")} disabled={shortIndex<0||shortIndex>=shortVideos.length-1} aria-label="Short suivant" title="Short suivant"><ArrowDown size={23}/></button>
