@@ -144,7 +144,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       target_url:draft.target_url,category:draft.category,content_type:draft.content_type,
       allow_download:draft.allow_offline_download||draft.allow_gallery_download,
       allow_offline_download:draft.allow_offline_download,allow_gallery_download:draft.allow_gallery_download,
-      show_stats:draft.show_stats,visibility:"public",interest_tags:draft.interest_tags||[],
+      show_stats:draft.show_stats,visibility:"public",interest_tags:(draft.interest_tags||[]).slice(0,1),
       duration_seconds:draft.duration_seconds,aspect_ratio:draft.aspect_ratio
     });
     if(error){onNotice("Publication du brouillon impossible : "+error.message);setDraftBusy(null);return;}
