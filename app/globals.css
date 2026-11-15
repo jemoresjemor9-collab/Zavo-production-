@@ -1055,3 +1055,42 @@ body{color:#d7eaff!important}
  .is-short-viewer .watch-creator strong{font-size:12px}
  .is-short-viewer .watch-video-title{left:10px;right:76px;bottom:69px;font-size:14px}
 }
+
+
+/* ZAVO navigation polish: center the search panel on every screen size. */
+.top-search-wrap{position:static!important}
+.search-popover{
+  position:fixed!important;
+  z-index:220!important;
+  top:calc(env(safe-area-inset-top,0px) + 70px)!important;
+  left:50%!important;
+  right:auto!important;
+  transform:translateX(-50%)!important;
+  width:min(620px,calc(100vw - 28px))!important;
+  max-width:620px!important;
+  padding:12px!important;
+  border:1px solid rgba(105,177,255,.55)!important;
+  border-radius:16px!important;
+  background:#0d367f!important;
+  box-shadow:0 22px 65px rgba(0,12,48,.48)!important;
+}
+.search-input-row{width:100%;min-height:52px;gap:11px;padding:7px 12px!important;border-radius:12px!important;background:#082d70!important;border-color:#3989df!important}
+.search-input-row input{min-height:38px;font-size:15px!important;color:#f2f8ff!important}
+.search-input-row input::placeholder{color:#9fc8f5!important}
+.search-input-row>svg{flex:0 0 auto;color:#a9d2ff}
+.search-input-row button{width:34px;height:34px;border-radius:8px;color:#e7f3ff!important}
+.search-input-row button:hover{background:rgba(255,255,255,.1)}
+.search-suggestions{max-height:min(55vh,420px)!important;padding-top:10px!important}
+.search-suggestions>button{min-height:62px;padding:9px 10px!important;border-radius:11px!important}
+.search-suggestions strong{font-size:13px!important;color:#f3f8ff!important}
+.search-suggestions small,.search-suggestions p{font-size:11px!important;color:#a9c9ee!important}
+.notification-top-button{position:relative}
+.notification-badge{position:absolute;top:-7px;right:-7px;min-width:19px;height:19px;padding:0 5px;display:grid;place-items:center;border:2px solid #164b9d;border-radius:999px;background:#f02645;color:#fff;font-size:10px;font-weight:900;line-height:1}
+.nav-link{position:relative}
+.nav-link .nav-unread-badge{margin-left:auto}
+.notifications-read-note{display:inline-flex;margin-top:7px;padding:4px 8px;border-radius:999px;background:rgba(22,117,232,.2);color:#c7e2ff;font-size:11px;font-weight:800}
+@media(max-width:760px){
+  .search-popover{top:calc(env(safe-area-inset-top,0px) + 68px)!important;width:calc(100vw - 24px)!important;padding:10px!important}
+  .search-input-row{min-height:50px}
+  .search-input-row input{font-size:14px!important}
+}
