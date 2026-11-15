@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Users, MessageCircle, Plus, Search, Trophy, Clapperboard, Play, LogIn, Send, CalendarDays, X, ChevronRight, RefreshCw, Hash } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -103,7 +103,7 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
     }
     await load(false);
   };
-  const sendPost=async(event:React.FormEvent<HTMLFormElement>)=>{
+  const sendPost=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!userId){onLogin();return;}
     if(!selectedCommunity||!postText.trim())return;
