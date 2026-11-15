@@ -349,6 +349,8 @@ export default function HomePage() {
   const [replyToComment, setReplyToComment] = useState<Comment | null>(null);
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<Video[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [publicProfile, setPublicProfile] = useState<Profile | null>(null);
   const [publicProfileVideos, setPublicProfileVideos] = useState<Video[]>([]);
   const [publicProfileFollowerCount, setPublicProfileFollowerCount] = useState(0);
@@ -751,6 +753,47 @@ export default function HomePage() {
   }, [loadUserData]);
 
   useEffect(() => { loadVideos(); }, [loadVideos]);
+
+  useEffect(() => {
+    const term = search.trim().replace(/[,%()]/g, " ").replace(/\\s+/g, " ").trim();
+    if (term.length < 2 || !db()) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+    let active = true;
+    setSearchLoading(true);
+    const timer = window.setTimeout(async () => {
+      const videoSelect = "id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,duration_seconds,aspect_ratio,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,media_urls,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)";
+      const [captionMatches, hashtagMatches, interestMatches, creatorMatches] = await Promise.all([
+        db()!.from("videos").select(videoSelect).eq("visibility", "public").eq("moderation_status", "approved")
+          .or("caption.ilike.%"+term+"%,category.ilike.%"+term+"%").order("created_at", { ascending: false }).limit(40),
+        db()!.from("videos").select(videoSelect).eq("visibility", "public").eq("moderation_status", "approved")
+          .contains("hashtags", [term]).order("created_at", { ascending: false }).limit(20),
+        db()!.from("videos").select(videoSelect).eq("visibility", "public").eq("moderation_status", "approved")
+          .contains("interest_tags", [term]).order("created_at", { ascending: false }).limit(20),
+        db()!.from("profiles").select("id").eq("account_status", "active")
+          .or("username.ilike.%"+term+"%,display_name.ilike.%"+term+"%").limit(20)
+      ]);
+      if (!active) return;
+      const creatorIds = (creatorMatches.data || []).map((person: any) => person.id);
+      let creatorVideos: any[] = [];
+      if (creatorIds.length) {
+        const result = await db()!.from("videos").select(videoSelect).eq("visibility", "public")
+          .eq("moderation_status", "approved").in("user_id", creatorIds)
+          .order("created_at", { ascending: false }).limit(40);
+        creatorVideos = result.data || [];
+      }
+      if (!active) return;
+      const unique = new Map<string, Video>();
+      for (const item of [...(captionMatches.data || []), ...(hashtagMatches.data || []), ...(interestMatches.data || []), ...creatorVideos]) {
+        if (!blockedUserIds.includes(item.user_id)) unique.set(item.id, item as Video);
+      }
+      setSearchResults([...unique.values()].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      setSearchLoading(false);
+    }, 320);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [search, blockedUserIds]);
   useEffect(() => {
     const client = db();
     const userId = session?.user?.id;
@@ -1867,7 +1910,8 @@ export default function HomePage() {
     return () => { active = false; window.clearInterval(timer); };
   }, [session?.user?.id, isAdmin]);
 
-  const visibleVideos = useMemo(() => videos.filter((v) => {
+  const searchSourceVideos = search.trim().length >= 2 && searchResults !== null ? searchResults : videos;
+  const visibleVideos = useMemo(() => searchSourceVideos.filter((v) => {
     if (tab === "Shorts" && v.content_type !== "short") return false;
     if (tab === "Vidéos" && v.content_type !== "video") return false;
     if (tab === "Posts" && v.content_type !== "photo") return false;
@@ -1879,10 +1923,11 @@ export default function HomePage() {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     const p = creatorOf(v);
-    return (v.caption || "").toLowerCase().includes(q) || (p?.username || "").toLowerCase().includes(q) || (p?.display_name || "").toLowerCase().includes(q);
-  }), [videos, search, tab, discoverCategory]);
+    const tags = [...(v.interest_tags || []), ...(v.hashtags || [])].map((tag: string) => String(tag).toLowerCase());
+    return (v.caption || "").toLowerCase().includes(q) || (v.category || "").toLowerCase().includes(q) || tags.some(tag => tag.includes(q)) || (p?.username || "").toLowerCase().includes(q) || (p?.display_name || "").toLowerCase().includes(q);
+  }), [searchSourceVideos, search, tab, discoverCategory]);
   const feedVideos = useMemo(() => tab === "Pour toi" ? composeHomeFeed(visibleVideos) : visibleVideos, [visibleVideos, tab]);
-  const searchSuggestions = useMemo(() => { const q=search.trim().toLocaleLowerCase(); if(!q)return []; return videos.filter(item=>(item.caption||"").toLocaleLowerCase().includes(q)||(creatorOf(item)?.username||"").toLocaleLowerCase().includes(q)||(creatorOf(item)?.display_name||"").toLocaleLowerCase().includes(q)).slice(0,6); },[videos,search]);
+  const searchSuggestions = useMemo(() => { const q=search.trim().toLocaleLowerCase(); if(!q)return []; return searchSourceVideos.filter(item=>(item.caption||"").toLocaleLowerCase().includes(q)||(item.category||"").toLocaleLowerCase().includes(q)||(creatorOf(item)?.username||"").toLocaleLowerCase().includes(q)||(creatorOf(item)?.display_name||"").toLocaleLowerCase().includes(q)).slice(0,6); },[searchSourceVideos,search]);
 
   const nav = [
     { label: "Pour toi", icon: Home }, { label: "Shorts", icon: Play }, { label: "Vidéos", icon: Clapperboard }, { label: "Découvrir", icon: Compass },
@@ -1921,7 +1966,7 @@ export default function HomePage() {
       <section className="main-column">
         <header className="topbar">
           <a className="mobile-brand" href="/"><img src="/icons/zavo-192.png" alt=""/><strong>ZAVO</strong></a>
-          <div className="top-search-wrap"><button type="button" className="top-icon search-trigger" aria-label="Rechercher" aria-expanded={searchOpen} onClick={()=>{setSearchOpen(value=>!value);setSearch("");}}><Search size={20}/></button>{searchOpen&&<div className="search-popover"><div className="search-input-row"><Search size={17}/><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Escape"){setSearchOpen(false);setSearch("");}if(e.key==="Enter")setSearchOpen(false);}} placeholder="Rechercher une vidéo ou un créateur"/><button type="button" onClick={()=>{setSearch("");setSearchOpen(false);}} aria-label="Fermer"><X size={17}/></button></div>{search.trim()&&<div className="search-suggestions">{searchSuggestions.length?searchSuggestions.map(item=><button type="button" key={item.id} onClick={()=>{setWatchVideo(item);setSearchOpen(false);}}><span className="search-suggestion-thumb">{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<Play size={15}/>}</span><span><strong>{(item.caption||"Publication sans titre").slice(0,76)}</strong><small>{creatorOf(item)?.display_name||"Créateur ZAVO"} · {item.content_type==="short"?"Short":item.content_type==="photo"?"Photo":"Vidéo"}</small></span></button>):<p>Aucune suggestion pour « {search} ».</p>}</div>}</div>}</div>
+          <div className="top-search-wrap"><button type="button" className="top-icon search-trigger" aria-label="Rechercher" aria-expanded={searchOpen} onClick={()=>{setSearchOpen(value=>!value);setSearch("");}}><Search size={20}/></button>{searchOpen&&<div className="search-popover"><div className="search-input-row"><Search size={17}/><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Escape"){setSearchOpen(false);setSearch("");}if(e.key==="Enter")setSearchOpen(false);}} placeholder="Rechercher une vidéo ou un créateur"/><button type="button" onClick={()=>{setSearch("");setSearchOpen(false);}} aria-label="Fermer"><X size={17}/></button></div>{search.trim()&&<div className="search-suggestions">{searchLoading?<p>Recherche dans les vidéos et les créateurs…</p>:searchSuggestions.length?searchSuggestions.map(item=><button type="button" key={item.id} onClick={()=>{setWatchVideo(item);setSearchOpen(false);}}><span className="search-suggestion-thumb">{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<Play size={15}/>}</span><span><strong>{(item.caption||"Publication sans titre").slice(0,76)}</strong><small>{creatorOf(item)?.display_name||"Créateur ZAVO"} · {item.content_type==="short"?"Short":item.content_type==="photo"?"Photo":"Vidéo"}</small></span></button>):<p>Aucun résultat pour « {search} ».</p>}</div>}</div>}</div>
           <div className="top-actions">
             <button className="create-top-button" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={17}/><span>Créer</span></button>
             <button className="top-icon notification-top-button" aria-label={`Notifications${unreadNotificationCount>0?", non lues":""}`} onClick={() => { setTab("Notifications"); void markAllNotificationsRead(); }}><Bell size={19}/>{unreadNotificationCount>0&&<span className="notification-badge">{unreadNotificationCount>99?"99+":unreadNotificationCount}</span>}</button>
