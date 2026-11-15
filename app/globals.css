@@ -914,7 +914,7 @@ body{color:#d7eaff!important}
  .watch-main{overflow:visible}
  .watch-recommendations{max-height:none;overflow:visible}
  .comments-modal-enhanced{width:100%;max-width:none;max-height:86dvh;margin-top:auto;border-radius:18px 18px 0 0;padding:22px 16px calc(16px + env(safe-area-inset-bottom))}
- .modal-backdrop:has(.comments-modal){align-items:end;padding:0}
+ .modal-backdrop:has(.comments-modal){align-items:flex-end;padding:0}
 }
 @media(max-width:760px){
  .watch-page-overlay.is-short-viewer{overflow:hidden}
