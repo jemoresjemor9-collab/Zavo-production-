@@ -2200,7 +2200,15 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
       const videoTags = [...(video.interest_tags || []), ...(video.hashtags || [])].map((tag:string)=>tag.toLowerCase());
       const sharedTags = [...(item.interest_tags || []), ...(item.hashtags || [])].filter((tag:string)=>videoTags.includes(tag.toLowerCase())).length;
       return { item, score: sameCreator + sameCategory + sharedTags * 1.5 + Math.log1p(item.views_count || 0) * 0.25 };
-    }).sort((a:any,b:any)=>b.score-a.score).slice(0,12).map((entry:any)=>entry.item),
+    }).sort((a:any,b:any)=>b.score-a.score);
+    const sameCreator = ranked.filter((entry:any)=>entry.item.user_id===video.user_id);
+    const otherCreators = ranked.filter((entry:any)=>entry.item.user_id!==video.user_id);
+    const mixed: Video[] = [];
+    while(mixed.length<12&&(sameCreator.length||otherCreators.length)){
+      if(sameCreator.length)mixed.push(sameCreator.shift().item);
+      if(otherCreators.length&&mixed.length<12)mixed.push(otherCreators.shift().item);
+    }
+    return mixed,
     [videos, video.id, video.user_id, video.category, video.interest_tags, video.hashtags]);
   const nextVideo = recommendations[0] || null;
   useEffect(() => { setEnded(false); lastTime.current=0; watched.current=0; viewSent.current=false; }, [video.id]);
@@ -2246,10 +2254,13 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
         </main>
         <aside className="watch-recommendations">
           <h2>À regarder ensuite</h2>
-          {recommendations.map((item:Video)=>{const person=creatorOf(item);return <button type="button" className="watch-recommendation" key={item.id} onClick={()=>selectVideo(item)}>
-            <span className={"watch-recommendation-thumb "+(item.content_type==="short"?"is-short":"")}>{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<span><Play size={20}/></span>}<i>{item.content_type==="short"?"SHORT":"VIDÉO"}</i></span>
-            <span className="watch-recommendation-copy"><strong>{item.caption||"Vidéo ZAVO"}</strong><small>{person?.display_name||"Créateur ZAVO"} · {(item.views_count||0).toLocaleString("fr-FR")} vues</small></span>
-          </button>;})}
+          {recommendations.map((item:Video)=>{const person=creatorOf(item);return <div className="watch-recommendation-row" key={item.id}>
+            <button type="button" className="watch-recommendation" onClick={()=>selectVideo(item)}>
+              <span className={"watch-recommendation-thumb "+(item.content_type==="short"?"is-short":"")}>{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<span><Play size={20}/></span>}<i>{item.content_type==="short"?"SHORT":"VIDÉO"}</i></span>
+              <span className="watch-recommendation-copy"><strong>{item.caption||"Vidéo ZAVO"}</strong><small>{person?.display_name||"Créateur ZAVO"} · {(item.views_count||0).toLocaleString("fr-FR")} vues</small></span>
+            </button>
+            {(item.allow_offline_download||item.allow_gallery_download||item.allow_download)&&<button type="button" className="watch-recommendation-download" onClick={()=>onDownload(item,!!item.allow_offline_download&&!item.allow_gallery_download)}><Download size={13}/>{item.allow_offline_download&&!item.allow_gallery_download?"Enregistrer":"Télécharger"}</button>}
+          </div>;})}
           {!recommendations.length&&<p className="watch-no-recommendations">D’autres vidéos apparaîtront ici dès qu’elles seront disponibles.</p>}
         </aside>
       </div>
