@@ -2388,7 +2388,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               onPlay={e=>{lastTime.current=e.currentTarget.currentTime;}}
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2)watched.current+=delta;lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
               onPause={flushWatchTime}
-              onEnded={e=>{flushWatchTime();if(!completionSent.current){completionSent.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}/
+              onEnded={e=>{flushWatchTime();if(!completionSent.current){completionSent.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}/>
             {isShort&&<div className="short-action-rail" aria-label="Actions du Short">
               <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong><span>J’aime</span></button>
               <button type="button" onClick={()=>onComments(video)} aria-label="Commentaires"><MessageSquare size={25}/><strong>{video.comments?.[0]?.count||0}</strong><span>Commentaires</span></button>
