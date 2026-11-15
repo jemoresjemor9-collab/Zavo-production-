@@ -49,7 +49,7 @@ const visitorKey = () => {
   return key;
 };
 function getVideoMime(file: File) {
-  if (file.type) return file.type;
+  if (file.type && file.type.startsWith("video/")) return file.type;
   const ext = file.name.split(".").pop()?.toLowerCase();
   const types: Record<string, string> = {
     mkv: "video/x-matroska", avi: "video/x-msvideo", wmv: "video/x-ms-wmv",
@@ -1397,8 +1397,14 @@ export default function HomePage() {
       if (thumbnail) {
         uploadedThumbnailPath = session.user.id + "/" + crypto.randomUUID() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const thumbUpload = await db()!.storage.from("zavo-media").upload(uploadedThumbnailPath, thumbnail, { contentType: thumbnail.type || "image/jpeg", upsert: false });
-        if (!thumbUpload.error) thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(uploadedThumbnailPath).data.publicUrl;
-        else { setNotice("La miniature n’a pas pu être importée : " + thumbUpload.error.message); return; }
+        if (!thumbUpload.error) {
+          thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(uploadedThumbnailPath).data.publicUrl;
+        } else {
+          // La miniature est facultative : son échec ne doit jamais bloquer la publication de la vidéo.
+          console.warn("ZAVO thumbnail upload:", thumbUpload.error.message);
+          uploadedThumbnailPath = null;
+          setNotice("La miniature n’a pas été importée, mais la vidéo continue sa publication.");
+        }
       }
       const offlinePermission = contentType === "short" ? false : allowOfflineDownload;
       const galleryPermission = allowGalleryDownload;
