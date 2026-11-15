@@ -266,6 +266,9 @@ export default function HomePage() {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [discoverCategory, setDiscoverCategory] = useState("Tout");
   const [videos, setVideos] = useState<Video[]>([]);
+  const [feedPage, setFeedPage] = useState(0);
+  const [feedHasMore, setFeedHasMore] = useState(false);
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [email, setEmail] = useState("");
@@ -514,29 +517,32 @@ export default function HomePage() {
     return () => { active = false; };
   }, [countryCode]);
 
-  const loadVideos = useCallback(async () => {
+  const loadVideos = useCallback(async (page = 0) => {
     if (!db()) return;
+    if (page > 0) setFeedLoadingMore(true);
     let query = db()!.from("videos")
       .select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,clicks_count,watch_time_seconds,completed_views_count,duration_seconds,aspect_ratio,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,media_urls,moderation_status,interest_tags,hashtags,profiles:profiles!videos_user_id_fkey(id,username,display_name,avatar_url,stats_visible,banner_url,profile_photos,followers:follows!follows_following_id_fkey(count)),likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)")
       .eq("visibility", "public").eq("moderation_status", "approved");
     if (tab === "Shorts") query = query.eq("content_type", "short");
     if (tab === "Vidéos") query = query.eq("content_type", "video");
     if (tab === "Posts") query = query.eq("content_type", "photo");
-    query = query.order("created_at", { ascending: false }).limit(120);
+    query = query.order("created_at", { ascending: false }).order("id", { ascending: false }).range(page * 60, page * 60 + 59);
     if (tab === "Abonnements" && session?.user?.id) {
       const { data: follows } = await db()!.from("follows").select("following_id").eq("follower_id", session.user.id);
       const ids = (follows || []).map((row: any) => row.following_id);
-      if (!ids.length) { setVideos([]); return; }
+      if (!ids.length) { setVideos([]); setFeedHasMore(false); setFeedPage(0); setFeedLoadingMore(false); return; }
       query = query.in("user_id", ids);
     }
     if (tab === "Enregistrés" && session?.user?.id) {
       const { data: rows } = await db()!.from("saved_videos").select("video_id").eq("user_id", session.user.id);
       const ids = (rows || []).map((row: any) => row.video_id);
-      if (!ids.length) { setVideos([]); return; }
+      if (!ids.length) { setVideos([]); setFeedHasMore(false); setFeedPage(0); setFeedLoadingMore(false); return; }
       query = query.in("id", ids);
     }
     const { data, error } = await query;
-    if (error) { console.error("ZAVO feed query failed", error); setNotice("Le fil n’a pas pu se connecter aux vidéos. Code : " + (error.code || "inconnu") + ". Réessaie dans un instant."); setVideos([]); return; }
+    if (error) { console.error("ZAVO feed query failed", error); setNotice("Le fil n’a pas pu se connecter aux vidéos. Code : " + (error.code || "inconnu") + ". Réessaie dans un instant."); if (page === 0) setVideos([]); setFeedHasMore(false); setFeedLoadingMore(false); return; }
+    setFeedHasMore((data || []).length === 60);
+    setFeedPage(page);
     let organic = (data || []).filter((video: any) => !blockedUserIds.includes(video.user_id)) as Video[];
     if (tab === "Pour toi" || tab === "Découvrir") {
       // Build an interest profile from explicit preferences and the member's own positive actions.
@@ -613,7 +619,7 @@ export default function HomePage() {
       }
       organic = diversified;
     }
-    if (tab === "Pour toi" || tab === "Découvrir") {
+    if ((tab === "Pour toi" || tab === "Découvrir") && page === 0) {
       const audienceCountry = profile?.country_code || "BJ";
       const campaignNow = new Date().toISOString();
       const { data: campaigns } = await db()!.from("ad_campaigns")
@@ -655,10 +661,16 @@ export default function HomePage() {
         const targetIsBlocked = campaign.target_profile_id && blockedUserIds.includes(campaign.target_profile_id);
         return countryMatches && !ownerIsBlocked && !targetIsBlocked;
       }));
+      setFeedLoadingMore(false);
     } else {
-      setVideos(organic);
-      setSponsoredPromos([]);
+      setSponsoredPromos(page === 0 ? [] : sponsoredPromos);
+      setVideos(current => {
+        if (page === 0) return organic;
+        const existing = new Set(current.map(item => item.id));
+        return [...current, ...organic.filter(item => !existing.has(item.id))];
+      });
     }
+    if (page > 0) setFeedLoadingMore(false);
   }, [tab, session?.user?.id, profile?.country_code, profile?.interest_tags, blockedUserIds]);
 
   const loadFollowStats = useCallback(async (userId: string) => {
@@ -2086,6 +2098,7 @@ export default function HomePage() {
               <div className="feed-toolbar"><div><div className="section-kicker">LE FLUX ZAVO</div><h2>{tab === "Découvrir" ? "Découvrir" : tab === "Abonnements" ? "Tes abonnements" : tab === "Enregistrés" ? "Vidéos enregistrées" : tab === "Shorts" ? "Shorts" : tab === "Vidéos" ? "Vidéos" : tab === "Posts" ? "Posts" : "Pour toi"}</h2></div><div className="feed-tabs">{["Pour toi","Shorts","Vidéos","Posts","Abonnements","Découvrir","Enregistrés"].map((x: string) => <button key={x} className={tab === x ? "selected" : ""} onClick={() => setTab(x)}>{x}</button>)}</div></div>
               {tab === "Découvrir" && <div className="discover-category-strip" aria-label="Filtrer par centre d’intérêt">{["Tout", ...INTERESTS].map((category) => <button type="button" key={category} className={discoverCategory === category ? "active" : ""} onClick={() => setDiscoverCategory(category)}>{category}</button>)}</div>}
               {feedVideos.length ? <div className={(tab==="Shorts"?"video-grid shorts-video-grid":tab==="Pour toi"?"video-grid home-feed-grid":"video-grid")}>{feedVideos.map((v,index)=><Fragment key={v.id}>{tab==="Pour toi"&&(index===0||feedVideos[index-1].content_type!==v.content_type)&&<div className="feed-group-heading">{v.content_type==="short"?"Shorts":v.content_type==="photo"?"Posts":"Vidéos"}</div>}<VideoCard video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onOpenProfile={openPublicProfile} onRepost={repostVideo} onWatchTime={recordWatchTime} onComplete={recordVideoCompletion} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x:Video)=>{setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");setCampaignDescription("");setCampaignTargetUrl("");setCampaignProductPrice("");setCampaignProductContact("");setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent}/></Fragment>)}</div> : <section className="empty-state"><div className="empty-icon"><Play/></div><h3>{tab === "Abonnements" ? "Tu ne suis pas encore de créateur" : "Le fil commence ici."}</h3><p>Les vidéos publiques apparaîtront ici. Crée un compte pour publier, suivre et interagir avec les créateurs.</p><button className="primary-action" onClick={() => {if(session){setTab("Découvrir");}else setAuthMode("signup");}}>Rejoindre ZAVO</button></section>}
+              {feedHasMore && <div className="feed-load-more"><button className="secondary-action" disabled={feedLoadingMore} onClick={()=>void loadVideos(feedPage+1)}>{feedLoadingMore ? "Chargement…" : "Charger plus de contenus"}</button></div>}
               {sponsoredPromos.map(campaign=><SponsoredPromoCard key={campaign.id} campaign={campaign} currentUserId={session?.user?.id} following={following} onFollow={toggleFollow} onCampaignEvent={trackCampaignEvent}/>) }
             </>
           )}
