@@ -241,6 +241,7 @@ export default function HomePage() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [watchVideo, setWatchVideo] = useState<Video | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [discoverCategory, setDiscoverCategory] = useState("Tout");
   const [videos, setVideos] = useState<Video[]>([]);
   const [session, setSession] = useState<any>(null);
@@ -678,7 +679,7 @@ export default function HomePage() {
         });
       } else {
         setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
-        setNotifications([]); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
+        setNotifications([]); setUnreadNotificationCount(0); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
         setBlockedUserIds([]); setMyBlockedUserIds([]); setBlockedProfiles([]);
         setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
         setProfileOpen(false); setUploadOpen(false); setCampaignOpen(false); setLogoutConfirm(false);
@@ -703,7 +704,10 @@ export default function HomePage() {
     const channel = client.channel("zavo-notifications-" + userId)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "recipient_id=eq." + userId }, (payload) => {
         const incoming = payload.new as any;
-        if (incoming.kind !== "message") setNotifications((current) => [incoming, ...current.filter((item:any) => item.id !== incoming.id)].slice(0, 50));
+        if (incoming.kind !== "message") {
+          setNotifications((current) => [incoming, ...current.filter((item:any) => item.id !== incoming.id)].slice(0, 50));
+          if (!incoming.read_at) setUnreadNotificationCount((current) => current + 1);
+        }
       })
       .subscribe();
     return () => { client.removeChannel(channel); };
@@ -711,6 +715,12 @@ export default function HomePage() {
   useEffect(() => {
     if (tab !== "Messages" || !session?.user?.id) return;
     loadConversations();
+  }, [tab, session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    if (tab === "Notifications") void markAllNotificationsRead();
+    if (tab === "Messages") void markAllMessagesRead();
   }, [tab, session?.user?.id]);
 
   useEffect(() => {
@@ -854,6 +864,20 @@ export default function HomePage() {
     setUnreadMessageCount(count || 0);
   }
 
+  async function markAllMessagesRead() {
+    if (!db() || !session?.user?.id) return;
+    const readAt = new Date().toISOString();
+    setUnreadMessageCount(0);
+    const { error } = await db()!.from("messages").update({ read_at: readAt })
+      .neq("sender_id", session.user.id).is("read_at", null);
+    if (error) {
+      setNotice("Impossible de marquer les messages reçus comme lus : " + error.message);
+      await loadUnreadMessageCount();
+      return;
+    }
+    await Promise.all([loadUnreadMessageCount(), loadConversations()]);
+  }
+
   async function searchPeople() {
     if (!db() || !session || dmSearch.trim().length < 2) { setDmUsers([]); return; }
     const term = dmSearch.trim().replace(/[,%]/g, "");
@@ -993,9 +1017,14 @@ export default function HomePage() {
 
   async function loadNotifications() {
     if (!db() || !session) return;
-    const { data, error } = await db()!.from("notifications").select("*").eq("recipient_id", session.user.id).neq("kind", "message").order("created_at", { ascending: false }).limit(50);
+    const [{ data, error }, { count, error: countError }] = await Promise.all([
+      db()!.from("notifications").select("*").eq("recipient_id", session.user.id).neq("kind", "message").order("created_at", { ascending: false }).limit(50),
+      db()!.from("notifications").select("id", { count: "exact", head: true }).eq("recipient_id", session.user.id).neq("kind", "message").is("read_at", null)
+    ]);
     if (error) { setNotice("Impossible de charger les notifications : " + error.message); return; }
     setNotifications(data || []);
+    if (!countError) setUnreadNotificationCount(count || 0);
+    if (tab === "Notifications" && (count || 0) > 0) void markAllNotificationsRead();
   }
 
   async function markNotificationRead(notificationId: string) {
@@ -1004,14 +1033,19 @@ export default function HomePage() {
     const { error } = await db()!.from("notifications").update({ read_at: readAt }).eq("id", notificationId).eq("recipient_id", session.user.id).is("read_at", null);
     if (error) { setNotice("Impossible de marquer cette notification comme lue : " + error.message); return; }
     setNotifications((items) => items.map((item:any) => item.id === notificationId ? { ...item, read_at: item.read_at || readAt } : item));
+    setUnreadNotificationCount((current) => Math.max(0, current - 1));
   }
 
   async function markAllNotificationsRead() {
     if (!db() || !session) return;
     const readAt = new Date().toISOString();
-    const { error } = await db()!.from("notifications").update({ read_at: readAt }).eq("recipient_id", session.user.id).neq("kind", "message").is("read_at", null);
-    if (error) { setNotice("Impossible de mettre les notifications à jour : " + error.message); return; }
+    setUnreadNotificationCount(0);
     setNotifications((items) => items.map((item:any) => ({ ...item, read_at: item.read_at || readAt })));
+    const { error } = await db()!.from("notifications").update({ read_at: readAt }).eq("recipient_id", session.user.id).neq("kind", "message").is("read_at", null);
+    if (error) {
+      setNotice("Impossible de mettre les notifications à jour : " + error.message);
+      await loadNotifications();
+    }
   }
 
   async function handleNotificationClick(item: any) {
@@ -1058,7 +1092,7 @@ export default function HomePage() {
     if (error) { setNotice("La déconnexion a échoué : " + error.message); return; }
     setSession(null);
     setProfile(null); setDisplayName(""); setBio(""); setLiked([]); setSaved([]); setFollowing([]);
-    setNotifications([]); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
+    setNotifications([]); setUnreadNotificationCount(0); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
     setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
     setProfileOpen(false); setUploadOpen(false); setCampaignOpen(false); setLogoutConfirm(false);
     setAuthMode(null); setPassword(""); setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("");
@@ -1796,7 +1830,7 @@ export default function HomePage() {
       <aside className="sidebar">
         <a className="brand-lockup" href="/"><img src="/icons/zavo-192.png" alt="Logo ZAVO"/><span>ZAVO</span></a>
         <div className="brand-caption">REGARDE · CRÉE · PARTAGE</div>
-        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === (item as any).value || tab === item.label ? "nav-link active" : "nav-link"} onClick={() => { if(item.label === "Studio" && !session){setAuthMode("signin");return;} if(item.label === "Téléchargements"){setTab("Téléchargements");return;} setTab((item as any).value || item.label); }}><Icon size={19}/><span>{item.label}</span>{item.label==="Messages"&&unreadMessageCount>0&&<b className="nav-unread-badge">{unreadMessageCount>99?"99+":unreadMessageCount}</b>}</button>; })}</nav>
+        <nav className="side-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.label} className={tab === (item as any).value || tab === item.label ? "nav-link active" : "nav-link"} onClick={() => { if(item.label === "Studio" && !session){setAuthMode("signin");return;} if(item.label === "Téléchargements"){setTab("Téléchargements");return;} setTab((item as any).value || item.label); }}><Icon size={19}/><span>{item.label}</span>{item.label==="Messages"&&unreadMessageCount>0&&<b className="nav-unread-badge">{unreadMessageCount>99?"99+":unreadMessageCount}</b>}{item.label==="Notifications"&&unreadNotificationCount>0&&<b className="nav-unread-badge">{unreadNotificationCount>99?"99+":unreadNotificationCount}</b>}</button>; })}</nav>
         {isAdmin && <button className="nav-link" onClick={() => setTab("Administration")}><ShieldCheck size={18}/> Administration</button>}
         <div className="sidebar-bottom"><div className="live-indicator"><span/> ZAVO est ouvert à tous</div><p>Une plateforme. Toutes les voix.</p></div>
       </aside>
@@ -1807,7 +1841,7 @@ export default function HomePage() {
           <div className="top-search-wrap"><button type="button" className="top-icon search-trigger" aria-label="Rechercher" aria-expanded={searchOpen} onClick={()=>{setSearchOpen(value=>!value);setSearch("");}}><Search size={20}/></button>{searchOpen&&<div className="search-popover"><div className="search-input-row"><Search size={17}/><input autoFocus value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Escape"){setSearchOpen(false);setSearch("");}if(e.key==="Enter")setSearchOpen(false);}} placeholder="Rechercher une vidéo ou un créateur"/><button type="button" onClick={()=>{setSearch("");setSearchOpen(false);}} aria-label="Fermer"><X size={17}/></button></div>{search.trim()&&<div className="search-suggestions">{searchSuggestions.length?searchSuggestions.map(item=><button type="button" key={item.id} onClick={()=>{setWatchVideo(item);setSearchOpen(false);}}><span className="search-suggestion-thumb">{item.thumbnail_url?<img src={item.thumbnail_url} alt=""/>:<Play size={15}/>}</span><span><strong>{(item.caption||"Publication sans titre").slice(0,76)}</strong><small>{creatorOf(item)?.display_name||"Créateur ZAVO"} · {item.content_type==="short"?"Short":item.content_type==="photo"?"Photo":"Vidéo"}</small></span></button>):<p>Aucune suggestion pour « {search} ».</p>}</div>}</div>}</div>
           <div className="top-actions">
             <button className="create-top-button" onClick={()=>{if(session){setTab("Studio");setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={17}/><span>Créer</span></button>
-            <button className="top-icon notification-top-button" aria-label={`Notifications${notifications.some((n:any)=>!n.read_at)?", non lues":""}`} onClick={() => setTab("Notifications")}><Bell size={19}/>{notifications.some((n:any)=>!n.read_at)&&<span className="notification-badge">{notifications.filter((n:any)=>!n.read_at).length>99?"99+":notifications.filter((n:any)=>!n.read_at).length}</span>}</button>
+            <button className="top-icon notification-top-button" aria-label={`Notifications${unreadNotificationCount>0?", non lues":""}`} onClick={() => setTab("Notifications")}><Bell size={19}/>{unreadNotificationCount>0&&<span className="notification-badge">{unreadNotificationCount>99?"99+":unreadNotificationCount}</span>}</button>
             <div className="top-overflow-wrap">
               <button type="button" className="top-icon overflow-trigger" aria-label="Ouvrir les onglets supplémentaires" aria-expanded={moreMenuOpen} onClick={()=>setMoreMenuOpen(value=>!value)}><MoreHorizontal size={20}/></button>
               {moreMenuOpen && <nav className="top-overflow-menu" aria-label="Onglets supplémentaires">
@@ -1964,7 +1998,7 @@ export default function HomePage() {
           ) : tab === "Studio" ? (
             session?.user?.id ? <CreatorStudio key={session.user.id} userId={session.user.id} onNotice={setNotice} onCreate={()=>setUploadOpen(true)}/> : <section className="empty-state"><div className="empty-icon"><BarChart3/></div><h3>Ton espace créateur t’attend</h3><p>Connecte-toi pour consulter tes statistiques et gérer tes vidéos.</p><button className="primary-action" onClick={()=>setAuthMode("signin")}>Se connecter</button></section>
           ) : tab === "Notifications" ? (
-            <section className="notifications-page"><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2><span className="notifications-read-note">{notifications.filter((n:any)=>!n.read_at).length} non lue(s)</span></div>{notifications.some((n:any)=>!n.read_at)&&<button className="secondary-action" onClick={markAllNotificationsRead}>Tout marquer comme lu</button>}</div>{notifications.length ? notifications.map((n:any) => <button type="button" className={"notification-row "+(n.read_at?"notification-read":"notification-unread")} key={n.id} onClick={()=>handleNotificationClick(n)}><span className="notification-indicator"/><span className="notification-content"><strong>{n.title}</strong><span className="notification-body">{n.body}</span><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></span></button>) : <div className="creator-empty-videos"><Bell size={30}/><strong>Aucune notification pour le moment</strong><span>Les nouvelles activités de ta communauté apparaîtront ici.</span></div>}</section>
+            <section className="notifications-page"><div className="feed-toolbar"><div><div className="section-kicker">TON ACTIVITÉ</div><h2>Notifications</h2><span className="notifications-read-note">{unreadNotificationCount} non lue(s)</span></div>{notifications.some((n:any)=>!n.read_at)&&<button className="secondary-action" onClick={markAllNotificationsRead}>Tout marquer comme lu</button>}</div>{notifications.length ? notifications.map((n:any) => <button type="button" className={"notification-row "+(n.read_at?"notification-read":"notification-unread")} key={n.id} onClick={()=>handleNotificationClick(n)}><span className="notification-indicator"/><span className="notification-content"><strong>{n.title}</strong><span className="notification-body">{n.body}</span><small>{new Date(n.created_at).toLocaleString("fr-FR")}</small></span></button>) : <div className="creator-empty-videos"><Bell size={30}/><strong>Aucune notification pour le moment</strong><span>Les nouvelles activités de ta communauté apparaîtront ici.</span></div>}</section>
           ) : tab === "Profil" ? (
             <section className="profile-page">
               <div className="profile-banner" style={profile?.banner_url?{backgroundImage:"url("+profile.banner_url+")"}:undefined}><span>{profile?.banner_url ? "" : "BANNIÈRE ZAVO"}</span></div>
