@@ -575,18 +575,22 @@ export default function HomePage() {
       let affinityCategories = new Map<string, number>();
       let followedCreators = new Set<string>();
       if (userId) {
-        const [likeRows, savedRows, followRows, watchRows] = await Promise.all([
+        const [likeRows, savedRows, repostRows, followRows, watchRows] = await Promise.all([
           db()!.from("likes").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
           db()!.from("saved_videos").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
+          db()!.from("reposts").select("video_id").eq("user_id", userId).order("created_at", { ascending: false }).limit(60),
           db()!.from("follows").select("following_id").eq("follower_id", userId),
-          db()!.from("video_watch_sessions").select("video_id,watch_seconds").eq("viewer_id", userId).order("created_at", { ascending: false }).limit(120)
+          db()!.from("video_watch_sessions").select("video_id,watch_seconds,created_at").eq("viewer_id", userId).order("created_at", { ascending: false }).limit(160)
         ]);
         followedCreators = new Set((followRows.data || []).map((row: any) => row.following_id));
         const likedIds = (likeRows.data || []).map((row: any) => row.video_id);
         const savedIds = (savedRows.data || []).map((row: any) => row.video_id);
+        const repostedIds = (repostRows.data || []).map((row: any) => row.video_id);
+        const recentlyWatchedIds = new Set((watchRows.data || []).filter((row:any)=>Number(row.watch_seconds||0)>=3&&Date.now()-new Date(row.created_at).getTime()<7*86400000).map((row:any)=>row.video_id));
         const weights = new Map<string, number>();
         likedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 3));
         savedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 2));
+        repostedIds.forEach((id: string) => weights.set(id, (weights.get(id) || 0) + 2.5));
         (watchRows.data || []).forEach((row: any) => {
           const seconds = Math.max(0, Number(row.watch_seconds || 0));
           if (seconds >= 2) weights.set(row.video_id, (weights.get(row.video_id) || 0) + Math.min(8, 1 + seconds / 8));
@@ -618,11 +622,13 @@ export default function HomePage() {
         const followedBonus = followedCreators.has(video.user_id) ? 2.5 : 0;
         const likeCount = Number(video.likes?.[0]?.count || 0);
         const commentCount = Number(video.comments?.[0]?.count || 0);
+        const repostCount = Number(video.reposts?.[0]?.count || 0);
         const views = Number(video.views_count || 0);
-        const engagement = Math.log1p(likeCount * 2 + commentCount * 3) * 0.8 + Math.log1p(views) * 0.18;
+        const engagement = Math.log1p(likeCount * 2 + commentCount * 3 + repostCount * 2.5) * 0.8 + Math.log1p(views) * 0.18;
+        const repeatExposurePenalty = userId && recentlyWatchedIds.has(video.id) ? 1.15 : 0;
         const ageHours = Math.max(0, (now - new Date(video.created_at).getTime()) / 3600000);
         const freshness = Math.exp(-ageHours / 168) * 1.4;
-        return explicitMatches * 5 + learnedAffinity * 1.6 + categoryAffinity * 1.1 + followedBonus + engagement + freshness;
+        return explicitMatches * 5 + learnedAffinity * 1.6 + categoryAffinity * 1.1 + followedBonus + engagement + freshness - repeatExposurePenalty;
       };
       const ranked = [...organic].map((video: any) => ({ video, score: scoreVideo(video) }))
         .sort((a, b) => b.score - a.score);
