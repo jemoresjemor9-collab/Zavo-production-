@@ -1040,15 +1040,15 @@ export default function HomePage() {
 
   async function sendDirectMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!session || !activeConversation) return;
-    let fileToSend = dmFile;
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      fileToSend = await finishVoiceRecording();
-    }
-    if (!dmText.trim() && !fileToSend) return;
+    if (!session || !activeConversation || dmBusy) return;
     setDmBusy(true);
     let uploadedPath: string | null = null;
     try {
+      let fileToSend = dmFile;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        fileToSend = await finishVoiceRecording();
+      }
+      if (!dmText.trim() && !fileToSend) return;
       let mediaUrl: string | null = null;
       let messageType: "text"|"image"|"video"|"audio" = "text";
       let mimeType: string | null = null;
