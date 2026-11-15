@@ -16,6 +16,7 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
   const [communities,setCommunities]=useState<Community[]>([]);
   const [memberships,setMemberships]=useState<string[]>([]);
   const [challenges,setChallenges]=useState<Challenge[]>([]);
+  const [challengeEntries,setChallengeEntries]=useState<any[]>([]);
   const [series,setSeries]=useState<Series[]>([]);
   const [ownVideos,setOwnVideos]=useState<any[]>([]);
   const [selectedCommunity,setSelectedCommunity]=useState<Community|null>(null);
@@ -49,13 +50,14 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
   const load=useCallback(async(spinner=true)=>{
     if(!supabase){setLoading(false);return;}
     if(spinner)setLoading(true);else setRefreshing(true);
-    const [publicResult,challengeResult,seriesResult,memberResult,videoResult,ownedPrivateResult]=await Promise.all([
+    const [publicResult,challengeResult,seriesResult,memberResult,videoResult,ownedPrivateResult,challengeEntryResult]=await Promise.all([
       supabase.from("zavo_communities").select("id,owner_id,name,slug,description,visibility,created_at").eq("visibility","public").order("created_at",{ascending:false}).limit(60),
       supabase.from("zavo_challenges").select("id,creator_id,title,description,hashtag,starts_at,ends_at,status,entries:zavo_challenge_entries(count)").order("created_at",{ascending:false}).limit(60),
       supabase.from("zavo_series").select("id,creator_id,title,description,cover_url,is_public,created_at,episodes:zavo_series_episodes(count)").eq("is_public",true).order("created_at",{ascending:false}).limit(60),
       userId?supabase.from("zavo_community_members").select("community_id").eq("user_id",userId):Promise.resolve({data:[],error:null} as any),
       userId?supabase.from("videos").select("id,caption,content_type,thumbnail_url,created_at").eq("user_id",userId).in("content_type",["short","video"]).order("created_at",{ascending:false}).limit(100):Promise.resolve({data:[],error:null} as any),
-      userId?supabase.from("zavo_communities").select("id,owner_id,name,slug,description,visibility,created_at").eq("owner_id",userId).eq("visibility","private"):Promise.resolve({data:[],error:null} as any)
+      userId?supabase.from("zavo_communities").select("id,owner_id,name,slug,description,visibility,created_at").eq("owner_id",userId).eq("visibility","private"):Promise.resolve({data:[],error:null} as any),
+      supabase.from("zavo_challenge_entries").select("id,challenge_id,user_id,video_id,created_at,video:videos!zavo_challenge_entries_video_id_fkey(id,caption,thumbnail_url,views_count,profiles:profiles!videos_user_id_fkey(username,display_name,avatar_url))").order("created_at",{ascending:false}).limit(1000)
     ]);
     const memberIds=(memberResult.data||[]).map((x:any)=>x.community_id);
     let joinedPrivate:Community[]=[];
@@ -68,6 +70,7 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
     setCommunities([...communityMap.values()].sort((a,b)=>b.created_at.localeCompare(a.created_at)));
     setMemberships(memberIds);
     setChallenges((challengeResult.data||[]) as Challenge[]);
+    setChallengeEntries(challengeEntryResult.data||[]);
     setSeries((seriesResult.data||[]) as Series[]);
     setOwnVideos(videoResult.data||[]);
     if(publicResult.error||challengeResult.error||seriesResult.error)onNotice("Certaines données communautaires n’ont pas pu être chargées. Actualise dans un instant.");
@@ -199,7 +202,7 @@ export default function CommunityHub({userId,onNotice,onLogin}:{userId:string|nu
     </div>}
     {tab==="challenges"&&<div className="community-section">
       <div className="community-toolbar"><div><h2>Les défis ZAVO</h2><p>Participe avec une vidéo originale et partage-la avec le hashtag du défi.</p></div><button onClick={()=>userId?setShowChallengeForm(true):onLogin()}><Plus size={16}/> Lancer un défi</button></div>
-      <div className="community-grid">{challenges.map(ch=><article className="community-card challenge-card" key={ch.id}><div className="community-card-icon challenge"><Trophy/></div><span className="community-eyebrow">{ch.status==="paused"?"EN PAUSE":new Date(ch.ends_at)<new Date()?"TERMINÉ":new Date(ch.starts_at)>new Date()?"À VENIR":ch.status==="active"?"EN COURS":"TERMINÉ"}</span><h3>{ch.title}</h3><p>{ch.description||"Relève le défi et publie ta participation sur ZAVO."}</p><strong className="community-hashtag"><Hash size={14}/>{ch.hashtag}</strong><div className="community-card-footer"><span>{ch.entries?.[0]?.count||0} participation(s)</span><button disabled={ch.status!=="active"||new Date(ch.ends_at)<new Date()||new Date(ch.starts_at)>new Date()} onClick={()=>{if(!userId){onLogin();return;}setEntryChallenge(ch);}}>Participer</button></div><small className="community-date"><CalendarDays size={13}/> Jusqu’au {new Date(ch.ends_at).toLocaleDateString("fr-FR")}</small></article>)}</div>
+      <div className="community-grid">{challenges.map(ch=><article className="community-card challenge-card" key={ch.id}><div className="community-card-icon challenge"><Trophy/></div><span className="community-eyebrow">{ch.status==="paused"?"EN PAUSE":new Date(ch.ends_at)<new Date()?"TERMINÉ":new Date(ch.starts_at)>new Date()?"À VENIR":ch.status==="active"?"EN COURS":"TERMINÉ"}</span><h3>{ch.title}</h3><p>{ch.description||"Relève le défi et publie ta participation sur ZAVO."}</p><strong className="community-hashtag"><Hash size={14}/>{ch.hashtag}</strong><div className="community-card-footer"><span>{ch.entries?.[0]?.count||0} participation(s)</span><button disabled={ch.status!=="active"||new Date(ch.ends_at)<new Date()||new Date(ch.starts_at)>new Date()} onClick={()=>{if(!userId){onLogin();return;}setEntryChallenge(ch);}}>Participer</button></div><small className="community-date"><CalendarDays size={13}/> Jusqu’au {new Date(ch.ends_at).toLocaleDateString("fr-FR")}</small>{challengeEntries.filter((entry:any)=>entry.challenge_id===ch.id).sort((a:any,b:any)=>Number(b.video?.views_count||0)-Number(a.video?.views_count||0)).slice(0,3).length>0&&<div className="challenge-leaderboard"><strong>Classement provisoire · par vues</strong>{challengeEntries.filter((entry:any)=>entry.challenge_id===ch.id).sort((a:any,b:any)=>Number(b.video?.views_count||0)-Number(a.video?.views_count||0)).slice(0,3).map((entry:any,index:number)=><div key={entry.id}><span>{index+1}</span>{entry.video?.thumbnail_url&&<img src={entry.video.thumbnail_url} alt=""/>}<b>{entry.video?.profiles?.display_name||entry.video?.profiles?.username||"Participant"}</b><small>{Number(entry.video?.views_count||0).toLocaleString("fr-FR")} vues</small></div>)}</div>}</article>)}</div>
       {!challenges.length&&<div className="community-empty"><Trophy/><strong>Aucun défi pour le moment</strong><span>Crée le premier défi et invite les autres à participer.</span></div>}
     </div>}
     {tab==="series"&&<div className="community-section">
