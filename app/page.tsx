@@ -1649,7 +1649,7 @@ export default function HomePage() {
     if (!/^[a-z0-9_]{3,24}$/.test(cleanUsername)) { setNotice("Identifiant invalide : 3 à 24 caractères, lettres, chiffres et _."); return; }
     const identityChanged = cleanUsername !== (profile?.username || "") || displayName.trim() !== (profile?.display_name || "");
     const rawWebsite = websiteUrl.trim();
-    const normalizedWebsite = rawWebsite ? safeUrl(/^https?:\\/\\//i.test(rawWebsite) ? rawWebsite : "https://" + rawWebsite) : null;
+    const normalizedWebsite = rawWebsite ? safeUrl(/^https?:\/\//i.test(rawWebsite) ? rawWebsite : "https://" + rawWebsite) : null;
     if (rawWebsite && !normalizedWebsite) { setNotice("Adresse du site invalide. Utilise un lien de type https://exemple.com."); return; }
     const cleanInterests = [...new Set(profileInterests.split(",").map(tag=>tag.trim().replace(/^#/,"").slice(0,32)).filter(Boolean))].slice(0,10);
     if (identityChanged && profile?.identity_changed_at && Date.now() - new Date(profile.identity_changed_at).getTime() < 14 * 24 * 60 * 60 * 1000) {
