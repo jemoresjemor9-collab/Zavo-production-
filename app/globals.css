@@ -1566,3 +1566,59 @@ body{color:#d7eaff!important}
 .community-comment-form input{flex:1;min-width:0;padding:9px 11px;border:1px solid #33465b;border-radius:8px;background:#0a1119;color:#f2f6fb;font-size:11px}
 .community-comment-form button{width:36px;display:grid;place-items:center;border:0;border-radius:8px;background:#277bd1;color:#fff}
 .community-comment-form button:disabled{opacity:.45;cursor:not-allowed}
+
+
+/* ZAVO personal library: playlists and watch history */
+.library-collection-tabs{display:flex;gap:8px;margin:20px 0 14px;padding:5px;border:1px solid #d9e4ef;border-radius:12px;background:#f5f8fc}
+.library-collection-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;padding:11px;border:1px solid transparent;border-radius:8px;background:transparent;color:#63768c;font-size:12px;font-weight:800}
+.library-collection-tabs button.active{border-color:#c9ddf3;background:#e7f1ff;color:#145eb6}
+.library-collection-panel{padding:17px;border:1px solid #dce6f0;border-radius:13px;background:#fff}
+.library-collection-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
+.library-collection-heading h2{margin:5px 0;color:#172b45;font:800 18px 'Manrope'}
+.library-collection-heading p{margin:0;color:#718198;font-size:11px;line-height:1.5}
+.library-collection-heading>div{min-width:0}
+.library-create-button,.library-playlist-add button{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 12px;border:1px solid #176bd1;border-radius:8px;background:#176bd1;color:#fff;font-size:11px;font-weight:800;white-space:nowrap}
+.library-playlist-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.library-playlist-card{min-width:0;padding:12px;border:1px solid #e0e9f2;border-radius:11px;background:#fbfdff}
+.library-playlist-open{display:grid;width:100%;gap:7px;text-align:left;border:0;background:transparent}
+.library-playlist-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:#e8f1ff;color:#176bd1}
+.library-playlist-open strong{color:#1b3049;font-size:13px;overflow-wrap:anywhere}
+.library-playlist-open small{color:#718198;font-size:10px}
+.library-playlist-open>span:last-child{color:#8a98a9;font-size:10px;line-height:1.5}
+.library-playlist-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:11px;padding-top:9px;border-top:1px solid #e6edf5}
+.library-playlist-actions button,.library-icon-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:7px;border:1px solid #dce6f0;border-radius:7px;background:#fff;color:#5b6f86;font-size:10px}
+.library-playlist-actions button:last-child,.library-icon-button{color:#bd4352}
+.library-history-list{display:grid;gap:8px}
+.library-history-row{display:flex;align-items:center;gap:9px;min-width:0;padding:9px;border:1px solid #e4ebf3;border-radius:9px;background:#fff}
+.library-history-open{display:flex;align-items:center;gap:11px;flex:1;min-width:0;text-align:left;border:0;background:transparent}
+.library-history-open>img,.library-history-placeholder{width:90px;height:58px;flex:0 0 90px;object-fit:cover;border-radius:7px;background:#e8f1ff}
+.library-history-placeholder{display:grid;place-items:center;color:#176bd1}
+.library-history-copy{display:grid;gap:4px;min-width:0}
+.library-history-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1b3049;font-size:11px}
+.library-history-copy small{color:#8290a2;font-size:9px;line-height:1.4}
+.library-icon-button{width:33px;height:33px;flex:0 0 33px}
+.library-danger-link,.library-back-link{border:0;background:transparent;color:#176bd1;font-size:11px;font-weight:800}
+.library-back-link{display:block;margin-bottom:6px}
+.library-playlist-add{display:flex;gap:8px;margin:14px 0;padding:10px;border:1px solid #e0e9f2;border-radius:10px;background:#f7faff}
+.library-playlist-add select,.library-modal input,.library-modal select,.library-modal textarea{width:100%;min-width:0;padding:10px;border:1px solid #d5e0ed;border-radius:8px;background:#fff;color:#172b45;font:inherit;font-size:11px}
+.library-playlist-add select{flex:1}
+.library-empty{display:flex;min-height:150px;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;border:1px dashed #cbd9e8;border-radius:11px;color:#8796a8;text-align:center}
+.library-empty svg{color:#176bd1}
+.library-empty strong{color:#304b68;font-size:13px}
+.library-empty span{max-width:420px;font-size:10px;line-height:1.5}
+.library-modal-backdrop{position:fixed;z-index:170;inset:0;display:grid;place-items:center;padding:16px;background:#0c1d33a8}
+.library-modal{width:min(100%,460px);padding:19px;border:1px solid #cbd9e8;border-radius:14px;background:#fff;box-shadow:0 22px 70px #081a30aa}
+.library-modal header{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+.library-modal h2{margin:0;color:#172b45;font:850 18px 'Manrope'}
+.library-modal header button{display:grid;place-items:center;width:32px;height:32px;border:1px solid #d8e3ef;border-radius:8px;background:#f5f8fc;color:#40556e}
+.library-modal label{display:grid;gap:6px;margin:12px 0;color:#354a62;font-size:11px;font-weight:800}
+.library-modal textarea{resize:vertical}
+.library-modal footer{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.library-modal footer button{padding:9px 13px;border:1px solid #d5e0ed;border-radius:8px;background:#f5f8fc;color:#40556e;font-size:11px;font-weight:800}
+.library-modal footer button:last-child{border-color:#176bd1;background:#176bd1;color:#fff}
+.library-modal footer button:disabled{opacity:.5}
+.challenge-vote-row{display:flex;align-items:center;gap:7px;min-width:0}
+.challenge-vote-row button{flex:0 0 auto;padding:5px 8px;border:1px solid #2e6ca8;border-radius:7px;background:#132c43;color:#cfe5fb;font-size:9px;font-weight:800}
+.challenge-vote-row button.voted{border-color:#188c60;background:#123d31;color:#a7f0ce}
+.challenge-vote-row button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:620px){.library-playlist-grid{grid-template-columns:1fr}.library-collection-panel{padding:12px}.library-collection-heading{align-items:flex-start;flex-direction:column}.library-create-button{width:100%}.library-playlist-add{align-items:stretch;flex-direction:column}.library-playlist-add button{width:100%}.library-history-open>img,.library-history-placeholder{width:74px;height:52px;flex-basis:74px}.challenge-vote-row{flex-wrap:wrap}.challenge-vote-row b{flex:1 1 90px}}
