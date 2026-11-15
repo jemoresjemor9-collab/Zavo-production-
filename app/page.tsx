@@ -2304,7 +2304,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               <button type="button" className={liked.includes(video.id)?"liked":""} onClick={()=>onLike(video)}><Heart size={17}/> {video.likes?.[0]?.count||0}</button>
               <button type="button" onClick={()=>onComments(video)}><MessageSquare size={17}/> {video.comments?.[0]?.count||0} commentaires</button>
               <button type="button" className={saved.includes(video.id)?"liked":""} onClick={()=>onSave(video)}><Bookmark size={17}/> {saved.includes(video.id)?"Enregistré":"Favori"}</button>
-              {(video.show_stats||session?.user?.id===video.user_id)&&<span className="watch-view-count"><Eye size={16}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>
+              {(video.show_stats||session?.user?.id===video.user_id)&&<span className="watch-view-count"><Eye size={16}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>}
               {(video.allow_offline_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,true)}><Download size={17}/> Enregistrer</button>}
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)}><Download size={17}/> Télécharger</button>}
               <button type="button" onClick={()=>onShare(video)}><Share2 size={17}/> Partager</button>
