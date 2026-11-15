@@ -2422,7 +2422,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)}><Download size={17}/> Télécharger</button>}
               <button type="button" onClick={()=>onShare(video)}><Share2 size={17}/> Partager</button>
             </div>
-          </div>
+          </div>}
           {!isShort&&(video.show_stats||owner)&&<div className="video-stats video-stats-detailed watch-detailed-stats"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
           <p className="watch-description">{video.caption||"Découvre cette publication sur ZAVO."}</p>
           {video.target_url&&<a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer">Ouvrir le lien associé <ExternalLink size={13}/></a>}
