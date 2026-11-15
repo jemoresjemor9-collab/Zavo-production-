@@ -1180,3 +1180,15 @@ body{color:#d7eaff!important}
 .creator-avatar img{display:block;width:100%;height:100%;border-radius:inherit;object-fit:cover}
 .is-short-viewer .watch-creator{display:flex!important;visibility:visible!important}
 .is-short-viewer .short-follow-cta{display:inline-flex;align-items:center;justify-content:center;visibility:visible!important}
+
+
+.studio-framing-note{
+  margin:10px 0 14px;
+  padding:10px 12px;
+  border:1px solid rgba(37,133,237,.24);
+  border-radius:9px;
+  background:rgba(37,133,237,.08);
+  color:var(--muted,#60758c);
+  font-size:12px;
+  line-height:1.5;
+}
