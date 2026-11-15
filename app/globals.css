@@ -1492,3 +1492,19 @@ body{color:#d7eaff!important}
 .community-modal>footer button:last-child{border-color:#176bd1;background:#176bd1;color:#fff}
 .community-modal>footer button:disabled{opacity:.5}
 @media(max-width:700px){.community-hero{align-items:flex-start;flex-direction:column;padding:19px}.community-hero>button{width:100%}.community-toolbar{align-items:flex-start;flex-direction:column}.community-toolbar>button{width:100%}.community-grid{grid-template-columns:1fr}.community-detail{padding:13px}.community-add-episode{flex-direction:column}.community-date-grid{grid-template-columns:1fr}.community-tabs button{font-size:10px;padding:9px 5px}.mobile-nav{overflow-x:auto;justify-content:flex-start}.mobile-nav button{min-width:52px}.mobile-nav button span{font-size:7px}}
+
+
+/* ZAVO creator profile refinement */
+.profile-identity{min-width:0;flex:1}
+.profile-website{display:inline-flex;align-items:center;gap:5px;margin-top:8px;color:#176bd1;font-size:11px;font-weight:750;overflow-wrap:anywhere}
+.profile-interest-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.profile-interest-tags span{padding:5px 8px;border:1px solid #cfe0f2;border-radius:999px;background:#edf5ff;color:#28577f;font-size:9px;font-weight:750}
+.profile-content-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:25px 0 13px}
+.profile-content-toolbar h2{margin:0 0 5px;font:800 19px 'Manrope';color:#172b45}
+.profile-content-toolbar p{margin:0;color:#718198;font-size:10px}
+.profile-content-filters{display:flex;flex-wrap:wrap;gap:6px;margin:15px 0}
+.profile-content-filters button{padding:8px 11px;border:1px solid #d5e0ed;border-radius:999px;background:#f5f8fc;color:#52677f;font-size:10px;font-weight:800;cursor:pointer}
+.profile-content-filters button.active{border-color:#176bd1;background:#e7f1ff;color:#145eb6}
+.public-profile-filters{margin:13px 0}
+.public-profile-stats{flex-wrap:wrap}
+@media(max-width:680px){.profile-content-toolbar{align-items:flex-start;flex-direction:column}.profile-content-filters{width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}.profile-content-filters button{flex:0 0 auto}.profile-identity{width:calc(100% - 90px)}}
