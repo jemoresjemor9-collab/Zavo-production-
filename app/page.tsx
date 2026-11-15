@@ -1587,8 +1587,9 @@ export default function HomePage() {
   }
 
   async function recordRetentionMilestone(video:Video,playbackSessionId:string,milestone:number){
-    if(!db()||!playbackSessionId||!session?.user?.id)return;
-    const {error}=await db()!.from("zavo_video_retention_events").insert({video_id:video.id,creator_id:video.user_id,viewer_id:session.user.id,visitor_key:null,playback_session_id:playbackSessionId,milestone});
+    if(!db()||!playbackSessionId)return;
+    const userId=session?.user?.id||null;
+    const {error}=await db()!.from("zavo_video_retention_events").insert({video_id:video.id,creator_id:video.user_id,viewer_id:userId,visitor_key:userId?null:visitorKey(),playback_session_id:playbackSessionId,milestone});
     if(error&&error.code!=="23505")console.warn("ZAVO retention milestone:",error.message);
   }
 
