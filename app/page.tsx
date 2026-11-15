@@ -49,7 +49,11 @@ const visitorKey = () => {
   return key;
 };
 function getVideoMime(file: File) {
-  if (file.type && file.type.startsWith("video/")) return file.type;
+  if (file.type && file.type.startsWith("video/")) {
+    const baseType = file.type.split(";")[0].trim().toLowerCase();
+    if (baseType === "video/x-m4v") return "video/mp4";
+    return baseType;
+  }
   const ext = file.name.split(".").pop()?.toLowerCase();
   const types: Record<string, string> = {
     mkv: "video/x-matroska", avi: "video/x-msvideo", wmv: "video/x-ms-wmv",
@@ -131,6 +135,8 @@ async function trimVideoFile(file: File, start: number, end: number, duration: n
   video.preload = "auto"; video.playsInline = true; video.src = sourceUrl;
   try {
     await new Promise<void>((resolve, reject) => { video.onloadedmetadata = () => resolve(); video.onerror = () => reject(new Error("Impossible de lire cette vidéo.")); });
+    const effectiveEnd = Math.min(end, Number.isFinite(video.duration) ? video.duration : end);
+    if (effectiveEnd <= start) throw new Error("La plage de découpage est invalide.");
     video.currentTime = Math.max(0, start);
     await new Promise<void>((resolve, reject) => { video.onseeked = () => resolve(); video.onerror = () => reject(new Error("Impossible de positionner le début de la coupe.")); });
     const stream = video.captureStream();
@@ -142,7 +148,8 @@ async function trimVideoFile(file: File, start: number, end: number, duration: n
       recorder.onerror = () => reject(new Error("Le découpage de la vidéo a échoué."));
       recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || "video/webm" }));
     });
-    video.ontimeupdate = () => { if (video.currentTime >= end && recorder.state !== "inactive") { video.pause(); recorder.stop(); } };
+    video.ontimeupdate = () => { if (video.currentTime >= effectiveEnd && recorder.state !== "inactive") { video.pause(); recorder.stop(); } };
+    video.onended = () => { if (recorder.state !== "inactive") recorder.stop(); };
     recorder.start(250);
     await video.play();
     const blob = await finished;
@@ -1494,7 +1501,7 @@ export default function HomePage() {
       target_url:safeUrl(videoTargetUrl),category:videoCategory,content_type:contentType,
       interest_tags:videoInterestTags,allow_offline_download:contentType === "short" ? false : allowOfflineDownload,
       allow_gallery_download:allowGalleryDownload,show_stats:showStats,
-      display_mode:"contain",display_scale:1,display_x:0,display_y:0,...videoMetadata
+      display_mode:displayMode,display_scale:displayScale,display_x:displayX,display_y:displayY,...videoMetadata
     });
     setBusy(false);
     if(error){
