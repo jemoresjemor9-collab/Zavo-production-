@@ -1622,3 +1622,15 @@ body{color:#d7eaff!important}
 .challenge-vote-row button.voted{border-color:#188c60;background:#123d31;color:#a7f0ce}
 .challenge-vote-row button:disabled{opacity:.55;cursor:not-allowed}
 @media(max-width:620px){.library-playlist-grid{grid-template-columns:1fr}.library-collection-panel{padding:12px}.library-collection-heading{align-items:flex-start;flex-direction:column}.library-create-button{width:100%}.library-playlist-add{align-items:stretch;flex-direction:column}.library-playlist-add button{width:100%}.library-history-open>img,.library-history-placeholder{width:74px;height:52px;flex-basis:74px}.challenge-vote-row{flex-wrap:wrap}.challenge-vote-row b{flex:1 1 90px}}
+
+
+/* ZAVO creator retention funnel */
+.creator-retention-panel{margin:18px 0}
+.creator-retention-note{margin:0 0 15px;color:#718198;font-size:11px;line-height:1.6}
+.creator-retention-funnel{display:grid;gap:13px;padding:6px 0}
+.creator-retention-step{display:grid;gap:6px}
+.creator-retention-step>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#344b64;font-size:11px}
+.creator-retention-step strong{font-weight:850}
+.creator-retention-step span{color:#718198;font-size:10px}
+.creator-retention-track{height:10px;overflow:hidden;border-radius:999px;background:#eaf0f6}
+.creator-retention-track>span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#176bd1,#19a86b);transition:width .25s ease}
