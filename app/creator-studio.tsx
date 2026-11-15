@@ -13,6 +13,7 @@ type CreatorVideo = {
 };
 type ViewEvent = { video_id:string; watch_seconds:number; viewed_on:string };
 type WatchSession = { video_id:string; watch_seconds:number; created_at:string };
+type CompletionEvent = { video_id:string; created_at:string };
 type VideoDraft = { display_mode?:"contain"|"cover"|"custom";display_scale?:number;display_x?:number;display_y?:number;id:string;caption:string;video_url:string;thumbnail_url:string|null;target_url:string|null;category:string|null;content_type:string;duration_seconds:number|null;aspect_ratio:string|null;interest_tags:string[];allow_offline_download:boolean;allow_gallery_download:boolean;show_stats:boolean;created_at:string };
 type DailyPoint = { date:string; views:number };
 const dateKey=(d:Date)=>d.toISOString().slice(0,10);
@@ -25,6 +26,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
   const [videos,setVideos]=useState<CreatorVideo[]>([]);
   const [views,setViews]=useState<ViewEvent[]>([]);
   const [watchSessions,setWatchSessions]=useState<WatchSession[]>([]);
+  const [completionEvents,setCompletionEvents]=useState<CompletionEvent[]>([]);
   const [selectedType,setSelectedType]=useState<"all"|"short"|"video"|"photo">("all");
   const [drafts,setDrafts]=useState<VideoDraft[]>([]);
   const [draftBusy,setDraftBusy]=useState<string|null>(null);
@@ -79,14 +81,20 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       }
     }
     let allWatchSessions:WatchSession[]=[];
+    let allCompletions:CompletionEvent[]=[];
     if(ids.length){
       for(let from=0;from<10000;from+=1000){
         const {data,error}=await supabase.from("video_watch_sessions").select("video_id,watch_seconds,created_at").in("video_id",ids).gte("created_at",since.toISOString()).order("created_at",{ascending:true}).range(from,from+999);
         if(error){onNotice("Le temps de visionnage n’est pas encore accessible : "+error.message);break;}
         const batch=(data||[]) as WatchSession[];allWatchSessions=allWatchSessions.concat(batch);if(batch.length<1000)break;
       }
+      for(let from=0;from<10000;from+=1000){
+        const {data,error}=await supabase.from("video_completion_events").select("video_id,created_at").in("video_id",ids).gte("created_at",since.toISOString()).order("created_at",{ascending:true}).range(from,from+999);
+        if(error){onNotice("Les statistiques de rétention ne sont pas encore accessibles : "+error.message);break;}
+        const batch=(data||[]) as CompletionEvent[];allCompletions=allCompletions.concat(batch);if(batch.length<1000)break;
+      }
     }
-    setVideos(ownVideos);setDrafts((draftResult.data||[]) as VideoDraft[]);setViews(allViews);setWatchSessions(allWatchSessions);setFollowers(followersResult.count||0);
+    setVideos(ownVideos);setDrafts((draftResult.data||[]) as VideoDraft[]);setViews(allViews);setWatchSessions(allWatchSessions);setCompletionEvents(allCompletions);setFollowers(followersResult.count||0);
     setNewFollowers(newFollowersResult.data?.length||0);
     setLoading(false);setRefreshing(false);
   },[userId,period,onNotice]);
@@ -98,16 +106,21 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     const ids=new Set(filteredVideos.map(v=>v.id));
     const filteredViews=views.filter(v=>ids.has(v.video_id));
     const filteredWatch=watchSessions.filter(v=>ids.has(v.video_id));
+    const filteredCompletions=completionEvents.filter(v=>ids.has(v.video_id));
     const watch=filteredWatch.reduce((sum,v)=>sum+Number(v.watch_seconds||0),0);
+    const trackedWatch=filteredViews.reduce((sum,v)=>sum+Number(v.watch_seconds||0),0);
+    const expectedWatch=filteredViews.reduce((sum,v)=>sum+Math.max(0,Number(filteredVideos.find(x=>x.id===v.video_id)?.duration_seconds||0)),0);
+    const retentionRate=expectedWatch>0?Math.min(100,trackedWatch/expectedWatch*100):0;
+    const completionRate=filteredViews.length?Math.min(100,filteredCompletions.length/filteredViews.length*100):0;
     const likes=filteredVideos.reduce((sum,v)=>sum+(v.likes?.[0]?.count||0),0);
     const comments=filteredVideos.reduce((sum,v)=>sum+(v.comments?.[0]?.count||0),0);
     const reposts=filteredVideos.reduce((sum,v)=>sum+(v.reposts?.[0]?.count||0),0);
     const lifetimeViews=filteredVideos.reduce((sum,v)=>sum+Number(v.views_count||0),0);
     const days:DailyPoint[]=[];
     for(let i=period-1;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const key=dateKey(d);days.push({date:key,views:filteredViews.filter(v=>v.viewed_on===key).length});}
-    const videoStats=filteredVideos.map(v=>{const rows=filteredViews.filter(x=>x.video_id===v.id);const watchRows=filteredWatch.filter(x=>x.video_id===v.id);const seconds=watchRows.reduce((sum,x)=>sum+Number(x.watch_seconds||0),0);return {...v,periodViews:rows.length,watchSeconds:seconds,averageWatch:rows.length?seconds/rows.length:0};}).sort((a,b)=>b.periodViews-a.periodViews);
-    return {watch,likes,comments,reposts,lifetimeViews,periodViews:filteredViews.length,days,videoStats,publicationCount:filteredVideos.length,shortCount:videos.filter(v=>v.content_type==="short").length,longCount:videos.filter(v=>v.content_type==="video").length,photoCount:videos.filter(v=>v.content_type==="photo").length};
-  },[videos,views,watchSessions,period,selectedType]);
+    const videoStats=filteredVideos.map(v=>{const rows=filteredViews.filter(x=>x.video_id===v.id);const watchRows=filteredWatch.filter(x=>x.video_id===v.id);const seconds=watchRows.reduce((sum,x)=>sum+Number(x.watch_seconds||0),0);const completed=filteredCompletions.filter(x=>x.video_id===v.id).length;const expected=rows.length*Math.max(0,Number(v.duration_seconds||0));const tracked=rows.reduce((sum,x)=>sum+Number(x.watch_seconds||0),0);return {...v,periodViews:rows.length,watchSeconds:seconds,averageWatch:rows.length?seconds/rows.length:0,completionCount:completed,retentionRate:expected?Math.min(100,tracked/expected*100):0};}).sort((a,b)=>b.periodViews-a.periodViews);
+    return {watch,likes,comments,reposts,lifetimeViews,periodViews:filteredViews.length,completions:filteredCompletions.length,completionRate,retentionRate,days,videoStats,publicationCount:filteredVideos.length,shortCount:videos.filter(v=>v.content_type==="short").length,longCount:videos.filter(v=>v.content_type==="video").length,photoCount:videos.filter(v=>v.content_type==="photo").length};
+  },[videos,views,watchSessions,completionEvents,period,selectedType]);
 
   const maxDaily=Math.max(1,...metrics.days.map(d=>d.views));
   const publishDraft=async(draft:VideoDraft)=>{
@@ -224,6 +237,8 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       <article className="creator-metric creator-metric-blue"><span><MessageCircle/> Commentaires</span><strong>{fmt(metrics.comments)}</strong><small>Sur l’ensemble de tes vidéos</small></article>
       <article className="creator-metric creator-metric-red"><span><ArrowUpRight/> Republications</span><strong>{fmt(metrics.reposts)}</strong><small>Partages sur les profils ZAVO</small></article>
       <article className="creator-metric creator-metric-green"><span><Users/> Abonnés</span><strong>{fmt(followers)}</strong><small>+{fmt(newFollowers)} sur {period} jours</small></article>
+      <article className="creator-metric creator-metric-green"><span><TrendingUp/> Rétention estimée</span><strong>{metrics.retentionRate.toLocaleString("fr-FR",{maximumFractionDigits:1})}%</strong><small>Temps regardé / durée totale exposée</small></article>
+      <article className="creator-metric creator-metric-blue"><span><Play/> Vues terminées</span><strong>{fmt(metrics.completions)}</strong><small>{metrics.completionRate.toLocaleString("fr-FR",{maximumFractionDigits:1})}% des vues suivies</small></article>
       <article className="creator-metric creator-metric-red"><span><VideoIcon/> Publications</span><strong>{fmt(videos.length)}</strong><small>{selectedType==="short"?"Shorts":selectedType==="video"?"Vidéos longues":"Publications de ton compte"}</small></article>
     </div>
     <div className="creator-analytics-grid">
@@ -241,7 +256,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       <div className="creator-panel-heading"><div><span className="creator-kicker">GESTION DU CONTENU</span><h2>{selectedType==="short"?"Mes Shorts":selectedType==="video"?"Mes vidéos longues":"Mes vidéos"} <span className="creator-count">{metrics.publicationCount}</span></h2></div><span className="creator-manage-hint">Modifie ou supprime tes publications</span></div>
       {!videos.length?<div className="creator-empty-videos"><VideoIcon size={34}/><strong>Tu n’as pas encore publié de vidéo</strong><span>Ta première publication apparaîtra ici avec ses statistiques.</span></div>:<div className="creator-video-list">{metrics.videoStats.map(v=><article className="creator-video-row" key={v.id}>
         <div className="creator-video-thumb">{v.thumbnail_url?<img src={v.thumbnail_url} alt=""/>:<div><Play/></div>}</div>
-        <div className="creator-video-info"><strong>{v.caption||"Sans description"}</strong><small><CalendarDays size={12}/> {new Date(v.created_at).toLocaleDateString("fr-FR")} · {v.content_type==="short"?"Short":"Vidéo"} · {v.visibility==="public"?"Publique":"Privée"}</small><div className="creator-video-metrics"><span><Eye size={13}/> {fmt(v.views_count)}</span><span><Heart size={13}/> {fmt(v.likes?.[0]?.count||0)}</span><span><MessageCircle size={13}/> {fmt(v.comments?.[0]?.count||0)}</span><span><Clock3 size={13}/> {Math.round(v.averageWatch)} s moy.</span></div></div>
+        <div className="creator-video-info"><strong>{v.caption||"Sans description"}</strong><small><CalendarDays size={12}/> {new Date(v.created_at).toLocaleDateString("fr-FR")} · {v.content_type==="short"?"Short":"Vidéo"} · {v.visibility==="public"?"Publique":"Privée"}</small><div className="creator-video-metrics"><span><Eye size={13}/> {fmt(v.views_count)}</span><span><Heart size={13}/> {fmt(v.likes?.[0]?.count||0)}</span><span><MessageCircle size={13}/> {fmt(v.comments?.[0]?.count||0)}</span><span><Clock3 size={13}/> {Math.round(v.averageWatch)} s moy.</span><span><TrendingUp size={13}/> {v.retentionRate.toLocaleString("fr-FR",{maximumFractionDigits:0})}% rétention</span><span><Play size={13}/> {fmt(v.completionCount)} terminées</span></div></div>
         <div className="creator-video-actions"><button onClick={()=>{setEditing(v);setEditCaption(v.caption||"");setEditType(v.content_type==="short"?"short":"video");setEditTargetUrl(v.target_url||"");setEditCategory(v.category||"");setEditHashtags((v.hashtags||[]).join(" "));setEditInterestTags((v.interest_tags||[]).join(", "));setEditShowStats(v.show_stats!==false);setEditOfflineDownload(!!(v.allow_offline_download??v.allow_download));setEditGalleryDownload(!!(v.allow_gallery_download??v.allow_download));setThumbnailFile(null);}}><Pencil size={15}/> Modifier</button><button className="creator-delete" onClick={()=>void removeVideo(v)} disabled={deleting===v.id}><Trash2 size={15}/> {deleting===v.id?"Suppression…":"Supprimer"}</button></div>
       </article>)}</div>}
     </section>
