@@ -1677,3 +1677,6 @@ body{color:#d7eaff!important}
 .creator-remix-form{margin-top:18px;background:#f9fbfd}
 .creator-remix-form p{margin:0;color:#7b8ca0;font-size:10px;line-height:1.5}
 @media(max-width:600px){.creator-collab-list article{flex-wrap:wrap}.creator-collab-list article>div{flex-basis:100%}.creator-collab-form>button{width:100%}}
+
+
+.media-coauthors{display:block;margin-top:4px;color:#a9d7ff;font-size:10px;font-weight:750;text-shadow:0 1px 3px #000}
