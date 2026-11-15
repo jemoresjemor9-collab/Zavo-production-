@@ -342,6 +342,7 @@ export default function HomePage() {
   const [allowDownload, setAllowDownload] = useState(false);
   const [showStats, setShowStats] = useState(true);
   const [busy, setBusy] = useState(false);
+  const publishInFlight = useRef(false);
   const [notice, setNotice] = useState("");
   const [liked, setLiked] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>([]);
@@ -1372,39 +1373,51 @@ export default function HomePage() {
 
   async function publish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (contentType === "photo") { await publishPhotos(); return; }
-    if (!db() || !session || !file) return;
-    if (!getVideoMime(file).startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
+    if (publishInFlight.current || busy) return;
+    publishInFlight.current = true;
     setBusy(true);
-    let uploadFile:File;
-    try { uploadFile=await trimVideoFile(file,trimStart,trimEnd,trimDuration); }
-    catch(error:any){setNotice(error?.message||"Impossible de découper la vidéo.");setBusy(false);return;}
-    const base = session.user.id + "/" + crypto.randomUUID();
-    const videoPath = base + "-" + uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const videoMime = getVideoMime(uploadFile);
-    let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };
-    try { videoMetadata = await getVideoMetadata(uploadFile); } catch {}
-    const upload = await db()!.storage.from("zavo-videos").upload(videoPath, uploadFile, { contentType: videoMime, upsert: false });
-    if (upload.error) { setNotice("Impossible d’importer la vidéo : " + upload.error.message); setBusy(false); return; }
-    const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
-    let thumbnailUrl: string | null = null;
-    if (thumbnail) {
-      const thumbPath = session.user.id + "/" + crypto.randomUUID() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const thumbUpload = await db()!.storage.from("zavo-media").upload(thumbPath, thumbnail, { contentType: thumbnail.type || "image/jpeg" });
-      if (!thumbUpload.error) thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
-    }
-    const offlinePermission = contentType === "short" ? false : allowOfflineDownload;
-    const galleryPermission = allowGalleryDownload;
-    const { data: published, error } = await db()!.from("videos").insert({
-      user_id: session.user.id, caption, video_url: videoUrl, thumbnail_url: thumbnailUrl,
-      target_url: safeUrl(videoTargetUrl), category: videoCategory,
-      content_type: contentType, allow_download: offlinePermission || galleryPermission, allow_repost: allowRepost,
-      allow_offline_download: offlinePermission, allow_gallery_download: galleryPermission,
-      show_stats: showStats, display_mode: "contain", display_scale: 1, display_x: 0, display_y: 0,
-      visibility: "public", interest_tags: videoInterestTags, ...videoMetadata
-    }).select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,moderation_status").single();
-    if (error) setNotice("La vidéo a été importée, mais sa publication a échoué : " + error.message);
-    else {
+    let uploadedVideoPath: string | null = null;
+    let uploadedThumbnailPath: string | null = null;
+    try {
+      if (contentType === "photo") { await publishPhotos(); return; }
+      if (!db() || !session || !file) { setNotice("Connecte-toi et sélectionne une vidéo avant de publier."); return; }
+      if (!getVideoMime(file).startsWith("video/")) { setNotice("Choisis un fichier vidéo valide."); return; }
+      let uploadFile: File;
+      try { uploadFile = await trimVideoFile(file, trimStart, trimEnd, trimDuration); }
+      catch (error: any) { setNotice(error?.message || "Impossible de découper la vidéo."); return; }
+      const base = session.user.id + "/" + crypto.randomUUID();
+      uploadedVideoPath = base + "-" + uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const videoMime = getVideoMime(uploadFile);
+      let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };
+      try { videoMetadata = await getVideoMetadata(uploadFile); } catch {}
+      const upload = await db()!.storage.from("zavo-videos").upload(uploadedVideoPath, uploadFile, { contentType: videoMime, upsert: false });
+      if (upload.error) { setNotice("Impossible d’importer la vidéo : " + upload.error.message); return; }
+      const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(uploadedVideoPath).data.publicUrl;
+      let thumbnailUrl: string | null = null;
+      if (thumbnail) {
+        uploadedThumbnailPath = session.user.id + "/" + crypto.randomUUID() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const thumbUpload = await db()!.storage.from("zavo-media").upload(uploadedThumbnailPath, thumbnail, { contentType: thumbnail.type || "image/jpeg", upsert: false });
+        if (!thumbUpload.error) thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(uploadedThumbnailPath).data.publicUrl;
+        else { setNotice("La miniature n’a pas pu être importée : " + thumbUpload.error.message); return; }
+      }
+      const offlinePermission = contentType === "short" ? false : allowOfflineDownload;
+      const galleryPermission = allowGalleryDownload;
+      const { data: published, error } = await db()!.from("videos").insert({
+        user_id: session.user.id, caption: caption.trim(), video_url: videoUrl, thumbnail_url: thumbnailUrl,
+        target_url: safeUrl(videoTargetUrl), category: videoCategory,
+        content_type: contentType, allow_download: offlinePermission || galleryPermission, allow_repost: allowRepost,
+        allow_offline_download: offlinePermission, allow_gallery_download: galleryPermission,
+        show_stats: showStats, display_mode: "contain", display_scale: 1, display_x: 0, display_y: 0,
+        visibility: "public", interest_tags: videoInterestTags, ...videoMetadata
+      }).select("id,caption,video_url,thumbnail_url,target_url,category,user_id,views_count,created_at,content_type,allow_download,allow_offline_download,allow_gallery_download,allow_repost,show_stats,display_mode,display_scale,display_x,display_y,moderation_status").single();
+      if (error) {
+        await db()!.storage.from("zavo-videos").remove([uploadedVideoPath]);
+        if (uploadedThumbnailPath) await db()!.storage.from("zavo-media").remove([uploadedThumbnailPath]);
+        uploadedVideoPath = null; uploadedThumbnailPath = null;
+        setNotice("La vidéo a été importée, mais sa publication a échoué : " + error.message);
+        return;
+      }
+      uploadedVideoPath = null; uploadedThumbnailPath = null;
       setNotice("Ta vidéo est publiée sur ZAVO.");
       setUploadOpen(false); setCaption(""); setFile(null); setThumbnail(null); setVideoTargetUrl("");
       setAllowOfflineDownload(false); setAllowGalleryDownload(false); setAllowRepost(false); setVideoInterestTags([]);
@@ -1415,8 +1428,14 @@ export default function HomePage() {
         setCampaignType("video"); setCampaignVideo(published as Video);
         setCampaignTitle("Promotion de ma vidéo"); setCampaignOpen(true);
       }
+    } catch (error: any) {
+      setNotice("La publication a rencontré une erreur inattendue. Ta vidéo n’a pas été confirmée comme publiée : " + (error?.message || "erreur réseau ou serveur") + ". Réessaie sans fermer le Studio.");
+    } finally {
+      if (uploadedVideoPath && db()) await db()!.storage.from("zavo-videos").remove([uploadedVideoPath]).catch(() => {});
+      if (uploadedThumbnailPath && db()) await db()!.storage.from("zavo-media").remove([uploadedThumbnailPath]).catch(() => {});
+      setBusy(false);
+      publishInFlight.current = false;
     }
-    setBusy(false);
   }
 
   async function saveVideoDraft() {
