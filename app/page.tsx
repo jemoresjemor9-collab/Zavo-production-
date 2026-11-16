@@ -1420,15 +1420,22 @@ export default function HomePage() {
     const urls: string[] = [];
     for (const photo of photoFiles) {
       const path = session.user.id + "/" + createZavoId() + "-" + photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const uploaded = await db()!.storage.from("zavo-media").upload(path, photo, { contentType: photo.type, upsert: false });
-      if (uploaded.error) {
+      setUploadProgress({ phase: "Envoi de la photo " + (paths.length + 1) + " sur " + photoFiles.length, percentage: 0, uploaded: 0, total: photo.size, elapsedSeconds: 0, remainingSeconds: null, fileName: photo.name });
+      try {
+        await uploadZavoFile("zavo-media", path, photo, photo.type, (uploadedBytes, totalBytes, elapsed) => {
+          const speed = elapsed > 0 ? uploadedBytes / elapsed : 0;
+          setUploadProgress({ phase: "Envoi de la photo " + (paths.length + 1) + " sur " + photoFiles.length, percentage: totalBytes ? Math.min(100, Math.round(uploadedBytes / totalBytes * 100)) : 0, uploaded: uploadedBytes, total: totalBytes, elapsedSeconds: elapsed, remainingSeconds: speed > 0 ? (totalBytes - uploadedBytes) / speed : null, fileName: photo.name });
+        });
+      } catch (uploadError: any) {
         if (paths.length) await db()!.storage.from("zavo-media").remove(paths);
-        setNotice("Impossible d’importer une photo : " + uploaded.error.message);
+        setNotice("Impossible d’importer une photo : " + (uploadError?.message || "erreur de stockage"));
+        setUploadProgress(current => current ? { ...current, phase: "Échec de l’envoi" } : null);
         setBusy(false); return;
       }
       paths.push(path);
       urls.push(db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl);
     }
+    setUploadProgress(current => current ? { ...current, phase: "Enregistrement de la galerie", percentage: 100, remainingSeconds: 0 } : null);
     const { error } = await db()!.from("videos").insert({
       user_id: session.user.id, caption: caption.trim(), video_url: urls[0], media_urls: urls,
       content_type: "photo", visibility: "public", category: videoCategory,
@@ -1466,22 +1473,31 @@ export default function HomePage() {
       const videoMime = getVideoMime(uploadFile);
       let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };
       try { videoMetadata = await getVideoMetadata(uploadFile); } catch {}
-      const upload = await db()!.storage.from("zavo-videos").upload(uploadedVideoPath, uploadFile, { contentType: videoMime, upsert: false });
-      if (upload.error) { setNotice("Impossible d’importer la vidéo : " + upload.error.message); return; }
+      if (uploadFile.size > MAX_VIDEO_UPLOAD_BYTES) {
+        setNotice("Cette vidéo fait " + formatUploadBytes(uploadFile.size) + ". Le projet Supabase de ZAVO est sur l’offre Free, limitée à 50 Mo par fichier. Réduis le fichier à 50 Mo maximum ou il faudra valider une évolution de l’offre et de la limite globale de stockage.");
+        setUploadProgress({ phase: "Fichier trop volumineux", percentage: 0, uploaded: 0, total: uploadFile.size, elapsedSeconds: 0, remainingSeconds: null, fileName: uploadFile.name });
+        return;
+      }
+      setUploadProgress({ phase: "Envoi de la vidéo", percentage: 0, uploaded: 0, total: uploadFile.size, elapsedSeconds: 0, remainingSeconds: null, fileName: uploadFile.name });
+      await uploadZavoFile("zavo-videos", uploadedVideoPath, uploadFile, videoMime, (uploadedBytes, totalBytes, elapsed) => {
+        const speed = elapsed > 0 ? uploadedBytes / elapsed : 0;
+        setUploadProgress({ phase: "Envoi de la vidéo", percentage: totalBytes ? Math.min(100, Math.round(uploadedBytes / totalBytes * 100)) : 0, uploaded: uploadedBytes, total: totalBytes, elapsedSeconds: elapsed, remainingSeconds: speed > 0 ? (totalBytes - uploadedBytes) / speed : null, fileName: uploadFile.name });
+      });
       const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(uploadedVideoPath).data.publicUrl;
       let thumbnailUrl: string | null = null;
       if (thumbnail) {
         uploadedThumbnailPath = session.user.id + "/" + createZavoId() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const thumbUpload = await db()!.storage.from("zavo-media").upload(uploadedThumbnailPath, thumbnail, { contentType: thumbnail.type || "image/jpeg", upsert: false });
-        if (!thumbUpload.error) {
+        try {
+          await uploadZavoFile("zavo-media", uploadedThumbnailPath, thumbnail, thumbnail.type || "image/jpeg", () => {});
           thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(uploadedThumbnailPath).data.publicUrl;
-        } else {
+        } catch (thumbError: any) {
           // La miniature est facultative : son échec ne doit jamais bloquer la publication de la vidéo.
-          console.warn("ZAVO thumbnail upload:", thumbUpload.error.message);
+          console.warn("ZAVO thumbnail upload:", thumbError?.message);
           uploadedThumbnailPath = null;
           setNotice("La miniature n’a pas été importée, mais la vidéo continue sa publication.");
         }
       }
+      setUploadProgress(current => current ? { ...current, phase: "Enregistrement de la publication", percentage: 100, remainingSeconds: 0 } : null);
       const offlinePermission = contentType === "short" ? false : allowOfflineDownload;
       const galleryPermission = allowGalleryDownload;
       const { data: published, error } = await db()!.from("videos").insert({
@@ -1500,6 +1516,7 @@ export default function HomePage() {
         return;
       }
       uploadedVideoPath = null; uploadedThumbnailPath = null;
+      setUploadProgress(current => current ? { ...current, phase: "Publication réussie", percentage: 100, remainingSeconds: 0 } : null);
       setNotice("Ta vidéo est publiée sur ZAVO.");
       setUploadOpen(false); setTitle(""); setCaption(""); setFile(null); setThumbnail(null); setThumbnailCandidates([]); setVideoTargetUrl("");
       setAllowOfflineDownload(false); setAllowGalleryDownload(false); setAllowRepost(false); setVideoInterestTags([]);
@@ -1511,7 +1528,8 @@ export default function HomePage() {
         setCampaignTitle("Promotion de ma vidéo"); setCampaignOpen(true);
       }
     } catch (error: any) {
-      setNotice("La publication a rencontré une erreur inattendue. Ta vidéo n’a pas été confirmée comme publiée : " + (error?.message || "erreur réseau ou serveur") + ". Réessaie sans fermer le Studio.");
+      setUploadProgress(current => current ? { ...current, phase: "Échec de la publication" } : null);
+      setNotice("La publication a rencontré une erreur : " + (error?.message || "erreur réseau ou serveur") + ". Ta publication n’est pas confirmée. Réessaie sans fermer le Studio.");
     } finally {
       if (uploadedVideoPath && db()) await db()!.storage.from("zavo-videos").remove([uploadedVideoPath]).catch(() => {});
       if (uploadedThumbnailPath && db()) await db()!.storage.from("zavo-media").remove([uploadedThumbnailPath]).catch(() => {});
