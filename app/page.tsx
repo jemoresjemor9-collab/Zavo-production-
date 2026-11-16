@@ -77,6 +77,56 @@ function getVideoMime(file: File) {
   return types[ext || ""] || "video/mp4";
 }
 
+const MAX_VIDEO_UPLOAD_BYTES = 50 * 1024 * 1024;
+type ZavoUploadProgress = { phase: string; percentage: number; uploaded: number; total: number; elapsedSeconds: number; remainingSeconds: number | null; fileName?: string };
+function formatUploadBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + " Ko";
+  return (bytes / (1024 * 1024)).toFixed(1) + " Mo";
+}
+function formatUploadDuration(seconds: number | null) {
+  if (seconds === null || !Number.isFinite(seconds)) return "calcul en cours…";
+  const value = Math.max(0, Math.ceil(seconds));
+  return value < 60 ? value + " s" : Math.floor(value / 60) + " min " + (value % 60) + " s";
+}
+async function uploadZavoFile(bucket: "zavo-videos" | "zavo-media", path: string, file: File, contentType: string, onProgress: (uploaded: number, total: number, elapsedSeconds: number) => void) {
+  if (!supabase) throw new Error("Le service de publication n’est pas disponible.");
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session?.access_token) throw new Error("Ta session a expiré. Reconnecte-toi avant de publier.");
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const apiKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!baseUrl || !apiKey) throw new Error("La configuration du stockage ZAVO est incomplète.");
+  const objectPath = path.split("/").map(part => encodeURIComponent(part)).join("/");
+  const formData = new FormData();
+  formData.append("cacheControl", "3600");
+  formData.append("file", new Blob([file], { type: contentType || file.type || "application/octet-stream" }), file.name);
+  const startedAt = Date.now();
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", baseUrl.replace(/\/$/, "") + "/storage/v1/object/" + bucket + "/" + objectPath);
+    xhr.setRequestHeader("apikey", apiKey);
+    xhr.setRequestHeader("Authorization", "Bearer " + session.access_token);
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total, (Date.now() - startedAt) / 1000);
+    };
+    xhr.onerror = () => reject(new Error("Connexion interrompue pendant l’envoi. Vérifie le réseau puis réessaie."));
+    xhr.onabort = () => reject(new Error("Envoi interrompu avant la fin."));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(file.size, file.size, (Date.now() - startedAt) / 1000);
+        resolve();
+        return;
+      }
+      let detail = "";
+      try { const body = JSON.parse(xhr.responseText || "{}"); detail = body.message || body.error || body.msg || ""; } catch {}
+      if (xhr.status === 413) reject(new Error("Fichier trop volumineux : l’offre Free de Supabase limite chaque fichier à 50 Mo."));
+      else if (xhr.status === 401 || xhr.status === 403) reject(new Error("Envoi refusé : ta session ou les autorisations de stockage doivent être vérifiées. " + detail));
+      else reject(new Error("Le stockage a refusé le fichier (HTTP " + xhr.status + "). " + (detail || "Réessaie avec un autre fichier.")));
+    };
+    xhr.send(formData);
+  });
+}
+
 async function getVideoMetadata(file: File) {
   const objectUrl = URL.createObjectURL(file);
   const video = document.createElement("video");
@@ -372,6 +422,7 @@ export default function HomePage() {
   const [allowDownload, setAllowDownload] = useState(false);
   const [showStats, setShowStats] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<ZavoUploadProgress | null>(null);
   const publishInFlight = useRef(false);
   const [notice, setNotice] = useState("");
   const [liked, setLiked] = useState<string[]>([]);
