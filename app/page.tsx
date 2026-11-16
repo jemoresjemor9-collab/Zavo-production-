@@ -42,9 +42,23 @@ const CURRENCY_BY_COUNTRY: Record<string,{code:string;symbol:string;perUsd:numbe
 
 
 const db = () => supabase;
+// Identifiants compatibles avec les navigateurs et contextes qui n'exposent pas randomUUID().
+function createZavoId() {
+  const cryptoApi = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+  if (cryptoApi && typeof cryptoApi.randomUUID === "function") return cryptoApi.randomUUID();
+  if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, value => value.toString(16).padStart(2, "0"));
+    return hex.slice(0, 4).join("") + "-" + hex.slice(4, 6).join("") + "-" + hex.slice(6, 8).join("") + "-" + hex.slice(8, 10).join("") + "-" + hex.slice(10, 16).join("");
+  }
+  return "zavo-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
 const visitorKey = () => {
   let key = localStorage.getItem("zavo_visitor_key");
-  if (!key) { key = crypto.randomUUID(); localStorage.setItem("zavo_visitor_key", key); }
+  if (!key) { key = createZavoId(); localStorage.setItem("zavo_visitor_key", key); }
   return key;
 };
 function getVideoMime(file: File) {
@@ -527,19 +541,8 @@ export default function HomePage() {
       try {
         let code = fallback.code;
         let symbol = fallback.symbol;
-        if (countryCode !== "OTHER") {
-          const countryResponse = await fetch(`https://restcountries.com/v3.1/alpha/${encodeURIComponent(countryCode)}?fields=currencies`);
-          if (countryResponse.ok) {
-            const countryData = await countryResponse.json();
-            const record = Array.isArray(countryData) ? countryData[0] : countryData;
-            const currencies = record?.currencies || {};
-            const firstCode = Object.keys(currencies)[0];
-            if (firstCode) {
-              code = firstCode;
-              symbol = currencies[firstCode]?.symbol || firstCode;
-            }
-          }
-        }
+        // La devise est déterminée localement : aucun appel REST Countries au démarrage.
+        // CURRENCY_BY_COUNTRY fournit un repli stable même hors connexion ou si un tiers est indisponible.
         let perUsd = fallback.perUsd;
         const ratesResponse = await fetch("https://open.er-api.com/v6/latest/USD");
         if (ratesResponse.ok) {
@@ -1102,7 +1105,7 @@ export default function HomePage() {
         messageType = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : mimeType.startsWith("audio/") ? "audio" : "text";
         if (messageType === "text") { setNotice("Ce format de fichier n’est pas pris en charge. Choisis une image, une vidéo ou un note vocale."); return; }
         if (fileToSend.size > 50 * 1024 * 1024) { setNotice("La pièce jointe doit faire 50 Mo maximum."); return; }
-        const path = activeConversation + "/" + session.user.id + "/" + crypto.randomUUID() + "-" + fileToSend.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = activeConversation + "/" + session.user.id + "/" + createZavoId() + "-" + fileToSend.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const upload = await db()!.storage.from("zavo-message-media").upload(path, fileToSend, { contentType: mimeType, upsert: false });
         if (upload.error) { setNotice("Le fichier n’a pas pu être envoyé : " + upload.error.message); return; }
         mediaUrl = path;
@@ -1365,7 +1368,7 @@ export default function HomePage() {
     const paths: string[] = [];
     const urls: string[] = [];
     for (const photo of photoFiles) {
-      const path = session.user.id + "/" + crypto.randomUUID() + "-" + photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = session.user.id + "/" + createZavoId() + "-" + photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const uploaded = await db()!.storage.from("zavo-media").upload(path, photo, { contentType: photo.type, upsert: false });
       if (uploaded.error) {
         if (paths.length) await db()!.storage.from("zavo-media").remove(paths);
@@ -1407,7 +1410,7 @@ export default function HomePage() {
       let uploadFile: File;
       try { uploadFile = await trimVideoFile(file, trimStart, trimEnd, trimDuration); }
       catch (error: any) { setNotice(error?.message || "Impossible de découper la vidéo."); return; }
-      const base = session.user.id + "/" + crypto.randomUUID();
+      const base = session.user.id + "/" + createZavoId();
       uploadedVideoPath = base + "-" + uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const videoMime = getVideoMime(uploadFile);
       let videoMetadata: { duration_seconds: number | null; aspect_ratio: string | null } = { duration_seconds: null, aspect_ratio: null };
@@ -1417,7 +1420,7 @@ export default function HomePage() {
       const videoUrl = db()!.storage.from("zavo-videos").getPublicUrl(uploadedVideoPath).data.publicUrl;
       let thumbnailUrl: string | null = null;
       if (thumbnail) {
-        uploadedThumbnailPath = session.user.id + "/" + crypto.randomUUID() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        uploadedThumbnailPath = session.user.id + "/" + createZavoId() + "-" + thumbnail.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const thumbUpload = await db()!.storage.from("zavo-media").upload(uploadedThumbnailPath, thumbnail, { contentType: thumbnail.type || "image/jpeg", upsert: false });
         if (!thumbUpload.error) {
           thumbnailUrl = db()!.storage.from("zavo-media").getPublicUrl(uploadedThumbnailPath).data.publicUrl;
@@ -1474,7 +1477,7 @@ export default function HomePage() {
     let uploadFile:File;
     try { uploadFile=await trimVideoFile(file,trimStart,trimEnd,trimDuration); }
     catch(error:any){setNotice(error?.message||"Impossible de découper la vidéo.");setBusy(false);return;}
-    const base=session.user.id+"/"+crypto.randomUUID();
+    const base=session.user.id+"/"+createZavoId();
     const videoPath=base+"-"+uploadFile.name.replace(/[^a-zA-Z0-9._-]/g,"_");
     let videoUrl:string|null=null;
     let thumbnailUrl:string|null=null;
@@ -1485,7 +1488,7 @@ export default function HomePage() {
     if(upload.error){setNotice("Le brouillon n’a pas pu être enregistré : "+upload.error.message);setBusy(false);return;}
     videoUrl=db()!.storage.from("zavo-videos").getPublicUrl(videoPath).data.publicUrl;
     if(thumbnail){
-      thumbPath=session.user.id+"/"+crypto.randomUUID()+"-"+thumbnail.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      thumbPath=session.user.id+"/"+createZavoId()+"-"+thumbnail.name.replace(/[^a-zA-Z0-9._-]/g,"_");
       const thumbUpload=await db()!.storage.from("zavo-media").upload(thumbPath,thumbnail,{contentType:thumbnail.type||"image/jpeg"});
       if(!thumbUpload.error)thumbnailUrl=db()!.storage.from("zavo-media").getPublicUrl(thumbPath).data.publicUrl;
     }
@@ -1805,19 +1808,19 @@ export default function HomePage() {
     let avatarUrl = profile?.avatar_url || null;
     const photoUrls = [...(profile?.profile_photos || [])];
     if (profileAvatarFile) {
-      const path = session.user.id + "/profile/avatar-" + crypto.randomUUID() + "-" + profileAvatarFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = session.user.id + "/profile/avatar-" + createZavoId() + "-" + profileAvatarFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const result = await db()!.storage.from("zavo-media").upload(path, profileAvatarFile, { contentType: profileAvatarFile.type || "image/jpeg" });
       if (result.error) { setNotice("La photo de profil n’a pas pu être envoyée : " + result.error.message); setBusy(false); return; }
       avatarUrl = db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
     }
     if (profileBannerFile) {
-      const path = session.user.id + "/profile/banner-" + crypto.randomUUID() + "-" + profileBannerFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = session.user.id + "/profile/banner-" + createZavoId() + "-" + profileBannerFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const result = await db()!.storage.from("zavo-media").upload(path, profileBannerFile, { contentType: profileBannerFile.type || "image/jpeg" });
       if (result.error) { setNotice("La bannière n’a pas pu être envoyée : " + result.error.message); setBusy(false); return; }
       bannerUrl = db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl;
     }
     for (const photo of profilePhotoFiles) {
-      const path = session.user.id + "/profile/photos/" + crypto.randomUUID() + "-" + photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = session.user.id + "/profile/photos/" + createZavoId() + "-" + photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const result = await db()!.storage.from("zavo-media").upload(path, photo, { contentType: photo.type || "image/jpeg" });
       if (result.error) { setNotice("Une photo n’a pas pu être envoyée : " + result.error.message); setBusy(false); return; }
       photoUrls.push(db()!.storage.from("zavo-media").getPublicUrl(path).data.publicUrl);
@@ -2473,7 +2476,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
     return () => observer.disconnect();
   }, [video.id]);
 
-  useEffect(() => { setPhotoIndex(0); viewRecorded.current = false; completionRecorded.current = false; setWatchSeconds(0); retentionSessionRef.current=crypto.randomUUID(); retentionMilestonesRef.current=new Set(); }, [video.id]);
+  useEffect(() => { setPhotoIndex(0); viewRecorded.current = false; completionRecorded.current = false; setWatchSeconds(0); retentionSessionRef.current=createZavoId(); retentionMilestonesRef.current=new Set(); }, [video.id]);
 
   const recordSegment = () => {
     const seconds = Math.floor(segmentWatchTime.current);
@@ -2493,7 +2496,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
           src={video.video_url} poster={video.thumbnail_url || undefined} controls={!isShort} playsInline muted preload="none"
           controlsList="nodownload" onContextMenu={e=>e.preventDefault()}
           onLoadedMetadata={e=>{const ratio=e.currentTarget.videoWidth/e.currentTarget.videoHeight;const frame=e.currentTarget.parentElement;if(frame&&ratio>0)frame.style.aspectRatio=String(ratio);}}
-          onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=crypto.randomUUID();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
+          onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
           onTimeUpdate={e=>{
             const current=e.currentTarget.currentTime;
             const delta=current-lastPlaybackTime.current;
@@ -2567,7 +2570,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
   const completionSent = useRef(false);
   const retentionSessionRef = useRef("");
   const retentionMilestonesRef = useRef<Set<number>>(new Set());
-  useEffect(()=>{retentionSessionRef.current=crypto.randomUUID();retentionMilestonesRef.current=new Set();},[video.id]);
+  useEffect(()=>{retentionSessionRef.current=createZavoId();retentionMilestonesRef.current=new Set();},[video.id]);
   const creator = creatorOf(video);
   const recommendations = useMemo(() => {
     const ranked = videos
@@ -2604,7 +2607,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
           <div className={"watch-player "+(isShort?"watch-player-short":"watch-player-long")} style={{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9),width:Number(video.aspect_ratio)>=1?"min(100%, 900px)":"min(100%, 440px)"}} onTouchStart={e=>{if(isShort)touchStartY.current=e.touches[0]?.clientY??null;}} onTouchEnd={e=>{if(!isShort||touchStartY.current===null)return;const delta=touchStartY.current-e.changedTouches[0].clientY;touchStartY.current=null;if(Math.abs(delta)>55)changeShortBySwipe(delta>0?"next":"previous");}}>
             <video key={video.id} src={video.video_url} poster={video.thumbnail_url||undefined} controls autoPlay playsInline preload="auto" style={{objectFit:"contain",maxWidth:"100%",maxHeight:"100%"}}
               onLoadedMetadata={e=>{const ratio=e.currentTarget.videoWidth/e.currentTarget.videoHeight;const frame=e.currentTarget.parentElement;if(frame&&ratio>0){frame.style.aspectRatio=String(ratio);if(!Number(video.aspect_ratio))frame.style.width=ratio>=1?"min(100%, 900px)":"min(100%, 440px)";}}}
-              onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=crypto.randomUUID();lastTime.current=e.currentTarget.currentTime;}}
+              onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastTime.current=e.currentTarget.currentTime;}}
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2){watched.current+=delta;const duration=e.currentTarget.duration;if(Number.isFinite(duration)&&duration>0){const progress=current/duration*100;[10,25,50,75,90,100].forEach(milestone=>{if(progress>=milestone&&!retentionMilestonesRef.current.has(milestone)){retentionMilestonesRef.current.add(milestone);onRetentionProgress?.(video,retentionSessionRef.current,milestone);}});}}lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
               onPause={flushWatchTime}
               onEnded={e=>{flushWatchTime();if(!completionSent.current){completionSent.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}/>
