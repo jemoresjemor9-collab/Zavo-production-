@@ -1444,9 +1444,11 @@ export default function HomePage() {
     });
     if (error) {
       await db()!.storage.from("zavo-media").remove(paths);
+      setUploadProgress(current => current ? { ...current, phase: "Échec de la publication" } : null);
       setNotice("Les photos ont été importées, mais la publication a échoué : " + error.message);
       setBusy(false); return;
     }
+    setUploadProgress(current => current ? { ...current, phase: "Publication réussie", percentage: 100, remainingSeconds: 0 } : null);
     setNotice(photoFiles.length > 1 ? "Ta galerie photo est publiée sur ZAVO." : "Ta photo est publiée sur ZAVO.");
     setUploadOpen(false); setPhotoFiles([]); setCaption(""); setVideoInterestTags([]);
     await loadVideos();
@@ -1458,6 +1460,7 @@ export default function HomePage() {
     if (publishInFlight.current || busy) return;
     publishInFlight.current = true;
     setBusy(true);
+    setUploadProgress(null);
     let uploadedVideoPath: string | null = null;
     let uploadedThumbnailPath: string | null = null;
     try {
@@ -1512,6 +1515,7 @@ export default function HomePage() {
         await db()!.storage.from("zavo-videos").remove([uploadedVideoPath]);
         if (uploadedThumbnailPath) await db()!.storage.from("zavo-media").remove([uploadedThumbnailPath]);
         uploadedVideoPath = null; uploadedThumbnailPath = null;
+        setUploadProgress(current => current ? { ...current, phase: "Échec de la publication" } : null);
         setNotice("La vidéo a été importée, mais sa publication a échoué : " + error.message);
         return;
       }
