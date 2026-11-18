@@ -2764,12 +2764,12 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
             {isShort&&<div className="short-action-rail" aria-label="Actions du Short">
               <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{video.likes?.[0]?.count||0}</strong><span>J’aime</span></button>
               <button type="button" onClick={()=>onComments(video)} aria-label="Commentaires"><MessageSquare size={25}/><strong>{video.comments?.[0]?.count||0}</strong><span>Commentaires</span></button>
+              {session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onWriteToAuthor?.(video)} aria-label="Écrire à l’auteur"><MessageCircle size={24}/><span>Écrire à l’auteur</span></button>}
               {video.allow_repost&&<button type="button" onClick={()=>onRepost?.(video)} aria-label="Republication"><Repeat2 size={24}/><strong>{video.reposts?.[0]?.count||0}</strong><span>Reposter</span></button>}
               <button type="button" className={saved.includes(video.id)?"active":""} onClick={()=>onSave(video)} aria-label="Favori"><Bookmark size={24} fill={saved.includes(video.id)?"currentColor":"none"}/><span>Favori</span></button>
               <div className="short-rail-stat"><Eye size={23}/><strong>{(video.views_count||0).toLocaleString("fr-FR")}</strong><span>Vues</span></div>
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)} aria-label="Télécharger"><Download size={23}/><span>Télécharger</span></button>}
               <button type="button" onClick={()=>onShare(video)} aria-label="Partager"><Share2 size={24}/><span>Partager</span></button>
-              {session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onWriteToAuthor?.(video)} aria-label="Écrire à l’auteur"><MessageCircle size={24}/><span>Écrire à l’auteur</span></button>}
             </div>}
             {isShort&&<div className="short-desktop-nav" aria-label="Navigation entre les Shorts">
               <button type="button" onClick={()=>changeShortBySwipe("previous")} disabled={shortIndex<=0} aria-label="Short précédent" title="Short précédent"><ArrowUp size={23}/></button>
