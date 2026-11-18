@@ -1783,3 +1783,56 @@ body{color:#d7eaff!important}
 @media(max-width:760px){
   .social-video-card .short-preview-title{left:6px;right:6px;bottom:6px;padding:6px 7px;font-size:10px}
 }
+
+
+/* ZAVO: centered desktop player, mobile author contact and fast thumbnail preview. */
+.watch-player-long{
+  margin-inline:auto;
+}
+.watch-player-long video{
+  display:block;
+  margin-inline:auto;
+}
+.watch-author-contact-mobile{
+  display:none;
+}
+.video-poster-preview{
+  position:absolute;
+  z-index:2;
+  inset:0;
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  background:#05080d;
+  pointer-events:none;
+  opacity:1;
+  transition:opacity .16s ease;
+}
+.video-frame.has-started .video-poster-preview{
+  opacity:0;
+  visibility:hidden;
+}
+@media(max-width:760px){
+  .watch-player-long{
+    margin-inline:auto;
+  }
+  .watch-author-contact-mobile{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    align-self:flex-start;
+    gap:7px;
+    min-height:38px;
+    padding:8px 12px;
+    border:1px solid rgba(38,132,231,.48);
+    border-radius:999px;
+    background:#12345a;
+    color:#eef6ff;
+    font-size:11px;
+    font-weight:800;
+  }
+  .watch-actions .watch-author-contact-desktop{
+    display:none!important;
+  }
+}
