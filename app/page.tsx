@@ -2560,15 +2560,15 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
 
   return <article className={"video-card social-video-card " + (isPhoto ? "is-photo" : isShort ? "is-short" : "is-long-video")}>
     {isPhoto&&<div className="post-creator-top"><div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"}</span></span></button>{!owner&&<button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div></div>}
-    <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")} style={!isPhoto?{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9)}:undefined} onTouchStart={e=>{if(isPhoto)photoTouchStartX.current=e.touches[0]?.clientX??null;}} onTouchEnd={e=>{if(!isPhoto||photoTouchStartX.current===null)return;const delta=photoTouchStartX.current-e.changedTouches[0].clientX;photoTouchStartX.current=null;if(Math.abs(delta)>45&&photoUrls.length>1)setPhotoIndex(index=>(index+(delta>0?1:-1)+photoUrls.length)%photoUrls.length);}}>
+    <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")} style={!isPhoto?{aspectRatio:isShort?"9 / 16":"16 / 9"}:undefined} onTouchStart={e=>{if(isPhoto)photoTouchStartX.current=e.touches[0]?.clientX??null;}} onTouchEnd={e=>{if(!isPhoto||photoTouchStartX.current===null)return;const delta=photoTouchStartX.current-e.changedTouches[0].clientX;photoTouchStartX.current=null;if(Math.abs(delta)>45&&photoUrls.length>1)setPhotoIndex(index=>(index+(delta>0?1:-1)+photoUrls.length)%photoUrls.length);}}>
       {isPhoto ? <>
         <img className="video-photo" src={photoUrls[photoIndex] || video.video_url} alt={video.caption || "Photo publiée sur ZAVO"} loading="lazy" decoding="async"/>
         {photoUrls.length>1&&<div className="photo-gallery-controls"><button type="button" aria-label="Photo précédente" onClick={()=>setPhotoIndex(index=>(index-1+photoUrls.length)%photoUrls.length)}>‹</button><span>{photoIndex+1} / {photoUrls.length}</span><button type="button" aria-label="Photo suivante" onClick={()=>setPhotoIndex(index=>(index+1)%photoUrls.length)}>›</button></div>}
       </> : <>
-        <video ref={playerRef} data-zavo-feed style={{objectFit:"contain"}}
-          src={video.video_url} poster={video.thumbnail_url || undefined} controls={!isShort} playsInline muted preload="none"
+        <video ref={playerRef} data-zavo-feed style={{objectFit:"contain",width:"100%",height:"100%",cursor:"pointer"}}
+          src={video.video_url} poster={video.thumbnail_url || undefined} controls={false} playsInline muted preload="none"
           controlsList="nodownload" onContextMenu={e=>e.preventDefault()}
-          onLoadedMetadata={e=>{const ratio=e.currentTarget.videoWidth/e.currentTarget.videoHeight;const frame=e.currentTarget.parentElement;if(frame&&ratio>0)frame.style.aspectRatio=String(ratio);}}
+          onLoadedMetadata={e=>{e.currentTarget.style.objectFit="contain";}}
           onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
           onTimeUpdate={e=>{
             const current=e.currentTarget.currentTime;
@@ -2584,12 +2584,12 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
           }}
           onPause={recordSegment}
           onEnded={e=>{recordSegment();if(!completionRecorded.current){completionRecorded.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}
-          onClick={isShort?()=>onOpenWatch?.(video):undefined}
+          onClick={()=>onOpenWatch?.(video)}
         />
       </>}
-      {!isPhoto&&<div className="media-creator-overlay"><button type="button" className="media-creator-profile" onClick={()=>onOpenProfile?.(video.user_id)}><span className="media-creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="media-creator-name">{creator?.display_name||"Créateur ZAVO"}</span></button>{!owner&&<button type="button" className="media-creator-follow" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}<span className="media-creator-title">{video.title||video.caption||"Publication ZAVO"}</span>{video.collaborations?.some((item:any)=>item.status==="accepted")&&<span className="media-coauthors">Avec {video.collaborations.filter((item:any)=>item.status==="accepted").map((item:any)=>"@"+(Array.isArray(item.collaborator)?item.collaborator[0]?.username:item.collaborator?.username||"créateur")).join(", ")}</span>}{video.remix?.[0]&&<span className="media-coauthors">{video.remix[0].remix_type==="duet"?"Duo avec":"Remix de"} @{(Array.isArray(video.remix[0].original?.profiles)?video.remix[0].original?.profiles[0]?.username:video.remix[0].original?.profiles?.username)||"créateur"}</span>}</div>}
+
       {video.isSponsored&&<span className="video-label">SPONSORISÉ</span>}
-      <button className="video-menu-button" onClick={()=>setMenu(!menu)}><MoreHorizontal size={20}/></button>
+      <button className="video-menu-button" onClick={e=>{e.stopPropagation();setMenu(!menu);}}><MoreHorizontal size={20}/></button>
       {menu && <div className="video-menu">
         <button onClick={()=>{onReport(video);setMenu(false);}}><Flag size={14}/> Signaler</button>
         {owner && <button onClick={()=>{onBoost(video);setMenu(false);}}><Megaphone size={14}/> Booster</button>}
@@ -2599,8 +2599,11 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         {(video.allow_gallery_download??video.allow_download) && <button onClick={()=>{onDownload(video,false);setMenu(false);}}><Download size={14}/> Télécharger dans la galerie</button>}
       </div>}
     </div>
-    <div className="video-details">
-      {isPhoto&&<p className="video-caption"><Caption value={video.caption||""}/></p>}
+    {!isPhoto ? <button type="button" className="video-details video-feed-details" onClick={()=>onOpenWatch?.(video)}>
+      <strong>{video.title||video.caption||"Vidéo ZAVO"}</strong>
+      <span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>
+    </button> : <div className="video-details">
+      <p className="video-caption"><Caption value={video.caption||""}/></p>
       {video.target_url && <a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer" onClick={()=>video.isSponsored&&onCampaignEvent?.(video.campaign_id,"click")}>{video.isSponsored?"Découvrir l’offre":"Ouvrir le lien associé"} <ExternalLink size={13}/></a>}
       <div className="video-controls">
         <button className={liked.includes(video.id)?"engagement like-action liked":"engagement like-action"} onClick={()=>onLike(video)} aria-label="Aimer cette vidéo"><Heart size={18} fill={liked.includes(video.id)?"currentColor":"none"}/><span>J’aime</span><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong></button>
@@ -2613,7 +2616,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         {owner&&<button className="save-button" onClick={()=>onBoost(video)} aria-label="Booster"><Megaphone size={17}/></button>}
       </div>
       {(video.show_stats || owner) && <div className="video-stats video-stats-detailed"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
-    </div>
+    </div>}
   </article>;
 }
 
