@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, Eye, Clock3, Heart, MessageCircle, Users, Video as VideoIcon, RefreshCw, Pencil, Trash2, Save, X, TrendingUp, Play, ImagePlus, CalendarDays, ArrowUpRight } from "lucide-react";
+import { BarChart3, Eye, MousePointerClick, Clock3, Heart, MessageCircle, Users, Video as VideoIcon, RefreshCw, Pencil, Trash2, Save, X, TrendingUp, Play, ImagePlus, CalendarDays, ArrowUpRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import CreatorCollaborations from "@/app/creator-collaborations";
 
 type CreatorVideo = {
-  id:string; title?:string|null; caption:string; video_url:string; thumbnail_url:string|null; views_count:number;
+  id:string; title?:string|null; caption:string; video_url:string; thumbnail_url:string|null; views_count:number; clicks_count?:number;
   created_at:string; content_type:string; duration_seconds:number|null; visibility:string;
   target_url?:string|null; category?:string|null; hashtags?:string[]; interest_tags?:string[];
   show_stats?:boolean; allow_offline_download?:boolean; allow_gallery_download?:boolean; allow_download?:boolean;
@@ -69,7 +69,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
     const since=new Date();since.setDate(since.getDate()-period+1);
     const start=dateKey(since);
     const [videoResult,followersResult,newFollowersResult,draftResult]=await Promise.all([
-      supabase.from("videos").select("id,title,caption,video_url,thumbnail_url,views_count,created_at,content_type,duration_seconds,visibility,target_url,category,hashtags,interest_tags,show_stats,allow_offline_download,allow_gallery_download,allow_download,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
+      supabase.from("videos").select("id,title,caption,video_url,thumbnail_url,views_count,clicks_count,created_at,content_type,duration_seconds,visibility,target_url,category,hashtags,interest_tags,show_stats,allow_offline_download,allow_gallery_download,allow_download,likes:likes!likes_video_id_fkey(count),comments:comments!comments_video_id_fkey(count),reposts:reposts!reposts_video_id_fkey(count)").eq("user_id",userId).order("created_at",{ascending:false}).limit(300),
       supabase.from("follows").select("follower_id",{count:"exact",head:true}).eq("following_id",userId),
       supabase.from("follows").select("created_at").eq("following_id",userId).gte("created_at",since.toISOString()),
       supabase.from("video_drafts").select("*").eq("user_id",userId).order("updated_at",{ascending:false}).limit(100)
@@ -270,7 +270,7 @@ export default function CreatorStudio({userId,onNotice,onCreate}:{userId:string;
       <div className="creator-panel-heading"><div><span className="creator-kicker">GESTION DU CONTENU</span><h2>{selectedType==="short"?"Mes Shorts":selectedType==="video"?"Mes vidéos longues":"Mes vidéos"} <span className="creator-count">{metrics.publicationCount}</span></h2></div><span className="creator-manage-hint">Modifie ou supprime tes publications</span></div>
       {!videos.length?<div className="creator-empty-videos"><VideoIcon size={34}/><strong>Tu n’as pas encore publié de vidéo</strong><span>Ta première publication apparaîtra ici avec ses statistiques.</span></div>:<div className="creator-video-list">{metrics.videoStats.map(v=><article className="creator-video-row" key={v.id}>
         <div className="creator-video-thumb">{v.thumbnail_url?<img src={v.thumbnail_url} alt=""/>:<div><Play/></div>}</div>
-        <div className="creator-video-info"><strong>{v.title||v.caption||"Sans titre"}</strong><small><CalendarDays size={12}/> {new Date(v.created_at).toLocaleDateString("fr-FR")} · {v.content_type==="short"?"Short":"Vidéo"} · {v.visibility==="public"?"Publique":"Privée"}</small><div className="creator-video-metrics"><span><Eye size={13}/> {fmt(v.views_count)}</span><span><Heart size={13}/> {fmt(v.likes?.[0]?.count||0)}</span><span><MessageCircle size={13}/> {fmt(v.comments?.[0]?.count||0)}</span><span><Clock3 size={13}/> {Math.round(v.averageWatch)} s moy.</span><span><TrendingUp size={13}/> {v.retentionSamples?v.retention50Rate.toLocaleString("fr-FR",{maximumFractionDigits:0})+"% à 50%":"Rétention en collecte"}</span><span><Play size={13}/> {fmt(v.completionCount)} terminées · {v.completionRate.toLocaleString("fr-FR",{maximumFractionDigits:0})}%</span></div></div>
+        <div className="creator-video-info"><strong>{v.title||v.caption||"Sans titre"}</strong><small><CalendarDays size={12}/> {new Date(v.created_at).toLocaleDateString("fr-FR")} · {v.content_type==="short"?"Short":"Vidéo"} · {v.visibility==="public"?"Publique":"Privée"}</small><div className="creator-video-metrics"><span><Eye size={13}/> {fmt(v.views_count)}</span><span><MousePointerClick size={13}/> {fmt(v.clicks_count||0)} clics</span><span><Heart size={13}/> {fmt(v.likes?.[0]?.count||0)}</span><span><MessageCircle size={13}/> {fmt(v.comments?.[0]?.count||0)}</span><span><Clock3 size={13}/> {Math.round(v.averageWatch)} s moy.</span><span><TrendingUp size={13}/> {v.retentionSamples?v.retention50Rate.toLocaleString("fr-FR",{maximumFractionDigits:0})+"% à 50%":"Rétention en collecte"}</span><span><Play size={13}/> {fmt(v.completionCount)} terminées · {v.completionRate.toLocaleString("fr-FR",{maximumFractionDigits:0})}%</span></div></div>
         <div className="creator-video-actions"><button onClick={()=>{setEditing(v);setEditTitle(v.title||"");setEditCaption(v.caption||"");setEditType(v.content_type==="short"?"short":"video");setEditTargetUrl(v.target_url||"");setEditCategory(v.category||"");setEditHashtags((v.hashtags||[]).join(" "));setEditInterestTags((v.interest_tags||[]).slice(0,1).join(", "));setEditShowStats(v.show_stats!==false);setEditOfflineDownload(!!(v.allow_offline_download??v.allow_download));setEditGalleryDownload(!!(v.allow_gallery_download??v.allow_download));setThumbnailFile(null);}}><Pencil size={15}/> Modifier</button><button className="creator-delete" onClick={()=>void removeVideo(v)} disabled={deleting===v.id}><Trash2 size={15}/> {deleting===v.id?"Suppression…":"Supprimer"}</button></div>
       </article>)}</div>}
     </section>
