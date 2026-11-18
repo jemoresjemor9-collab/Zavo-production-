@@ -1845,7 +1845,7 @@ export default function HomePage() {
   async function sendVideoInZavo(video: Video) {
     if (!session) { setAuthMode("signin"); return; }
     const url = window.location.origin + "/?video=" + video.id;
-    setDmText(((video.title || video.caption) ? (video.title || video.caption) + "\n" : "") + "Regarde cette vidéo sur ZAVO : " + url);
+    setDmText((video.title || "Vidéo sur ZAVO") + "\nRegarde cette vidéo sur ZAVO : " + url);
     setActiveConversation(null);
     setActiveConversationUser(null);
     setDmUsers([]);
@@ -2761,7 +2761,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" className="short-creator-follow" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
             </div>}
             {isShort&&<div className="short-action-rail" aria-label="Actions du Short">
-              <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{(video.likes?.[0]?.count||0)+(liked.includes(video.id)?1:0)}</strong><span>J’aime</span></button>
+              <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{video.likes?.[0]?.count||0}</strong><span>J’aime</span></button>
               <button type="button" onClick={()=>onComments(video)} aria-label="Commentaires"><MessageSquare size={25}/><strong>{video.comments?.[0]?.count||0}</strong><span>Commentaires</span></button>
               {video.allow_repost&&<button type="button" onClick={()=>onRepost?.(video)} aria-label="Republication"><Repeat2 size={24}/><strong>{video.reposts?.[0]?.count||0}</strong><span>Reposter</span></button>}
               <button type="button" className={saved.includes(video.id)?"active":""} onClick={()=>onSave(video)} aria-label="Favori"><Bookmark size={24} fill={saved.includes(video.id)?"currentColor":"none"}/><span>Favori</span></button>
