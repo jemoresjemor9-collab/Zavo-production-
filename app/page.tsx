@@ -2518,6 +2518,10 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
   const photoUrls: string[] = Array.isArray(video.media_urls) && video.media_urls.length ? video.media_urls : [video.video_url];
   const isPhoto = video.content_type === "photo";
   const isShort = video.content_type === "short";
+  const [detectedAspectRatio, setDetectedAspectRatio] = useState<number | null>(null);
+  const storedAspectRatio = Number(video.aspect_ratio);
+  const mediaAspectRatio = detectedAspectRatio || (Number.isFinite(storedAspectRatio) && storedAspectRatio > 0.1 && storedAspectRatio < 10 ? storedAspectRatio : null) || (isShort ? 9 / 16 : 16 / 9);
+  const mediaAspectRatioCss = mediaAspectRatio.toFixed(4) + " / 1";
   const playerRef = useRef<HTMLVideoElement | null>(null);
   const [watchSeconds, setWatchSeconds] = useState(0);
   const lastPlaybackTime = useRef(0);
@@ -2560,7 +2564,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
 
   return <article className={"video-card social-video-card " + (isPhoto ? "is-photo" : isShort ? "is-short" : "is-long-video")}>
     {isPhoto&&<div className="post-creator-top"><div className="creator-row"><button type="button" className="creator-profile-trigger" onClick={()=>onOpenProfile?.(video.user_id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span className="creator-meta"><strong>{creator?.display_name||"Créateur ZAVO"}</strong><span>@{creator?.username||"createur"}</span></span></button>{!owner&&<button className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}</div></div>}
-    <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")} style={!isPhoto?{aspectRatio:isShort?"9 / 16":"16 / 9"}:undefined} onTouchStart={e=>{if(isPhoto)photoTouchStartX.current=e.touches[0]?.clientX??null;}} onTouchEnd={e=>{if(!isPhoto||photoTouchStartX.current===null)return;const delta=photoTouchStartX.current-e.changedTouches[0].clientX;photoTouchStartX.current=null;if(Math.abs(delta)>45&&photoUrls.length>1)setPhotoIndex(index=>(index+(delta>0?1:-1)+photoUrls.length)%photoUrls.length);}}>
+    <div className={"video-frame " + (isPhoto ? "photo-frame" : isShort ? "short-frame" : "long-frame")} style={!isPhoto?({"--zavo-media-ratio":mediaAspectRatioCss} as React.CSSProperties):undefined} onTouchStart={e=>{if(isPhoto)photoTouchStartX.current=e.touches[0]?.clientX??null;}} onTouchEnd={e=>{if(!isPhoto||photoTouchStartX.current===null)return;const delta=photoTouchStartX.current-e.changedTouches[0].clientX;photoTouchStartX.current=null;if(Math.abs(delta)>45&&photoUrls.length>1)setPhotoIndex(index=>(index+(delta>0?1:-1)+photoUrls.length)%photoUrls.length);}}>
       {isPhoto ? <>
         <img className="video-photo" src={photoUrls[photoIndex] || video.video_url} alt={video.caption || "Photo publiée sur ZAVO"} loading="lazy" decoding="async"/>
         {photoUrls.length>1&&<div className="photo-gallery-controls"><button type="button" aria-label="Photo précédente" onClick={()=>setPhotoIndex(index=>(index-1+photoUrls.length)%photoUrls.length)}>‹</button><span>{photoIndex+1} / {photoUrls.length}</span><button type="button" aria-label="Photo suivante" onClick={()=>setPhotoIndex(index=>(index+1)%photoUrls.length)}>›</button></div>}
@@ -2568,7 +2572,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         <video ref={playerRef} data-zavo-feed style={{objectFit:"contain",width:"100%",height:"100%",cursor:"pointer"}}
           src={video.video_url} poster={video.thumbnail_url || undefined} controls={false} playsInline muted preload="none"
           controlsList="nodownload" onContextMenu={e=>e.preventDefault()}
-          onLoadedMetadata={e=>{e.currentTarget.style.objectFit="contain";}}
+          onLoadedMetadata={e=>{const element=e.currentTarget;const ratio=element.videoWidth&&element.videoHeight?element.videoWidth/element.videoHeight:null;if(ratio&&Number.isFinite(ratio)&&ratio>0.1&&ratio<10)setDetectedAspectRatio(ratio);element.style.objectFit="contain";}}
           onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
           onTimeUpdate={e=>{
             const current=e.currentTarget.currentTime;
@@ -2588,6 +2592,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         />
       </>}
 
+      {isShort&&<button type="button" className="short-preview-title" onClick={()=>onOpenWatch?.(video)}>{video.title||video.caption||"Short ZAVO"}</button>}
       {video.isSponsored&&<span className="video-label">SPONSORISÉ</span>}
       <button className="video-menu-button" onClick={e=>{e.stopPropagation();setMenu(!menu);}}><MoreHorizontal size={20}/></button>
       {menu && <div className="video-menu">
