@@ -2630,11 +2630,12 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         <img className="video-photo" src={photoUrls[photoIndex] || video.video_url} alt={video.caption || "Photo publiée sur ZAVO"} loading="lazy" decoding="async"/>
         {photoUrls.length>1&&<div className="photo-gallery-controls"><button type="button" aria-label="Photo précédente" onClick={()=>setPhotoIndex(index=>(index-1+photoUrls.length)%photoUrls.length)}>‹</button><span>{photoIndex+1} / {photoUrls.length}</span><button type="button" aria-label="Photo suivante" onClick={()=>setPhotoIndex(index=>(index+1)%photoUrls.length)}>›</button></div>}
       </> : <>
+        {video.thumbnail_url&&<img className="video-poster-preview" src={video.thumbnail_url} alt="" loading="lazy" decoding="async" fetchPriority="high"/>}
         <video ref={playerRef} data-zavo-feed style={{objectFit:"contain",width:"100%",height:"100%",cursor:"pointer"}}
           src={video.video_url} poster={video.thumbnail_url || undefined} controls={false} playsInline muted preload="none"
           controlsList="nodownload" onContextMenu={e=>e.preventDefault()}
           onLoadedMetadata={e=>{const element=e.currentTarget;const ratio=element.videoWidth&&element.videoHeight?element.videoWidth/element.videoHeight:null;if(ratio&&Number.isFinite(ratio)&&ratio>0.1&&ratio<10)setDetectedAspectRatio(ratio);element.style.objectFit="contain";}}
-          onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
+          onPlay={e=>{e.currentTarget.parentElement?.classList.add("has-started");if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
           onTimeUpdate={e=>{
             const current=e.currentTarget.currentTime;
             const delta=current-lastPlaybackTime.current;
@@ -2681,7 +2682,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         {(video.allow_gallery_download ?? video.allow_download) && <button className="save-button" onClick={()=>onDownload(video,false)} aria-label="Télécharger dans la galerie"><Download size={17}/></button>}
         {owner&&<button className="save-button" onClick={()=>onBoost(video)} aria-label="Booster"><Megaphone size={17}/></button>}
       </div>
-      {(video.show_stats || owner) && <div className="video-stats video-stats-detailed"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
+      {owner && <div className="video-stats video-stats-detailed"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
     </div>}
   </article>;
 }
@@ -2747,7 +2748,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
       <div className="watch-page-layout">
         <main className="watch-main">
           <div className={"watch-player "+(isShort?"watch-player-short":"watch-player-long")} style={{aspectRatio:Number(video.aspect_ratio)>0?Number(video.aspect_ratio):(isShort?9/16:16/9),width:Number(video.aspect_ratio)>=1?"min(100%, 900px)":"min(100%, 440px)"}} onTouchStart={e=>{if(isShort)touchStartY.current=e.touches[0]?.clientY??null;}} onTouchEnd={e=>{if(!isShort||touchStartY.current===null)return;const delta=touchStartY.current-e.changedTouches[0].clientY;touchStartY.current=null;if(Math.abs(delta)>55)changeShortBySwipe(delta>0?"next":"previous");}}>
-            <video key={video.id} src={video.video_url} poster={video.thumbnail_url||undefined} controls autoPlay playsInline preload="auto" style={{objectFit:"contain",maxWidth:"100%",maxHeight:"100%"}}
+            <video key={video.id} src={video.video_url} poster={video.thumbnail_url||undefined} controls autoPlay playsInline preload="metadata" style={{objectFit:"contain",maxWidth:"100%",maxHeight:"100%"}}
               onLoadedMetadata={e=>{const ratio=e.currentTarget.videoWidth/e.currentTarget.videoHeight;const frame=e.currentTarget.parentElement;if(frame&&ratio>0){frame.style.aspectRatio=String(ratio);if(!Number(video.aspect_ratio))frame.style.width=ratio>=1?"min(100%, 900px)":"min(100%, 440px)";}}}
               onPlay={e=>{if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastTime.current=e.currentTarget.currentTime;}}
               onTimeUpdate={e=>{const current=e.currentTarget.currentTime;const delta=current-lastTime.current;if(delta>0&&delta<=2){watched.current+=delta;const duration=e.currentTarget.duration;if(Number.isFinite(duration)&&duration>0){const progress=current/duration*100;[10,25,50,75,90,100].forEach(milestone=>{if(progress>=milestone&&!retentionMilestonesRef.current.has(milestone)){retentionMilestonesRef.current.add(milestone);onRetentionProgress?.(video,retentionSessionRef.current,milestone);}});}}lastTime.current=current;if(watched.current>=3&&!viewSent.current){viewSent.current=true;onView?.(video,Math.floor(watched.current));}}}
@@ -2765,7 +2766,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
               <button type="button" onClick={()=>onComments(video)} aria-label="Commentaires"><MessageSquare size={25}/><strong>{video.comments?.[0]?.count||0}</strong><span>Commentaires</span></button>
               {video.allow_repost&&<button type="button" onClick={()=>onRepost?.(video)} aria-label="Republication"><Repeat2 size={24}/><strong>{video.reposts?.[0]?.count||0}</strong><span>Reposter</span></button>}
               <button type="button" className={saved.includes(video.id)?"active":""} onClick={()=>onSave(video)} aria-label="Favori"><Bookmark size={24} fill={saved.includes(video.id)?"currentColor":"none"}/><span>Favori</span></button>
-              {(video.show_stats||session?.user?.id===video.user_id)&&<div className="short-rail-stat"><Eye size={23}/><strong>{(video.views_count||0).toLocaleString("fr-FR")}</strong><span>Vues</span></div>}
+              <div className="short-rail-stat"><Eye size={23}/><strong>{(video.views_count||0).toLocaleString("fr-FR")}</strong><span>Vues</span></div>
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)} aria-label="Télécharger"><Download size={23}/><span>Télécharger</span></button>}
               <button type="button" onClick={()=>onShare(video)} aria-label="Partager"><Share2 size={24}/><span>Partager</span></button>
               {session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onWriteToAuthor?.(video)} aria-label="Écrire à l’auteur"><MessageCircle size={24}/><span>Écrire à l’auteur</span></button>}
@@ -2778,18 +2779,19 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
           {!isShort&&<h1 className="watch-video-title">{video.title||video.caption||"Vidéo ZAVO"}</h1>}
           {!isShort&&<div className="watch-video-meta">
             <button type="button" className="watch-creator watch-creator-trigger" onClick={()=>creator?.id&&onOpenProfile?.(creator.id)}><span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span><span><strong>{creator?.display_name||"Créateur ZAVO"}</strong><small>@{creator?.username||"createur"}</small></span></button>
+            {session?.user?.id!==video.user_id&&<button type="button" className="watch-author-contact-mobile" onClick={()=>onWriteToAuthor?.(video)}><MessageCircle size={17}/> Écrire à l’auteur</button>}
             <div className="watch-actions">
               <button type="button" className={liked.includes(video.id)?"liked":""} onClick={()=>onLike(video)}><Heart size={17}/> {video.likes?.[0]?.count||0}</button>
               <button type="button" onClick={()=>onComments(video)}><MessageSquare size={17}/> {video.comments?.[0]?.count||0} commentaires</button>
               <button type="button" className={saved.includes(video.id)?"liked":""} onClick={()=>onSave(video)}><Bookmark size={17}/> {saved.includes(video.id)?"Enregistré":"Favori"}</button>
-              {(video.show_stats||session?.user?.id===video.user_id)&&<span className="watch-view-count"><Eye size={16}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>}
+              <span className="watch-view-count"><Eye size={16}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>
               {!isShort&&(video.allow_offline_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,true)}><Download size={17}/> Enregistrer</button>}
               {(video.allow_gallery_download??video.allow_download)&&<button type="button" onClick={()=>onDownload(video,false)}><Download size={17}/> Télécharger</button>}
               <button type="button" onClick={()=>onShare(video)}><Share2 size={17}/> Partager</button>
-              {session?.user?.id!==video.user_id&&<button type="button" onClick={()=>onWriteToAuthor?.(video)}><MessageCircle size={17}/> Écrire à l’auteur</button>}
+              {session?.user?.id!==video.user_id&&<button type="button" className="watch-author-contact-desktop" onClick={()=>onWriteToAuthor?.(video)}><MessageCircle size={17}/> Écrire à l’auteur</button>}
             </div>
           </div>}
-          {!isShort&&(video.show_stats||owner)&&<div className="video-stats video-stats-detailed watch-detailed-stats"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
+          {!isShort&&owner&&<div className="video-stats video-stats-detailed watch-detailed-stats"><span><MousePointerClick size={14}/> {(video.clicks_count||0).toLocaleString("fr-FR")} clics</span><span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span><span><Check size={14}/> {(video.completed_views_count||0).toLocaleString("fr-FR")} complètes</span><span><Clock3 size={14}/> {formatWatchDuration(video.watch_time_seconds||0)}</span></div>}
           <p className="watch-description">{video.caption||"Découvre cette publication sur ZAVO."}</p>
           {video.target_url&&<a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer">Ouvrir le lien associé <ExternalLink size={13}/></a>}
         </main>
