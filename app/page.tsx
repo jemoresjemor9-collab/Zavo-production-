@@ -282,7 +282,7 @@ async function saveOfflineVideo(video: Video) {
   const database = await openOfflineDb();
   await new Promise<void>((resolve, reject) => {
     const tx = database.transaction("videos", "readwrite");
-    tx.objectStore("videos").put({ id: video.id, blob, caption: video.caption, savedAt: Date.now(), contentType: video.content_type });
+    tx.objectStore("videos").put({ id: video.id, blob, title: video.title || video.caption || "Vidéo ZAVO", caption: video.caption, thumbnailUrl: video.thumbnail_url || null, aspectRatio: video.aspect_ratio || null, creatorName: creatorOf(video)?.display_name || null, creatorUsername: creatorOf(video)?.username || null, savedAt: Date.now(), contentType: video.content_type });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -832,7 +832,7 @@ export default function HomePage() {
           await loadBlockedUsers(value.user.id);
           // app_metadata changes are not reflected in an already-issued JWT.
           // Refresh once on initial session restoration so newly granted admin access is picked up.
-          if (event === "INITIAL_SESSION") {
+          if (event === "INITIAL_SESSION" && navigator.onLine) {
             const { data, error } = await db()!.auth.refreshSession();
             if (!active) return;
             if (data.session) setSession(data.session);
@@ -848,9 +848,10 @@ export default function HomePage() {
         setTab("Pour toi");
       }
     });
-    const onOnline = () => { setOffline(false); setOfflineVideos([]); };
+    const onOnline = async () => { setOffline(false); try { setOfflineVideos(await readOfflineVideos()); } catch { /* Les téléchargements restent dans IndexedDB ; une erreur de lecture ne doit pas les effacer. */ } };
     const onOffline = async () => { setOffline(true); try { setOfflineVideos(await readOfflineVideos()); } catch { setOfflineVideos([]); } };
     setOffline(!navigator.onLine);
+    void readOfflineVideos().then(setOfflineVideos).catch(() => setOfflineVideos([]));
     if (!navigator.onLine) onOffline();
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
@@ -2533,7 +2534,7 @@ function OfflineVideoPlayer({ item }: { item: any }) {
     setSrc(url);
     return () => URL.revokeObjectURL(url);
   }, [item?.blob]);
-  return <article><video controls playsInline preload="metadata" src={src || undefined}/><strong>{item.caption || "Vidéo ZAVO"}</strong><small>{item.contentType === "short" ? "Short" : "Vidéo"}{item.savedAt ? " · Enregistrée le " + new Date(item.savedAt).toLocaleDateString("fr-FR") : ""}</small></article>;
+  return <article><video controls playsInline preload="metadata" src={src || undefined}/><strong>{item.title || item.caption || "Vidéo ZAVO"}</strong><small>{item.creatorName ? item.creatorName + " · " : ""}{item.contentType === "short" ? "Short" : "Vidéo"}{item.savedAt ? " · Enregistrée le " + new Date(item.savedAt).toLocaleDateString("fr-FR") : ""}</small></article>;
 }
 
 function SponsoredPromoCard({ campaign, currentUserId, following, onFollow, onCampaignEvent }: any) {
