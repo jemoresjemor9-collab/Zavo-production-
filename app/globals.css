@@ -1836,3 +1836,51 @@ body{color:#d7eaff!important}
     display:none!important;
   }
 }
+
+
+/* ZAVO home feed: classic videos own a full row; only Shorts share a row. */
+.home-feed-grid .is-long-video{
+  grid-column:1 / -1;
+  width:100%;
+  max-width:none;
+}
+.home-feed-grid .is-long-video .video-frame.long-frame{
+  width:100%;
+  max-width:none;
+  max-height:none!important;
+  height:auto;
+  aspect-ratio:var(--zavo-media-ratio,16 / 9)!important;
+  margin-inline:auto;
+}
+.home-feed-grid .is-long-video .video-frame.long-frame video{
+  width:100%;
+  height:100%;
+  object-fit:contain!important;
+}
+.home-feed-grid .is-short{
+  grid-column:span 1;
+  min-width:0;
+}
+.home-feed-grid .is-short .video-frame.short-frame{
+  width:100%;
+  max-height:min(72vh,560px);
+}
+.watch-actions .watch-author-contact{
+  display:inline-flex!important;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  visibility:visible!important;
+}
+@media(max-width:760px){
+  .home-feed-grid .is-long-video .video-frame.long-frame{
+    max-height:none!important;
+  }
+  .home-feed-grid .is-short .video-frame.short-frame{
+    max-height:min(72vh,560px);
+  }
+  .watch-actions .watch-author-contact{
+    display:inline-flex!important;
+    visibility:visible!important;
+  }
+}
