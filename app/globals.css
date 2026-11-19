@@ -1940,3 +1940,18 @@ body{color:#d7eaff!important}
     visibility:visible!important;
   }
 }
+
+
+/* Welcome guide: keep actions visible and allow the content to scroll on short screens. */
+.welcome-guide-backdrop{z-index:520!important;place-items:center;overflow-y:auto;padding:calc(12px + env(safe-area-inset-top)) 12px calc(88px + env(safe-area-inset-bottom))}
+.welcome-guide-modal{width:min(480px,100%);max-height:calc(100dvh - 112px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:22px 20px 0}
+.welcome-guide-header{position:relative;flex:0 0 auto;padding-right:38px}
+.welcome-guide-header .modal-close{position:absolute;top:0;right:-8px}
+.welcome-guide-header h2{margin-bottom:12px}
+.welcome-guide-scroll{min-height:0;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:0 4px 18px 0;scrollbar-width:thin}
+.welcome-guide-sections{display:grid;gap:10px;margin:16px 0}
+.welcome-guide-sections>div{padding:12px;border-radius:12px;background:rgba(127,145,170,.09)}
+.welcome-guide-sections p,.welcome-guide-scroll>p{margin:6px 0 0;line-height:1.55}
+.welcome-guide-footer{position:relative;flex:0 0 auto;padding:12px 0 calc(14px + env(safe-area-inset-bottom));background:inherit;border-top:1px solid rgba(127,145,170,.18)}
+.welcome-guide-footer .primary-action{width:100%;min-height:46px}
+@media(max-height:650px){.welcome-guide-backdrop{padding-top:calc(8px + env(safe-area-inset-top));padding-bottom:calc(82px + env(safe-area-inset-bottom))}.welcome-guide-modal{max-height:calc(100dvh - 98px - env(safe-area-inset-top) - env(safe-area-inset-bottom));padding-top:16px}.welcome-guide-sections{gap:8px;margin:10px 0}.welcome-guide-sections>div{padding:9px}}
