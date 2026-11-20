@@ -302,10 +302,10 @@ function creatorOf(video: Video) {
   return Array.isArray(video.profiles) ? video.profiles[0] : video.profiles;
 }
 function creatorDisplayName(profile?: Profile | null) {
-  return profile?.creator_mode_active && profile.creator_name ? profile.creator_name : profile?.display_name || "Créateur ZAVO";
+  return profile?.creator_name || profile?.display_name || "Créateur ZAVO";
 }
 function creatorPublicHandle(profile?: Profile | null) {
-  return profile?.creator_mode_active && profile.creator_handle ? profile.creator_handle : profile?.username || "createur";
+  return profile?.creator_handle || profile?.username || "createur";
 }
 function composeHomeFeed(items: Video[]): Video[] {
   const pools: Record<"short" | "video" | "photo", Video[]> = {
