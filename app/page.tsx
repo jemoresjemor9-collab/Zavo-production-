@@ -519,6 +519,7 @@ export default function HomePage() {
   const [creatorNameDraft, setCreatorNameDraft] = useState("");
   const [creatorHandleDraft, setCreatorHandleDraft] = useState("");
   const [creatorHandleStatus, setCreatorHandleStatus] = useState("");
+  const [creatorHandleSuggestions, setCreatorHandleSuggestions] = useState<string[]>([]);
   const [creatorModeBusy, setCreatorModeBusy] = useState(false);
   const [profileBannerFile, setProfileBannerFile] = useState<File | null>(null);
   const [profileAvatarFile, setProfileAvatarFile] = useState<File | null>(null);
@@ -573,14 +574,21 @@ export default function HomePage() {
     if (!creatorModeOpen) return;
     const handle = creatorHandleDraft.toLowerCase().trim().replace(/^@+/, "").replace(/[^a-z0-9_]/g, "");
     if (!/^[a-z0-9_]{3,24}$/.test(handle)) { setCreatorHandleStatus("3 à 24 caractères : lettres, chiffres et _."); return; }
-    if (handle === (profile?.creator_handle || "")) { setCreatorHandleStatus("Identifiant disponible pour ton compte."); return; }
+    if (handle === (profile?.creator_handle || "")) { setCreatorHandleStatus("Identifiant disponible pour ton compte."); setCreatorHandleSuggestions([]); return; }
     let active = true;
     setCreatorHandleStatus("Vérification de la disponibilité…");
     const timer = window.setTimeout(async () => {
       if (!db() || !session?.user?.id) return;
       const { data, error } = await db()!.from("profiles").select("id").ilike("creator_handle", handle).neq("id", session.user.id).limit(1);
       if (!active) return;
-      setCreatorHandleStatus(error ? "Vérification impossible. Réessaie." : data?.length ? "Identifiant déjà utilisé. Essaie une variante." : "Identifiant disponible.");
+      if (error) { setCreatorHandleStatus("Vérification impossible. Réessaie."); setCreatorHandleSuggestions([]); return; }
+      if (!data?.length) { setCreatorHandleStatus("Identifiant disponible."); setCreatorHandleSuggestions([]); return; }
+      setCreatorHandleStatus("Identifiant déjà utilisé. Voici des variantes disponibles :");
+      const candidates = [`${handle}_officiel`, `${handle}2026`, `${handle}_zavo`].filter(value => value.length <= 24 && value !== handle);
+      const { data: taken } = await db()!.from("profiles").select("creator_handle").in("creator_handle", candidates);
+      if (!active) return;
+      const used = new Set((taken || []).map((row:any) => row.creator_handle));
+      setCreatorHandleSuggestions(candidates.filter(value => !used.has(value)).slice(0,3));
     }, 350);
     return () => { active = false; window.clearTimeout(timer); };
   }, [creatorModeOpen, creatorHandleDraft, profile?.creator_handle, session?.user?.id]);
@@ -1685,7 +1693,13 @@ export default function HomePage() {
   }
 
   async function toggleLike(video: Video) {
-    if (!session) { setAuthMode("signin"); return; }
+    if (!session) {
+      const exists = liked.includes(video.id);
+      const delta = exists ? -1 : 1;
+      setLiked(current => exists ? current.filter(id => id !== video.id) : [...current, video.id]);
+      patchEngagementCount(video.id, "likes", delta);
+      return;
+    }
     const exists = liked.includes(video.id);
     const delta = exists ? -1 : 1;
     setLiked(current => exists ? current.filter(id => id !== video.id) : [...current, video.id]);
@@ -2534,7 +2548,7 @@ export default function HomePage() {
       <button className="switch-auth" onClick={() => {setAuthMode(authMode === "signin" ? "signup" : "signin");setSignupStep(1);}}>{authMode === "signin" ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}</button></section></div>}
 
 
-      {creatorModeOpen && <div className="modal-backdrop creator-mode-backdrop" onClick={()=>setCreatorModeOpen(false)}><section className="modal creator-mode-modal" onClick={e=>e.stopPropagation()}><button type="button" className="modal-close" onClick={()=>setCreatorModeOpen(false)} aria-label="Fermer"><X/></button><div className="creator-mode-modal-icon"><Clapperboard size={26}/></div><div className="section-kicker">IDENTITÉ PUBLIQUE ZAVO</div><h2>Activer le mode créateur</h2><p>Choisis le nom et l’identifiant que les autres membres verront sur tes publications. Ton nom personnel et ton identifiant de membre restent inchangés.</p><form onSubmit={activateCreatorMode}><label>Nom de créateur<input value={creatorNameDraft} onChange={e=>setCreatorNameDraft(e.target.value)} minLength={2} maxLength={60} placeholder="Ex. Jémor Digital" required/></label><label>Identifiant de créateur</label><div className="username-input-wrap"><span>@</span><input value={creatorHandleDraft} onChange={e=>setCreatorHandleDraft(e.target.value.toLowerCase().replace(/^@+/,"").replace(/[^a-z0-9_]/g,""))} minLength={3} maxLength={24} autoComplete="off" spellCheck={false} placeholder="ex. jemordigital" required/></div><small className="field-hint">3 à 24 caractères : lettres, chiffres et _. Cet identifiant est unique et vérifié automatiquement.</small>{creatorHandleStatus&&<p className={creatorHandleStatus.includes("disponible")?"creator-handle-available":"field-error"} role="status">{creatorHandleStatus}</p>}<button className="primary-action modal-submit" disabled={creatorModeBusy||creatorNameDraft.trim().length<2||!(/^[a-z0-9_]{3,24}$/.test(creatorHandleDraft))}>{creatorModeBusy?"Activation…":"Activer mon mode créateur"}</button></form><small className="creator-mode-retention-note">Le mode est réversible. Si tu le désactives, tes vidéos, tes statistiques, tes abonnés, ton nom et ton identifiant de créateur restent enregistrés.</small></section></div>}
+      {creatorModeOpen && <div className="modal-backdrop creator-mode-backdrop" onClick={()=>setCreatorModeOpen(false)}><section className="modal creator-mode-modal" onClick={e=>e.stopPropagation()}><button type="button" className="modal-close" onClick={()=>setCreatorModeOpen(false)} aria-label="Fermer"><X/></button><div className="creator-mode-modal-icon"><Clapperboard size={26}/></div><div className="section-kicker">IDENTITÉ PUBLIQUE ZAVO</div><h2>Activer le mode créateur</h2><p>Choisis le nom et l’identifiant que les autres membres verront sur tes publications. Ton nom personnel et ton identifiant de membre restent inchangés.</p><form onSubmit={activateCreatorMode}><label>Nom de créateur<input value={creatorNameDraft} onChange={e=>setCreatorNameDraft(e.target.value)} minLength={2} maxLength={60} placeholder="Ex. Jémor Digital" required/></label><label>Identifiant de créateur</label><div className="username-input-wrap"><span>@</span><input value={creatorHandleDraft} onChange={e=>setCreatorHandleDraft(e.target.value.toLowerCase().replace(/^@+/,"").replace(/[^a-z0-9_]/g,""))} minLength={3} maxLength={24} autoComplete="off" spellCheck={false} placeholder="ex. jemordigital" required/></div><small className="field-hint">3 à 24 caractères : lettres, chiffres et _. Cet identifiant est unique et vérifié automatiquement.</small>{creatorHandleStatus&&<p className={creatorHandleStatus.includes("disponible")?"creator-handle-available":"field-error"} role="status">{creatorHandleStatus}</p>}{creatorHandleSuggestions.length>0&&<div className="creator-handle-suggestions"><span>Suggestions :</span>{creatorHandleSuggestions.map(value=><button type="button" key={value} onClick={()=>setCreatorHandleDraft(value)}>@{value}</button>)}</div>}<button className="primary-action modal-submit" disabled={creatorModeBusy||creatorNameDraft.trim().length<2||!(/^[a-z0-9_]{3,24}$/.test(creatorHandleDraft))}>{creatorModeBusy?"Activation…":"Activer mon mode créateur"}</button></form><small className="creator-mode-retention-note">Le mode est réversible. Si tu le désactives, tes vidéos, tes statistiques, tes abonnés, ton nom et ton identifiant de créateur restent enregistrés.</small></section></div>}
       {uploadOpen && tab === "Studio" && <div className="creator-studio-overlay"><section className="creator-studio">
         <header className="studio-header"><button type="button" onClick={()=>setUploadOpen(false)}><ArrowLeft size={18}/> Retour</button><div className="studio-brand"><img src="/icons/zavo-192.png" alt=""/> <strong>Studio de création ZAVO</strong></div><span>PUBLICATION</span></header>
         <div className="studio-content"><div className="studio-intro"><div className="section-kicker">TON CONTENU, TES RÈGLES</div><h1>Prépare ta publication</h1><p>Importe ta vidéo, vérifie son aperçu et choisis comment elle sera présentée sur ZAVO.</p></div>
