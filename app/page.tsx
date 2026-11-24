@@ -307,26 +307,24 @@ function creatorDisplayName(profile?: Profile | null) {
 function creatorPublicHandle(profile?: Profile | null) {
   return profile?.creator_handle || profile?.username || "createur";
 }
-function composeHomeFeed(items: Video[]): Video[] {
-  const pools: Record<"short" | "video" | "photo", Video[]> = {
-    short: items.filter(item => item.content_type === "short"),
-    photo: items.filter(item => item.content_type === "photo"),
-    video: items.filter(item => item.content_type === "video")
+type HomeFeedCycle = { shorts: Video[]; videos: Video[]; photos: Video[] };
+function composeHomeFeedCycles(items: Video[]): HomeFeedCycle[] {
+  const pools = {
+    shorts: items.filter(item => item.content_type === "short"),
+    videos: items.filter(item => item.content_type === "video"),
+    photos: items.filter(item => item.content_type === "photo")
   };
-  const result: Video[] = [];
-  const take = (type: "short" | "video" | "photo", count: number) => {
-    for (let i = 0; i < count && pools[type].length; i++) result.push(pools[type].shift()!);
-  };
-  // Editorial rhythm requested for ZAVO: 4 Shorts, 2 classic videos, then 1 photo post. Every item is consumed once.
-  while (pools.short.length || pools.photo.length || pools.video.length) {
-    const before = result.length;
-    take("short", 4);
-    take("video", 2);
-    take("photo", 1);
-    if (result.length === before) break;
+  const cycles: HomeFeedCycle[] = [];
+  while (pools.shorts.length || pools.videos.length || pools.photos.length) {
+    cycles.push({
+      videos: pools.videos.splice(0, 3),
+      shorts: pools.shorts.splice(0, 4),
+      photos: pools.photos.splice(0, 1)
+    });
   }
-  return result;
+  return cycles.filter(cycle => cycle.videos.length || cycle.shorts.length || cycle.photos.length);
 }
+
 function formatWatchDuration(totalSeconds: number) {
   const seconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
   const hours = Math.floor(seconds / 3600);
@@ -2327,7 +2325,8 @@ export default function HomePage() {
     const tags = [...(v.interest_tags || []), ...(v.hashtags || [])].map((tag: string) => String(tag).toLowerCase());
     return (v.caption || "").toLowerCase().includes(q) || (v.category || "").toLowerCase().includes(q) || tags.some(tag => tag.includes(q)) || (p?.username || "").toLowerCase().includes(q) || (p?.display_name || "").toLowerCase().includes(q);
   }), [searchSourceVideos, search, tab, discoverCategory]);
-  const feedVideos = useMemo(() => tab === "Pour toi" ? composeHomeFeed(visibleVideos) : visibleVideos, [visibleVideos, tab]);
+  const homeFeedCycles = useMemo(() => composeHomeFeedCycles(visibleVideos), [visibleVideos]);
+  const feedVideos = useMemo(() => tab === "Pour toi" ? homeFeedCycles.flatMap(cycle => [...cycle.shorts, ...cycle.videos, ...cycle.photos]) : visibleVideos, [visibleVideos, tab, homeFeedCycles]);
   const searchSuggestions = useMemo(() => { const q=search.trim().toLocaleLowerCase(); if(!q)return []; return searchSourceVideos.filter(item=>(item.caption||"").toLocaleLowerCase().includes(q)||(item.category||"").toLocaleLowerCase().includes(q)||(creatorPublicHandle(creatorOf(item))).toLocaleLowerCase().includes(q)||(creatorDisplayName(creatorOf(item))).toLocaleLowerCase().includes(q)).slice(0,6); },[searchSourceVideos,search]);
 
   const ownProfileVideos = videos.filter(v => v.user_id === session?.user?.id);
@@ -2563,7 +2562,11 @@ export default function HomePage() {
               <section className="welcome-panel compact-welcome"><div className="welcome-copy"><div className="eyebrow"><span className="eyebrow-mark"/> LA SCÈNE EST À TOI</div><h1>Regarde. Explore.<br/><span>Découvre de nouveaux univers.</span></h1><p>Découvre des vidéos de tous les horizons, rencontre de nouveaux créateurs et trouve les contenus qui t’inspirent.</p><div className="welcome-actions"><button className="secondary-action" onClick={()=>setTab("Découvrir")}><Compass size={16}/> Explorer les vidéos</button></div></div><div className="welcome-art"><img src="/icons/zavo-512.png" alt="ZAVO"/></div></section>
               <div className="feed-toolbar"><div><div className="section-kicker">LE FLUX ZAVO</div><h2>{tab === "Découvrir" ? "Découvrir" : tab === "Abonnements" ? "Tes abonnements" : tab === "Enregistrés" ? "Vidéos enregistrées" : tab === "Shorts" ? "Shorts" : tab === "Vidéos" ? "Vidéos" : tab === "Posts" ? "Posts" : "Pour toi"}</h2></div><div className="feed-tabs">{["Pour toi","Shorts","Vidéos","Posts","Abonnements","Découvrir","Enregistrés"].map((x: string) => <button key={x} className={tab === x ? "selected" : ""} onClick={() => setTab(x)}>{x}</button>)}</div></div>
               {tab === "Découvrir" && <div className="discover-category-strip" aria-label="Filtrer par centre d’intérêt">{["Tout", ...INTERESTS].map((category) => <button type="button" key={category} className={discoverCategory === category ? "active" : ""} onClick={() => setDiscoverCategory(category)}>{category}</button>)}</div>}
-              {feedVideos.length ? <div className={(tab==="Shorts"?"video-grid shorts-video-grid":tab==="Pour toi"?"video-grid home-feed-grid":"video-grid")}>{feedVideos.map((v,index)=><Fragment key={v.id}>{tab==="Pour toi"&&(index===0||feedVideos[index-1].content_type!==v.content_type)&&<div className="feed-group-heading">{v.content_type==="short"?"Shorts":v.content_type==="photo"?"Posts":"Vidéos"}</div>}<VideoCard video={v} session={session} liked={liked} saved={saved} following={following} priority={index<4} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onOpenProfile={openPublicProfile} onRepost={repostVideo} onWatchTime={recordWatchTime} onComplete={recordVideoCompletion} onRetentionProgress={recordRetentionMilestone} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x:Video)=>{setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");setCampaignDescription("");setCampaignTargetUrl("");setCampaignProductPrice("");setCampaignProductContact("");setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent} economyMode={dataSaver}/></Fragment>)}</div> : <section className="empty-state"><div className="empty-icon"><Play/></div><h3>{tab === "Abonnements" ? "Tu ne suis pas encore de créateur" : "Le fil commence ici."}</h3><p>Les vidéos publiques apparaîtront ici. Crée un compte pour publier, suivre et interagir avec les créateurs.</p><button className="primary-action" onClick={() => {if(session){setTab("Découvrir");}else setAuthMode("signup");}}>Rejoindre ZAVO</button></section>}
+              {(tab==="Pour toi"?homeFeedCycles.some(cycle=>cycle.videos.length||cycle.shorts.length||cycle.photos.length):feedVideos.length>0) ? (tab==="Pour toi" ? <div className="home-feed-sections">{homeFeedCycles.map((cycle,cycleIndex)=><div className="home-feed-cycle" key={"home-cycle-"+cycleIndex}>
+                {cycle.videos.length>0&&<section className="home-feed-section home-feed-section-videos"><div className="feed-group-heading"><span>Vidéos</span><small>À regarder</small></div><div className="video-grid home-classic-video-grid">{cycle.videos.map((v,index)=><VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} priority={cycleIndex===0&&index<3} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onOpenProfile={openPublicProfile} onRepost={repostVideo} onWatchTime={recordWatchTime} onComplete={recordVideoCompletion} onRetentionProgress={recordRetentionMilestone} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x:Video)=>{setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");setCampaignDescription("");setCampaignTargetUrl("");setCampaignProductPrice("");setCampaignProductContact("");setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent} economyMode={dataSaver}/>)}</div></section>}
+                {cycle.shorts.length>0&&<section className="home-feed-section home-feed-section-shorts"><div className="feed-group-heading"><span><Play size={19}/> Shorts</span><small>Vidéos courtes</small></div><div className="video-grid home-shorts-grid">{cycle.shorts.map((v,index)=><VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} priority={cycleIndex===0&&index<4} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onOpenProfile={openPublicProfile} onRepost={repostVideo} onWatchTime={recordWatchTime} onComplete={recordVideoCompletion} onRetentionProgress={recordRetentionMilestone} onReport={setReportVideo} onDownload={downloadVideo} onBoost={(x:Video)=>{setCampaignType("video");setCampaignObjective("views");setCampaignTitle("Promotion de ma vidéo");setCampaignDescription("");setCampaignTargetUrl("");setCampaignProductPrice("");setCampaignProductContact("");setCampaignVideo(x);setCampaignOpen(true);}} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent} economyMode={dataSaver}/>)}</div></section>}
+                {cycle.photos.length>0&&<section className="home-feed-section home-feed-section-photos"><div className="feed-group-heading"><span>Publications photo</span><small>Communauté ZAVO</small></div><div className="video-grid home-photo-grid">{cycle.photos.map(v=><VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onOpenProfile={openPublicProfile} onRepost={repostVideo} onWatchTime={recordWatchTime} onComplete={recordVideoCompletion} onRetentionProgress={recordRetentionMilestone} onReport={setReportVideo} onDownload={downloadVideo} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent} economyMode={dataSaver}/>)}</div></section>}
+              </div>)}</div> : <div className={"video-grid "+(tab==="Shorts"?"shorts-video-grid":"")}>{feedVideos.map(v=><VideoCard key={v.id} video={v} session={session} liked={liked} saved={saved} following={following} onLike={toggleLike} onSave={toggleSave} onFollow={toggleFollow} onComments={openComments} onShare={shareVideo} onOpenWatch={setWatchVideo} onOpenProfile={openPublicProfile} onRepost={repostVideo} onWatchTime={recordWatchTime} onComplete={recordVideoCompletion} onRetentionProgress={recordRetentionMilestone} onReport={setReportVideo} onDownload={downloadVideo} onView={recordView} onToggleStats={toggleVideoStats} onToggleDownload={toggleVideoDownload} onCampaignEvent={trackCampaignEvent} economyMode={dataSaver}/>)}</div>)} : <section className="empty-state"><div className="empty-icon"><Play/></div><h3>{tab === "Abonnements" ? "Tu ne suis pas encore de créateur" : "Le fil commence ici."}</h3><p>Les vidéos publiques apparaîtront ici. Crée un compte pour publier, suivre et interagir avec les créateurs.</p><button className="primary-action" onClick={() => {if(session){setTab("Découvrir");}else setAuthMode("signup");}}>Rejoindre ZAVO</button></section>}
               {feedHasMore && <div className="feed-load-more"><button className="secondary-action" disabled={feedLoadingMore} onClick={()=>void loadVideos(feedPage+1)}>{feedLoadingMore ? "Chargement…" : "Charger plus de contenus"}</button></div>}
               {sponsoredPromos.map(campaign=><SponsoredPromoCard key={campaign.id} campaign={campaign} currentUserId={session?.user?.id} following={following} onFollow={toggleFollow} onCampaignEvent={trackCampaignEvent}/>) }
             </>
