@@ -2016,3 +2016,5 @@ body{color:#d7eaff!important}
  .main-column{padding-bottom:88px}
 }
 @media(max-width:390px){.mobile-nav button{font-size:8px}.mobile-nav button svg{width:19px;height:19px}.mobile-brand{font-size:16px}.topbar{padding-inline:10px}.top-actions{gap:4px}}
+
+@media(min-width:1221px){.right-rail{display:none}}
