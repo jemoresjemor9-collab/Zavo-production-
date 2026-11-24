@@ -2095,3 +2095,32 @@ body{color:#d7eaff!important}
  .video-feed-quick-actions{gap:9px}
  .video-feed-quick-actions button span{font-size:10px}
 }
+
+
+/* Feed category headings are consistently anchored to the left on every screen. */
+.home-feed-section .feed-group-heading{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  align-self:stretch;
+  width:100%;
+  text-align:left!important;
+  margin-left:0!important;
+  padding-left:2px!important;
+}
+.home-feed-section .feed-group-heading>span{
+  justify-content:flex-start!important;
+  text-align:left!important;
+  margin:0!important;
+}
+.home-feed-section .feed-group-heading small{
+  margin-left:8px;
+  text-align:left;
+}
+@media(max-width:760px){
+  .home-feed-section .feed-group-heading{
+    justify-content:flex-start!important;
+    text-align:left!important;
+    padding-left:2px!important;
+  }
+}
