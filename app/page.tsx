@@ -535,6 +535,7 @@ export default function HomePage() {
   const [profileVideoFilter, setProfileVideoFilter] = useState<"all"|"short"|"video"|"photo"|"reposts">("all");
   const [publicProfileVideoFilter, setPublicProfileVideoFilter] = useState<"all"|"short"|"video"|"photo">("all");
   const [logoutConfirm, setLogoutConfirm] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -1444,6 +1445,22 @@ export default function HomePage() {
     setAuthMode(null); setPassword(""); setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("");
     setTab("Pour toi");
     setNotice("Tu es déconnecté de ZAVO.");
+  }
+
+  async function switchAccount() {
+    setAccountMenuOpen(false);
+    if (!db()) return;
+    setBusy(true);
+    const { error } = await db()!.auth.signOut({ scope: "local" });
+    setBusy(false);
+    if (error) { setNotice("Impossible de changer de compte : " + error.message); return; }
+    setSession(null); setProfile(null); setDisplayName(""); setBio(""); setWebsiteUrl(""); setProfileInterests(""); setLiked([]); setSaved([]); setFollowing([]);
+    setNotifications([]); setUnreadNotificationCount(0); setDmMessages([]); setActiveConversation(null); setFollowerProfiles([]);
+    setFollowerCount(0); setFollowingCount(0); setMyCampaigns([]); setMyReposts([]);
+    setProfileOpen(false); setUploadOpen(false); setCampaignOpen(false); setLogoutConfirm(false);
+    setPassword(""); setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("");
+    setTab("Pour toi"); setEmail(""); setAuthMode("signin");
+    setNotice("Compte déconnecté. Connecte-toi avec un autre compte ZAVO.");
   }
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
@@ -2379,7 +2396,24 @@ export default function HomePage() {
                 }}><Icon size={17}/><span>{item.label}</span></button>;})}
               </nav>}
             </div>
-            {session ? <><button className="profile-chip" onClick={() => setTab("Profil")}>{(profile?.display_name || session.user.email || "Z").slice(0,1).toUpperCase()}</button><button className="login-button" onClick={() => setLogoutConfirm(true)}><LogOut size={16}/><span>Quitter</span></button></> : <button className="login-button" onClick={() => setAuthMode("signin")}><LogIn size={16}/><span>Connexion</span></button>}
+            {session ? <div className="account-menu-wrap">
+              <button type="button" className="profile-chip" aria-label="Ouvrir le menu du compte" aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={()=>{setAccountMenuOpen(v=>!v);setMoreMenuOpen(false);}}>
+                {profile?.avatar_url?<img src={profile.avatar_url} alt=""/>:(profile?.display_name||session.user.email||"Z").slice(0,1).toUpperCase()}
+              </button>
+              {accountMenuOpen&&<><button type="button" className="account-menu-dismiss" aria-label="Fermer le menu du compte" onClick={()=>setAccountMenuOpen(false)}/><section className="account-menu" role="menu" aria-label="Menu du compte">
+                <div className="account-menu-identity">
+                  <span className="account-menu-avatar">{profile?.avatar_url?<img src={profile.avatar_url} alt=""/>:(profile?.display_name||session.user.email||"Z").slice(0,1).toUpperCase()}</span>
+                  <div><strong>{profile?.display_name||"Membre ZAVO"}</strong><span>{session.user.email}</span><small>{creatorModeActive?"Profil créateur actif":"Compte utilisateur"}</small></div>
+                </div>
+                <div className="account-menu-divider"/>
+                <button type="button" role="menuitem" onClick={()=>{setAccountMenuOpen(false);setTab("Profil");}}><UserRound size={18}/><span>Mon profil</span></button>
+                <button type="button" role="menuitem" onClick={()=>{setAccountMenuOpen(false);if(creatorModeActive){setTab("Profil");}else{setCreatorNameDraft(profile?.creator_name||profile?.display_name||"");setCreatorHandleDraft(profile?.creator_handle||profile?.username||"");setCreatorModeOpen(true);}}}><Clapperboard size={18}/><span>{creatorModeActive?"Profil créateur":"Créer un profil créateur"}</span></button>
+                <button type="button" role="menuitem" onClick={()=>{setAccountMenuOpen(false);setTab("Studio");}}><BarChart3 size={18}/><span>ZAVO Studio</span></button>
+                <button type="button" role="menuitem" onClick={()=>{setAccountMenuOpen(false);setTab("Profil");setProfileOpen(true);}}><Settings size={18}/><span>Paramètres du compte</span></button>
+                <div className="account-menu-divider"/>
+                <button type="button" role="menuitem" onClick={switchAccount} disabled={busy}><Repeat2 size={18}/><span>Changer de compte</span></button>
+                <button type="button" role="menuitem" className="account-menu-logout" onClick={()=>{setAccountMenuOpen(false);setLogoutConfirm(true);}}><LogOut size={18}/><span>Se déconnecter</span></button>
+              </section></>}</div> : <button className="login-button" onClick={() => setAuthMode("signin")}><LogIn size={16}/><span>Connexion</span></button>}
           </div>
         </header>
         <div className="page-content">
@@ -2617,7 +2651,13 @@ export default function HomePage() {
           </> : <div className="feedback-thankyou"><div>✓</div><h2>Merci pour ta réponse !</h2><p>Ta réponse a bien été envoyée en privé à l’équipe ZAVO. Tu as terminé pour cette campagne.</p><button className="primary-action" onClick={()=>{setFeedbackCampaign(null);setFeedbackThankYou(false);}}>Continuer sur ZAVO</button></div>}
         </section>
       </div>}
-      <nav className="mobile-nav" aria-label="Navigation principale"><button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={19}/><span>Accueil</span></button><button className={tab==="Vidéos"?"active":""} onClick={()=>setTab("Vidéos")}><Clapperboard size={19}/><span>Vidéos</span></button><button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={19}/><span>Shorts</span></button><button className="mobile-publish" onClick={()=>{if(session){setTab("Studio");if(creatorModeActive)setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={20}/><span>Publier</span></button><button className={tab==="Communauté"?"active":""} onClick={()=>setTab("Communauté")}><Users size={19}/><span>Communauté</span></button><button className={tab==="Messages"?"active":""} onClick={()=>{if(session){setTab("Messages");void markAllMessagesRead();}else setAuthMode("signin");}}><MessageCircle size={19}/><span>Messages</span>{unreadMessageCount>0&&<b className="mobile-unread-badge">{unreadMessageCount>99?"99+":unreadMessageCount}</b>}</button><button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={19}/><span>Profil</span></button></nav>
+      <nav className="mobile-nav" aria-label="Navigation principale">
+        <button className={tab==="Pour toi"?"active":""} onClick={()=>setTab("Pour toi")}><Home size={21}/><span>Accueil</span></button>
+        <button className={tab==="Shorts"?"active":""} onClick={()=>setTab("Shorts")}><Play size={21}/><span>Shorts</span></button>
+        <button className="mobile-publish" aria-label="Créer une publication" onClick={()=>{if(session){setTab("Studio");if(creatorModeActive)setUploadOpen(true);}else setAuthMode("signup");}}><Plus size={24}/><span>Créer</span></button>
+        <button className={tab==="Abonnements"?"active":""} onClick={()=>setTab("Abonnements")}><Users size={21}/><span>Abonnements</span></button>
+        <button className={tab==="Profil"?"active":""} onClick={()=>session?setTab("Profil"):setAuthMode("signin")}><UserRound size={21}/><span>Vous</span></button>
+      </nav>
     </main>
   );
 }
