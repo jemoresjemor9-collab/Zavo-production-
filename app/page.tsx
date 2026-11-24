@@ -2812,10 +2812,25 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
         {(video.allow_gallery_download??video.allow_download) && <button onClick={()=>{onDownload(video,false);setMenu(false);}}><Download size={14}/> Télécharger dans la galerie</button>}
       </div>}
     </div>
-    {!isPhoto ? <button type="button" className="video-details video-feed-details" onClick={()=>onOpenWatch?.(video)}>
-      <strong>{video.title||video.caption||"Vidéo ZAVO"}</strong>
-      <span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>
-    </button> : <div className="video-details">
+    {!isPhoto ? <>
+      <button type="button" className="video-details video-feed-details" onClick={()=>onOpenWatch?.(video)}>
+        <strong>{video.title||video.caption||"Vidéo ZAVO"}</strong>
+        <span><Eye size={14}/> {(video.views_count||0).toLocaleString("fr-FR")} vues</span>
+      </button>
+      <div className="video-feed-creator-row">
+        <button type="button" className="video-feed-creator" onClick={()=>onOpenProfile?.(video.user_id)}>
+          <span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creatorDisplayName(creator)).slice(0,1).toUpperCase()}</span>
+          <span className="creator-meta"><strong>{creatorDisplayName(creator)}</strong><span>@{creatorPublicHandle(creator)}</span></span>
+        </button>
+        {!owner&&<button type="button" className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
+        <div className="video-feed-quick-actions">
+          <button type="button" className={liked.includes(video.id)?"liked":""} onClick={()=>onLike(video)} aria-label="Aimer"><Heart size={17}/><span>{video.likes?.[0]?.count||0}</span></button>
+          <button type="button" onClick={()=>onComments(video)} aria-label="Commenter"><MessageSquare size={17}/><span>{commentsCount}</span></button>
+          <button type="button" className={saved.includes(video.id)?"saved":""} onClick={()=>onSave(video)} aria-label="Enregistrer"><Bookmark size={17}/></button>
+          <button type="button" onClick={()=>onShare(video)} aria-label="Partager"><Share2 size={17}/></button>
+        </div>
+      </div>
+    </> : <div className="video-details">
       <p className="video-caption"><Caption value={video.caption||""}/></p>
       {video.target_url && <a className="sponsored-cta" href={safeUrl(video.target_url)||"#"} target="_blank" rel="noopener noreferrer" onClick={()=>video.isSponsored&&onCampaignEvent?.(video.campaign_id,"click")}>{video.isSponsored?"Découvrir l’offre":"Ouvrir le lien associé"} <ExternalLink size={13}/></a>}
       <div className="video-controls">
