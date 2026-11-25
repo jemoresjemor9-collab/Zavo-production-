@@ -2780,6 +2780,12 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
           onPlay={e=>{e.currentTarget.parentElement?.classList.add("has-started");if(!retentionSessionRef.current)retentionSessionRef.current=createZavoId();lastPlaybackTime.current=e.currentTarget.currentTime;segmentWatchTime.current=0;}}
           onTimeUpdate={e=>{
             const current=e.currentTarget.currentTime;
+            if(isShort&&current>=5){
+              e.currentTarget.currentTime=5;
+              e.currentTarget.pause();
+              setFeedProgress(100);
+              return;
+            }
             const delta=current-lastPlaybackTime.current;
             if(delta>0&&delta<=2){segmentWatchTime.current+=delta;const duration=e.currentTarget.duration;if(Number.isFinite(duration)&&duration>0){const progress=current/duration*100;[10,25,50,75,90,100].forEach(milestone=>{if(progress>=milestone&&!retentionMilestonesRef.current.has(milestone)){retentionMilestonesRef.current.add(milestone);onRetentionProgress?.(video,retentionSessionRef.current,milestone);}});}}
             lastPlaybackTime.current=current;
@@ -2793,7 +2799,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
             }
           }}
           onPause={recordSegment}
-          onEnded={e=>{recordSegment();setFeedProgress(0);if(!completionRecorded.current){completionRecorded.current=true;onComplete?.(video);}if(isShort){e.currentTarget.currentTime=0;e.currentTarget.play().catch(()=>{});}}}
+          onEnded={e=>{recordSegment();if(!completionRecorded.current){completionRecorded.current=true;onComplete?.(video);}if(!isShort)setFeedProgress(0);}}
           onClick={()=>onOpenWatch?.(video)}
         />
         <button type="button" className="feed-audio-toggle" aria-label={feedMuted?"Activer le son":"Couper le son"} title={feedMuted?"Activer le son":"Couper le son"} onClick={e=>{e.stopPropagation();const player=playerRef.current;if(!player)return;const next=!feedMuted;setFeedMuted(next);player.muted=!next;if(next===false)player.play().catch(()=>{});}}>{feedMuted?<VolumeX size={17}/>:<Volume2 size={17}/>}</button>
@@ -2822,7 +2828,7 @@ function VideoCard({ video, session, liked, saved, following, onLike, onSave, on
           <span className="creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creatorDisplayName(creator)).slice(0,1).toUpperCase()}</span>
           <span className="creator-meta"><strong>{creatorDisplayName(creator)}</strong><span>@{creatorPublicHandle(creator)}</span></span>
         </button>
-        {!owner&&<button type="button" className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
+        {!owner&&!isShort&&<button type="button" className="follow-button" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
         <div className="video-feed-quick-actions">
           <button type="button" className={liked.includes(video.id)?"liked":""} onClick={()=>onLike(video)} aria-label="Aimer"><Heart size={17}/><span>{video.likes?.[0]?.count||0}</span></button>
           <button type="button" onClick={()=>onComments(video)} aria-label="Commenter"><MessageSquare size={17}/><span>{commentsCount}</span></button>
@@ -2919,7 +2925,7 @@ function WatchPage({ video, videos, session, liked, saved, following, onClose, o
                 <span className="short-creator-avatar">{creator?.avatar_url?<img src={creator.avatar_url} alt=""/>:(creator?.display_name||"Z").slice(0,1).toUpperCase()}</span>
                 <strong>{creator?.display_name||"Créateur ZAVO"}</strong>
               </button>
-              {creator?.id&&session?.user?.id!==video.user_id&&<button type="button" className="short-creator-follow" onClick={()=>onFollow(video.user_id)}>{following.includes(video.user_id)?"Abonné":"S’abonner"}</button>}
+              
             </div>}
             {isShort&&<div className="short-action-rail" aria-label="Actions du Short">
               <button type="button" className={liked.includes(video.id)?"active":""} onClick={()=>onLike(video)} aria-label="J’aime"><Heart size={25} fill={liked.includes(video.id)?"currentColor":"none"}/><strong>{video.likes?.[0]?.count||0}</strong><span>J’aime</span></button>
